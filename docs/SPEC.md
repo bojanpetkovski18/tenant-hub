@@ -46,7 +46,7 @@ One database and one schema shared by all organizations. Every tenant-owned tabl
 
 ### 3.2 Resolving the tenant
 - Tenant-scoped API routes carry the organization: `/api/orgs/{orgId}/...`. The SPA uses the organization's slug in its own URLs (`/o/{slug}/jobs`) and maps it to the id from the session (`GET /api/auth/session`).
-- On every tenant-scoped request the server loads the caller's active membership for `{orgId}`. No active membership → `404` (the organization's existence is not revealed). Membership found → a request-scoped `TenantContext` holds the organization id, user id, role and permissions. Missing permission → `403`.
+- On every tenant-scoped request the server loads the caller's active membership for `{orgId}`. No active membership → `404` with code `organization-not-found`, identical for a foreign organization, an unknown id and a removed member (the organization's existence is not revealed). Membership found → a request-scoped `TenantContext` holds the organization id, user id, role and permissions. Missing permission → `403` with code `permission-denied` (D025).
 - The organization is never taken from a request body, query string, header or cookie claim. Ids of other entities in a request (client id, assignee id) are always looked up inside the current tenant.
 
 ### 3.3 Enforcement in depth
@@ -226,12 +226,12 @@ All endpoints are under `/api` and return JSON. Errors are RFC 7807 problem deta
 
 | Method | Path | Permission |
 |---|---|---|
-| GET | `/` | `org.read`: organization, plan, usage |
+| GET | `/` | `org.read`: id, name, slug, plan, time zone, created (usage from M08) |
 | PATCH | `/` | `org.manage` |
 | DELETE | `/` | `org.delete`; body confirms the name |
 | PUT | `/plan` | `billing.manage` |
 | GET | `/dashboard` | `org.read` |
-| GET | `/members` | `org.read` |
+| GET | `/members` | `org.read`: active members with name, email, role, joined |
 | PATCH | `/members/{userId}` | `members.manage`: role |
 | DELETE | `/members/{userId}` | `members.manage`, or self (leave) |
 | GET | `/invitations` | `members.manage` |
