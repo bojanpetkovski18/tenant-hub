@@ -6,8 +6,8 @@ Estimates are rough focused-work hours for agent and owner together, including r
 |---|---|---|---|---|---|---|
 | P0 | Project setup (spec, stories, rules, briefs, CI) | `#0000-project-setup` | 2 h | done | 2026-10-21 | PR #1 merged; CI green on the PR and on `dev` (secret scan, repo lint) |
 | M01 | Skeleton, architecture tests, CI, app shell | `#0001-solution-skeleton-architecture-tests-and-shell` | 6 h | done | 2026-10-21 | PR #2 merged; CI green on the PR (all 7 gates) and on `dev`. 38 API tests (incl. architecture rules shown failing) + 16 web tests; 115/115 browser checks on the dev server and 115/115 on the production build under the API CSP; merge-gate CI (D020) |
-| M02 | Accounts and organizations | `#0002-accounts-sign-up-and-organizations` | 8 h | in review | 2026-10-21 | 109 API tests (54 domain, 38 integration incl. Testcontainers) + 52 web tests; 96/96 browser checks on the dev server and on the production build under the API CSP; lock and migration-guard mutation checks |
-| M03 | Tenancy core and isolation tests | `#0003-tenancy-core-permissions-and-isolation-tests` | 8 h | todo | none | The project's centrepiece; do not rush |
+| M02 | Accounts and organizations | `#0002-accounts-sign-up-and-organizations` | 8 h | done | 2026-10-21 | PR #3 merged; CI green on the PR and on `dev`. 109 API tests (54 domain, 38 integration incl. Testcontainers) + 52 web tests; 96/96 browser checks on the dev server and on the production build under the API CSP; lock and migration-guard mutation checks |
+| M03 | Tenancy core and isolation tests | `#0003-tenancy-core-permissions-and-isolation-tests` | 8 h | in progress | none | The project’s centrepiece; do not rush |
 | M04 | Clients and audit recording | `#0004-clients-composite-keys-and-audit-recording` | 8 h | todo | none | Sets the list, form and audit patterns |
 | M05 | Members and invitations | `#0005-members-and-invitations` | 8 h | todo | none | |
 | M06 | Jobs | `#0006-jobs-workflow-numbering-and-lists` | 10 h | todo | none | |
