@@ -4,8 +4,8 @@ Estimates are rough focused-work hours for agent and owner together, including r
 
 | # | Milestone | Branch | Estimate | Status | Verified on | Notes |
 |---|---|---|---|---|---|---|
-| P0 | Project setup (spec, stories, rules, briefs, CI) | `#0000-project-setup` | 2 h | in review | 2026-10-21 | Docs and CI only; nothing to build yet |
-| M01 | Skeleton, architecture tests, CI, app shell | `#0001-solution-skeleton-architecture-tests-and-shell` | 6 h | todo | none | |
+| P0 | Project setup (spec, stories, rules, briefs, CI) | `#0000-project-setup` | 2 h | done | 2026-10-21 | PR #1 merged; CI green on the PR and on `dev` (secret scan, repo lint) |
+| M01 | Skeleton, architecture tests, CI, app shell | `#0001-solution-skeleton-architecture-tests-and-shell` | 6 h | in progress | none | Adds the merge-gate CI the owner asked for |
 | M02 | Accounts and organizations | `#0002-accounts-sign-up-and-organizations` | 8 h | todo | none | |
 | M03 | Tenancy core and isolation tests | `#0003-tenancy-core-permissions-and-isolation-tests` | 8 h | todo | none | The project's centrepiece; do not rush |
 | M04 | Clients and audit recording | `#0004-clients-composite-keys-and-audit-recording` | 8 h | todo | none | Sets the list, form and audit patterns |
