@@ -30,11 +30,12 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
 - **Why:** The boundaries are checked by the compiler and by tests rather than by convention. Domain rules become plain unit tests, and the structure is easy to explain in interviews.
 - **Alternatives:** One project with feature folders (what the other two projects do; it would make this project look like them); full Clean Architecture with repositories per aggregate (more ceremony than the domain needs; EF Core already is the unit of work).
 - **Trade-offs:** More projects and some mapping between domain and API contracts. Application depending on EF Core abstractions is a deliberate compromise to avoid a repository layer.
-- **Verified:** .NET 10 is LTS, supported until 2028-11-14; latest runtime 10.0.13 and SDK 10.0.402, both released 2026-10-13 (Microsoft release metadata, checked 2026-10-21). The SDK and runtime are installed locally. Package versions to be pinned at M01.
+- **Verified:** .NET 10 is LTS, supported until 2028-11-14; latest runtime 10.0.13 and SDK 10.0.402, both released 2026-10-13 (Microsoft release metadata, checked 2026-10-21). The SDK and runtime are installed locally.
+- **M01 (2026-10-21):** the four projects exist with exactly the references above; `global.json` pins SDK 10.0.402. Pinned packages are in D019.
 
 ## D004: PostgreSQL with EF Core (Npgsql)
 - **Date:** 2026-10-21
-- **Decision:** PostgreSQL (version pinned at M01).
+- **Decision:** PostgreSQL 18.6 (`postgres:18.6-alpine`, pushed 2026-09-21, the newest 18.x on 2026-10-21; pinned at M01).
 - **Why:** Composite foreign keys plus partial unique indexes model the tenant rules directly (SPEC 8.1); `xmin` is a free concurrency token; `SELECT … FOR UPDATE` gives the plan-limit lock; row-level security is available for V2; free and cheap hosting options exist; the owner already runs it in the other projects.
 - **Alternatives:** SQL Server (closer to some enterprise clients, but a heavier container and fewer free hosts).
 - **Trade-offs:** None significant for this project.
@@ -109,7 +110,8 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
 - **Date:** 2026-10-21
 - **Decision:** Standalone, zoneless Angular with signals. NgRx SignalStore (`@ngrx/signals`) for the session and organization context and for the list pages (filters, paging and sorting kept in sync with the URL). Tailwind CSS v4 with design tokens, and Angular CDK for overlays, menus, dialogs and focus management. No component library.
 - **Why:** NgRx is on the owner's CV; SignalStore is its current, lighter form and fits zoneless Angular. Plain signals would also work for small pages, so SignalStore is used where state is shared or has several moving parts, not everywhere.
-- **Verified:** `@angular/core` 22.2.3 and `@ngrx/signals` 22.0.1 (peer `@angular/core ^22.0.0`) are the latest on npm (checked 2026-10-21). Exact versions, at least two weeks old, are pinned at M01.
+- **Verified:** `@angular/core` 22.2.3 and `@ngrx/signals` 22.0.1 (peer `@angular/core ^22.0.0`) are the latest on npm (checked 2026-10-21).
+- **Confirmed at M01 (2026-10-21):** Angular 22.2.1 (2026-09-30), `@ngrx/signals` 22.0.1 (2026-09-10), Tailwind CSS 4.3.3, Vitest 5.0.3 as the Angular unit-test runner, TypeScript 6.0.3 (Angular 22.2 requires `>=6.0 <6.1`; TypeScript 7 is not supported yet). Exact versions and exceptions in D019. The first SignalStore is `ThemeStore`. Breakpoints use `matchMedia` directly rather than the CDK `BreakpointObserver`, whose media matcher inserts a `<style>` element that a strict CSP blocks (found in Fitness Merchant, K1 there).
 - **Alternatives:** Classic `@ngrx/store` with effects (more boilerplate than these pages need); Angular Material (looks like a template; harder to give a distinct identity).
 
 ## D015: Test strategy with isolation tests as the headline
@@ -121,6 +123,7 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
   - Angular component tests with Vitest;
   - one Playwright end-to-end journey (SPEC 10, criterion 10).
 - **Why:** Isolation and permissions are the claims this project makes, so they are tested systematically: enumerated from the model and the route table, not written by hand per endpoint.
+- **Architecture tests, M01 (2026-10-21):** plain xUnit with reflection and project-file parsing, no library. Each layer rule is checked against the `.csproj` (catches a reference before any type is used) and the compiled assembly (catches framework references); a third test fails when a new project under `src/api` has no rule. Shown failing for Domain and Application with an ASP.NET Core reference and for an unruled project; Infrastructure → Api is already refused by MSBuild as a circular reference (MSB4006). NetArchTest was not chosen (last release 2021); ArchUnitNET (TngTech, 0.13.4, 2026-08-20) is reconsidered at M03 if the `IgnoreQueryFilters` allow-list needs call-level analysis.
 
 ## D016: Demo hosting (pending M12)
 - **Date:** 2026-10-21
@@ -137,3 +140,28 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
 - **Date:** 2026-10-21
 - **Decision:** `main` holds releases; `dev` is the default and integration branch. Each milestone is a branch `#00nn-descriptive-name` from an up-to-date `dev`, pushed by the agent and merged by the owner through a GitHub pull request. `dev` is merged to `main` at release points (after M12).
 - **Why:** Every milestone is reviewable as one PR with its verification report, which is also portfolio evidence of the working process.
+
+## D019: Version pins and the security-patch exception (M01)
+- **Date:** 2026-10-21
+- **Rule:** every dependency is pinned to an exact version at least two weeks old (CLAUDE.md). **Exception:** a patch release that fixes a published security advisory is taken as soon as it exists, as Fitness Merchant did for .NET 10.0.13 (its D033, approved by the owner on 2026-10-16).
+- **.NET:** SDK 10.0.402 (`global.json`); `Microsoft.AspNetCore.OpenApi` and `Microsoft.AspNetCore.Mvc.Testing` 10.0.13 (security release of 2026-10-13, exception); `Scalar.AspNetCore` 2.17.14 (2026-10-06); `xunit.v3` 4.0.1 (2026-09-12; 4.0.2 is too new).
+- **Web:** `@angular/*` 22.2.1 (2026-09-30) except `@angular/cli` 22.2.3 (2026-10-15, exception: 22.2.1 bundles `@modelcontextprotocol/server` 2.2.0 with GHSA-jm63-cq47-j5jp, GHSA-46jr-4wx8-v453 and GHSA-rvq5-wwqv-78pq; 22.2.3 ships 2.3.1). `@angular/build` pins `vite` 8.3.0, affected by the `launch-editor` advisories GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw and GHSA-587h-7wmj-h5pm; even `@angular/build` 22.2.3 still pins 8.3.0, so an npm `overrides` entry sets `vite` 8.3.3 (2026-10-06, meets the rule). Remove the override once `@angular/build` depends on a fixed `vite`. Other packages: see `src/web/package.json`.
+- **Images:** `postgres:18.6-alpine`, `axllent/mailpit:v1.31.4` (2026-10-03; v1.31.5 and v1.31.6 are too new).
+- **npm install scripts:** npm 11 runs only allow-listed scripts. Allowed: `lmdb` and `msgpackr-extract` (native build cache), as in Fitness Merchant. `esbuild` and `@parcel/watcher` are not allowed; they work from their prebuilt platform packages (build, tests and dev server verified).
+- **Verified:** `npm audit`: 0 vulnerabilities after the changes (4 before: 3 high, 1 moderate); `dotnet list package --vulnerable --include-transitive`: none in any project.
+
+## D020: The merge gate: one required check over every CI job
+- **Date:** 2026-10-21
+- **Context:** The owner asked that every merge into `dev` be guaranteed clean: building, tested, linted and safe.
+- **Decision:** `.github/workflows/ci.yml` runs these jobs on every PR and every push to `dev` and `main`:
+  - API: locked restore, `dotnet format --verify-no-changes`, warnings-as-errors build, all tests;
+  - web: `npm ci`, ESLint, Prettier, Vitest, production build with size budgets;
+  - dependency audit (npm moderate and above; NuGet including transitive);
+  - secret scan of the full history;
+  - repository lint (actionlint, editorconfig-checker);
+  - PR conventions: branch name, PR target, no `fixup!`/`WIP` commits.
+
+  A final **CI result** job depends on all of them and fails if any failed or was cancelled. Branch protection on `dev` and `main` requires only that check, plus "up to date with the base branch" (`docs/CI.md`).
+- **Also:** NuGet lock files (`RestorePackagesWithLockFile`) so CI restores exactly the reviewed dependency graph (`--locked-mode` fails on drift, shown with NU1004); a PR template with the sections every PR description uses.
+- **Why one aggregate check:** required checks are configured by name in the repository settings. With a single aggregate, adding a gate (E2E in M11) changes only the workflow, and a renamed job cannot silently stop being required.
+- **Trade-offs:** The dependency audit can block a merge because of a newly published advisory, without any code change. This is intended; such a finding is fixed or explained in this file. Branch protection itself is a repository setting the owner applies once; the agent cannot set it.

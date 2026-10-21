@@ -10,7 +10,7 @@ A milestone is done when all of the following are true and shown in the mileston
 6. A forgotten migration fails the suite; new migrations were reviewed as SQL.
 7. No secrets, real personal data or employer material were added; logs added in this milestone leak no tokens or personal data.
 8. `PROGRESS.md`, `DECISIONS.md` and the CLAUDE.md Commands section are updated; numbers come from `PROGRESS.md` → Measured results.
-9. CI is green on the branch; the branch is pushed and the PR description has been given.
+9. The **CI result** check is green on the branch (`docs/CI.md`); the branch is pushed and the PR description has been given.
 
 ## Testing checklist (per feature)
 - **Domain:** valid and invalid inputs at the boundaries in SPEC 5; every state transition allowed and refused; invariants (last Owner, role grants, limits).
