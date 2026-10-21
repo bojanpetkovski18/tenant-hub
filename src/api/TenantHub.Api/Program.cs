@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Scalar.AspNetCore;
 using TenantHub.Api.Common;
 using TenantHub.Api.Common.Auth;
+using TenantHub.Api.Common.Tenancy;
 using TenantHub.Api.Features.Account;
 using TenantHub.Api.Features.Auth;
 using TenantHub.Api.Features.Organizations;
@@ -57,13 +58,13 @@ app.UseRateLimiter();
 
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi().AllowAnonymous();
-    app.MapScalarApiReference().AllowAnonymous();
+    app.MapOpenApi().Public();
+    app.MapScalarApiReference().Public();
 }
 
 // Liveness: the process answers. Readiness: the database answers too (used by Compose and the host, M11).
-app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
-app.MapHealthChecks("/health", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }).AllowAnonymous();
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).Public();
+app.MapHealthChecks("/health", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }).Public();
 
 app.MapAuthEndpoints();
 app.MapAccountEndpoints();
@@ -76,7 +77,7 @@ foreach (var mapper in app.Services.GetServices<IEndpointMapper>())
 // Unmatched routes: 404 problem details. Without this endpoint the fallback authorization policy would answer
 // 401 for any unknown URL. Serving the SPA's own routes comes with the production image (M11).
 app.MapFallback("{**path}", () => TypedResults.Problem(statusCode: StatusCodes.Status404NotFound))
-    .AllowAnonymous()
+    .Public()
     .DisableAntiforgery()
     .ExcludeFromDescription();
 

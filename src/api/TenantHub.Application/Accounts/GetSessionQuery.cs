@@ -5,7 +5,11 @@ using TenantHub.Domain.Memberships;
 
 namespace TenantHub.Application.Accounts;
 
-public sealed record MembershipSummary(Guid OrganizationId, string Slug, string Name, Role Role);
+public sealed record MembershipSummary(Guid OrganizationId, string Slug, string Name, Role Role)
+{
+    /// <summary>What this role may do (D008); sent to the SPA so it never re-implements the role map.</summary>
+    public IReadOnlyList<string> Permissions => [.. Domain.Memberships.Permissions.For(Role).Order(StringComparer.Ordinal)];
+}
 
 public sealed record SessionUser(Guid Id, string Email, string DisplayName, IReadOnlyList<MembershipSummary> Memberships);
 

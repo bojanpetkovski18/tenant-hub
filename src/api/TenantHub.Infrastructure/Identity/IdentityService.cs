@@ -55,6 +55,13 @@ internal sealed class IdentityService(UserManager<AppUser> users, IDatabaseError
             .Select(u => new UserProfile(u.Id, u.Email!, u.DisplayName))
             .SingleOrDefaultAsync(cancellationToken);
 
+    public async Task<IReadOnlyDictionary<Guid, UserProfile>> FindProfilesAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken) =>
+        await users.Users
+            .AsNoTracking()
+            .Where(u => userIds.Contains(u.Id))
+            .Select(u => new UserProfile(u.Id, u.Email!, u.DisplayName))
+            .ToDictionaryAsync(p => p.Id, cancellationToken);
+
     public async Task<FieldErrors?> UpdateDisplayNameAsync(Guid userId, string displayName)
     {
         var errors = ValidateDisplayName(displayName).ToList();

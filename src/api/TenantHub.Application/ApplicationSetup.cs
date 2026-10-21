@@ -18,5 +18,7 @@ public static class ApplicationSetup
         .AddScoped<GetSessionQuery>()
         .AddScoped<UpdateProfileHandler>()
         .AddScoped<ChangePasswordHandler>()
-        .AddScoped<CreateOrganizationHandler>();
+        .AddScoped<CreateOrganizationHandler>()
+        .AddScoped<GetOrganizationQuery>()
+        .AddScoped<ListMembersQuery>();
 }

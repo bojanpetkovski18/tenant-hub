@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using TenantHub.Api.Common;
 using TenantHub.Api.Common.Auth;
+using TenantHub.Api.Common.Tenancy;
 using TenantHub.Application.Accounts;
 using TenantHub.Infrastructure.Identity;
 
@@ -22,14 +23,14 @@ public static class AuthEndpoints
                 xsrf.Issue(context);
                 return TypedResults.Ok(await ReadSessionAsync(context.User, session, ct));
             })
-            .AllowAnonymous();
+            .Public();
 
         auth.MapPost("/sign-up", SignUpAsync)
-            .AllowAnonymous()
+            .Public()
             .RequireRateLimiting(RateLimiting.AuthPolicy);
 
         auth.MapPost("/sign-in", SignInAsync)
-            .AllowAnonymous()
+            .Public()
             .RequireRateLimiting(RateLimiting.AuthPolicy);
 
         auth.MapPost("/sign-out", async (HttpContext context, SignInManager<AppUser> signIn, XsrfCookie xsrf) =>
@@ -38,7 +39,8 @@ public static class AuthEndpoints
             context.User = new ClaimsPrincipal(new ClaimsIdentity());
             xsrf.Issue(context);
             return TypedResults.NoContent();
-        });
+        })
+        .UserScoped();
 
         return app;
     }

@@ -4,8 +4,13 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using TenantHub.Api.Common;
+using TenantHub.Api.Common.Tenancy;
+using TenantHub.Application.Abstractions;
+using TenantHub.Domain.Memberships;
 using TenantHub.Infrastructure.Data;
 
 namespace TenantHub.IntegrationTests.Infrastructure;
@@ -22,6 +27,14 @@ public class ApiFactory(string connectionString, IReadOnlyDictionary<string, str
     public const string ThrowingPath = "/api/test/throw";
     public const string UnannotatedPath = "/api/test/unannotated";
 
+    /// <summary>Tenant-scoped, needs <c>billing.manage</c> (Owner only): exercises the 403 path before real endpoints need it.</summary>
+    public const string OwnerOnlyPattern = "/test/owner-only";
+
+    /// <summary>Tenant-scoped; tries to write a membership of another organization, which the guard must stop.</summary>
+    public const string IsolationViolationPattern = "/test/isolation-violation";
+
+    public CapturedLogs Logs { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -36,6 +49,7 @@ public class ApiFactory(string connectionString, IReadOnlyDictionary<string, str
         }
 
         builder.ConfigureTestServices(services => services.AddSingleton<IEndpointMapper, TestEndpoints>());
+        builder.ConfigureLogging(logging => logging.AddProvider(Logs));
     }
 
     private sealed class TestEndpoints : IEndpointMapper
@@ -43,8 +57,22 @@ public class ApiFactory(string connectionString, IReadOnlyDictionary<string, str
         public void Map(IEndpointRouteBuilder app)
         {
             app.MapGet(ThrowingPath, IResult () => throw new InvalidOperationException("Test failure with a secret detail."))
-                .AllowAnonymous();
-            app.MapGet(UnannotatedPath, () => Results.Ok("signed-in"));
+                .Public();
+            // Classified, but with no authorization metadata of its own: only the fallback policy protects it.
+            app.MapGet(UnannotatedPath, () => Results.Ok("signed-in")).UserScoped();
+
+            var tenant = app.MapTenantGroup();
+            tenant.MapGet(OwnerOnlyPattern, (ITenantContext context) => Results.Ok(new { context.OrganizationId }))
+                .RequirePermission(Permissions.BillingManage);
+            tenant.MapPost(IsolationViolationPattern, async (Guid targetOrganizationId, AppDbContext db) =>
+                {
+                    // A deliberate bug: an organization taken from input instead of the tenant context.
+                    var target = await db.Organizations.SingleAsync(o => o.Id == targetOrganizationId);
+                    db.Memberships.Add(target.AddMember(Guid.NewGuid(), Role.Admin, DateTimeOffset.UtcNow, null));
+                    await db.SaveChangesAsync();
+                    return Results.Ok();
+                })
+                .RequirePermission(Permissions.OrgRead);
         }
     }
 }

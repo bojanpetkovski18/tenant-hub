@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Identity;
 using TenantHub.Api.Common.Auth;
+using TenantHub.Api.Common.Tenancy;
 using TenantHub.Api.Features.Auth;
 using TenantHub.Application.Accounts;
 using TenantHub.Infrastructure.Identity;
@@ -18,7 +19,7 @@ public static class AccountEndpoints
 {
     public static IEndpointRouteBuilder MapAccountEndpoints(this IEndpointRouteBuilder app)
     {
-        var me = app.MapGroup("/api/me").WithTags("Account");
+        var me = app.MapGroup("/api/me").WithTags("Account").UserScoped();
 
         me.MapPatch("/", async (UpdateProfileRequest request, HttpContext context, UpdateProfileHandler handler, GetSessionQuery session, CancellationToken ct) =>
         {

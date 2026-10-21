@@ -18,10 +18,10 @@ public sealed record SignInRequest(
     [property: Required(AllowEmptyStrings = true), MaxLength(254)] string Email,
     [property: Required(AllowEmptyStrings = true), MaxLength(128)] string Password);
 
-public sealed record MembershipResponse(Guid OrganizationId, string Slug, string Name, Role Role)
+public sealed record MembershipResponse(Guid OrganizationId, string Slug, string Name, Role Role, IReadOnlyList<string> Permissions)
 {
     public static MembershipResponse From(MembershipSummary membership) =>
-        new(membership.OrganizationId, membership.Slug, membership.Name, membership.Role);
+        new(membership.OrganizationId, membership.Slug, membership.Name, membership.Role, membership.Permissions);
 }
 
 public sealed record UserResponse(Guid Id, string Email, string DisplayName, IReadOnlyList<MembershipResponse> Memberships)
