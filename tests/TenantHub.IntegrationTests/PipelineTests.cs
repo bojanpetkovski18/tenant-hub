@@ -4,7 +4,7 @@ using TenantHub.IntegrationTests.Infrastructure;
 
 namespace TenantHub.IntegrationTests;
 
-public sealed class PipelineTests(ApiFactory factory) : IClassFixture<ApiFactory>
+public sealed class PipelineTests(OfflineApiFactory factory) : IClassFixture<OfflineApiFactory>
 {
     private readonly HttpClient _client = factory.CreateClient();
 
