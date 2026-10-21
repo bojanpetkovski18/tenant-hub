@@ -5,8 +5,8 @@ Estimates are rough focused-work hours for agent and owner together, including r
 | # | Milestone | Branch | Estimate | Status | Verified on | Notes |
 |---|---|---|---|---|---|---|
 | P0 | Project setup (spec, stories, rules, briefs, CI) | `#0000-project-setup` | 2 h | done | 2026-10-21 | PR #1 merged; CI green on the PR and on `dev` (secret scan, repo lint) |
-| M01 | Skeleton, architecture tests, CI, app shell | `#0001-solution-skeleton-architecture-tests-and-shell` | 6 h | in review | 2026-10-21 | 38 API tests (incl. architecture rules shown failing) + 16 web tests; 115/115 browser checks on the dev server and 115/115 on the production build under the API CSP; merge-gate CI (D020) |
-| M02 | Accounts and organizations | `#0002-accounts-sign-up-and-organizations` | 8 h | todo | none | |
+| M01 | Skeleton, architecture tests, CI, app shell | `#0001-solution-skeleton-architecture-tests-and-shell` | 6 h | done | 2026-10-21 | PR #2 merged; CI green on the PR (all 7 gates) and on `dev`. 38 API tests (incl. architecture rules shown failing) + 16 web tests; 115/115 browser checks on the dev server and 115/115 on the production build under the API CSP; merge-gate CI (D020) |
+| M02 | Accounts and organizations | `#0002-accounts-sign-up-and-organizations` | 8 h | in review | 2026-10-21 | 109 API tests (54 domain, 38 integration incl. Testcontainers) + 52 web tests; 96/96 browser checks on the dev server and on the production build under the API CSP; lock and migration-guard mutation checks |
 | M03 | Tenancy core and isolation tests | `#0003-tenancy-core-permissions-and-isolation-tests` | 8 h | todo | none | The project's centrepiece; do not rush |
 | M04 | Clients and audit recording | `#0004-clients-composite-keys-and-audit-recording` | 8 h | todo | none | Sets the list, form and audit patterns |
 | M05 | Members and invitations | `#0005-members-and-invitations` | 8 h | todo | none | |
@@ -49,6 +49,14 @@ Every number cited in the README or docs must appear here, with its method, mach
 | Merge-gate checks run locally | `dotnet format --verify-no-changes` exit 0 (exit 2 on an injected violation); `dotnet restore --locked-mode` exit 0 (NU1004 on an injected version drift); branch-name regex and WIP-commit filter tested on 9 and 6 samples; actionlint 0 findings; editorconfig-checker 0 findings on the staged tree | commands in CLAUDE.md; tools checksum-verified | M1 | 2026-10-21 |
 | Dependency vulnerabilities after M01 | npm 0 (4 before the D019 patches: 3 high, 1 moderate); NuGet 0 including transitive | `npm audit`; `dotnet list package --vulnerable --include-transitive` | M1 | 2026-10-21 |
 | Dev services | PostgreSQL 18.6 and Mailpit healthy via `up -d --wait`; ports bound to 127.0.0.1 only; Mailpit UI 200 | `docker compose -f docker-compose.dev.yml ps`; `psql select version()`; `curl` | M1 | 2026-10-21 |
+| .NET test suite after M02 (109 tests: 54 domain, 10 application, 7 architecture, 38 integration with Testcontainers PostgreSQL 18.6) | 13.8–14.8 s (2 runs) | `dotnet test --solution TenantHub.slnx --no-build` (MTP summary) | M1 | 2026-10-21 |
+| Web tests after M02 | 52 tests, 3 consecutive passes | `npm run test:ci` | M1 | 2026-10-21 |
+| Web initial bundle after M02 (HttpClient, forms, session store; pages lazy) | 313.13 kB raw / 85.01 kB estimated transfer | `npm run build` output (Angular CLI estimate) | M1 | 2026-10-21 |
+| Owned-organization limit under concurrency | with the row lock: exactly 4 of 8 parallel creates succeed (5 of 5 runs); without it: all 8 succeed (3 of 3 runs) | `Concurrent_requests_cannot_exceed_the_owned_organization_limit`, lock removed by hand for the mutation check | M1 | 2026-10-21 |
+| Browser checks, M02 | 96/96 on the dev server and 96/96 on the production build served with the API's exact CSP (API proxied): sign-up, reload, create and switch organization, two tabs in two organizations, cookie flags (`th_session` HttpOnly + SameSite=Strict; `XSRF-TOKEN` readable + SameSite=Strict), localStorage only `th-theme`/`th-last-org`, name and password change, wrong password, guard redirect and return, unknown organization, keyboard sign-out via the user menu, keyboard empty submit; 6 screens × 375/768/1280 px × light/dark with no overflow and 0 serious/critical axe findings; 0 CSP violations | Playwright 1.63.0 + @axe-core/playwright 4.14.0, Chromium, seeded dev database | M1 | 2026-10-21 |
+| Bugs found in the M02 browser pass | 2: axe label-content-name-mismatch on the menu buttons (18 findings); CDK overlay `<style>` blocked by the CSP (regression test shown failing first). Both fixed | as above | M1 | 2026-10-21 |
+| API log check | 675 lines after the browser pass: no passwords, session or XSRF cookies; SQL parameter values masked (`?`) | `grep` of the API console log | M1 | 2026-10-21 |
+| Antiforgery from the command line | sign-in without `X-XSRF-TOKEN`: 400 "Invalid or missing anti-forgery token."; with it: 200 | `curl` through the dev proxy | M1 | 2026-10-21 |
 
 Machines:
 - **M1:** AMD Ryzen 7 8840HS (16 logical CPUs), 14 GB RAM, Windows 11 Pro 10.0.26200, Node 24.20.0, .NET SDK 10.0.402, Docker 29.8.2.
@@ -56,7 +64,9 @@ Machines:
 ## Known issues
 Deferred by the owner. Re-check them when relevant, and in M10.
 
-_None yet._
+| # | Issue | Found | Plan |
+|---|---|---|---|
+| K1 | Data-protection keys (which sign session and antiforgery cookies) use ASP.NET Core's default store. Fine on a developer machine, but a container would lose them on restart and sign everyone out. | M02 | Persist them (database or mounted volume) with the production image in M11; Fitness Merchant solved it with a database key repository (its D032). |
 
 ## Next step
-The owner applies the branch ruleset from `docs/CI.md` (one-time), then reviews and merges the M01 PR once **CI result** is green. Then M02 (accounts and organizations) starts from a freshly pulled `dev`.
+The owner reviews and merges the M02 PR once **CI result** is green (and applies the branch ruleset from `docs/CI.md` if not done yet). Then M03 (tenancy core and the isolation test harness) starts from a freshly pulled `dev`.

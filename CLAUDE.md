@@ -48,7 +48,8 @@ Fill this in only after a command has actually been run and verified. Format: co
 All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 24.20.0, Docker 29.8.2. Run from the repo root unless a directory is given.
 
 **One-time setup**
-- `cp .env.example .env`: local settings; `.env` is git-ignored.
+- `cp .env.example .env`: local settings; `.env` is git-ignored. With `Seed__Enabled=true` and `DEMO_PASSWORD` set, the API creates the demo organizations and users on start (M02): `olivia@brightline.example` (Owner), `adam@…` (Admin), `maya@…` (Member), `victor@…` (Viewer) at Brightline, `hana@harborpine.example` (Owner of Harbor & Pine) and `sam@tenanthub.example` (in both), all with `DEMO_PASSWORD`.
+- `dotnet tool restore`: installs the pinned `dotnet-ef` 10.0.13 (`dotnet-tools.json`). Verified 2026-10-21 (M02).
 - `cd src/web && npm ci`: installs the exact locked web dependencies. npm warns that `esbuild` and `@parcel/watcher` install scripts are not allowed; that is expected (D019).
 
 **Dev services** (PostgreSQL 18.6 on `127.0.0.1:5434`, Mailpit SMTP `1025` and UI `http://localhost:8025`)
@@ -57,17 +58,18 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
 
 **API**
 - `dotnet build TenantHub.slnx`: builds everything; warnings are errors.
-- `dotnet test --solution TenantHub.slnx`: unit, architecture and integration tests (Microsoft.Testing.Platform via `global.json`); 38 tests, about 3 s. `dotnet test --project tests/TenantHub.ArchitectureTests` runs one project.
+- `dotnet test --solution TenantHub.slnx`: unit, architecture and integration tests (Microsoft.Testing.Platform via `global.json`); 109 tests, about 14 s after M02. Integration tests start their own PostgreSQL through Testcontainers, so Docker must be running; the dev database is not used. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-method "*Concurrent*"` runs matching tests of one project; `--output Detailed` shows the API log of a failing test.
 - `dotnet format TenantHub.slnx --verify-no-changes`: formatting and code-style check (exit 2 on a violation); drop `--verify-no-changes` to fix.
 - `dotnet restore TenantHub.slnx --locked-mode`: restore exactly what the `packages.lock.json` files record (CI does this). After changing a package version, run a plain `dotnet restore` and commit the updated lock files.
-- `dotnet run --project src/api/TenantHub.Api`: API on `http://localhost:5090` in Development. Liveness at `/health/live`; OpenAPI at `/openapi/v1.json` and the Scalar UI at `/scalar` (Development only).
+- `dotnet run --project src/api/TenantHub.Api`: API on `http://localhost:5090` in Development. It reads the repo-root `.env`, needs the dev database running, applies migrations (`Database__MigrateOnStartup`) and seeds (`Seed__Enabled`). Readiness (includes the database) at `/health`, liveness at `/health/live`; OpenAPI at `/openapi/v1.json` and the Scalar UI at `/scalar` (Development only).
+- `dotnet ef migrations add <Name> --project src/api/TenantHub.Infrastructure --startup-project src/api/TenantHub.Infrastructure --output-dir Data/Migrations`: adds a migration (a design-time factory means the API need not start). Review it as SQL with `dotnet ef migrations script --project src/api/TenantHub.Infrastructure --startup-project src/api/TenantHub.Infrastructure` (it builds first; `--no-build` uses the last build). A forgotten migration fails `Model_matches_the_migrations`.
 - `dotnet list TenantHub.slnx package --vulnerable --include-transitive`: NuGet advisories.
 
 **Web** (`src/web`)
 - `npm start`: dev server on `http://localhost:4200`, proxying `/api` and `/health` to the API on 5090.
 - `npm run lint`: ESLint, including Angular template accessibility rules.
 - `npm run format:check` / `npm run format`: Prettier check / fix.
-- `npm run test:ci`: Vitest component tests, single run (16 tests). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
+- `npm run test:ci`: Vitest component tests, single run (52 tests after M02). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
 - `npm run build`: production build to `src/web/dist/web`.
 - `npm audit --audit-level=moderate`: npm advisories (CI gate).
 
@@ -126,8 +128,9 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
   - Errors are RFC 7807 problem details with a `traceId`, and a stable `code` for business-rule errors.
 - **UI states and accessibility.**
   - Every screen has loading, empty, error and success states.
+  - No component `styles` or inline `style` attributes: Angular injects component styles as inline `<style>` elements, which the strict CSP blocks. Use Tailwind classes and `styles.css` (D023).
   - Everything interactive has an accessible name and keyboard support; visible focus; respect `prefers-reduced-motion`.
-  - The UI hides actions the user lacks permission for, using the permissions from `GET /api/me`; it never re-implements the role map.
+  - The UI hides actions the user lacks permission for, using the permissions from the session (`GET /api/auth/session`); it never re-implements the role map.
 - **Logging and time.**
   - Structured logging with organization id and user id in scope. Never log secrets, passwords, cookies, tokens, invitation links or full request bodies.
   - Time comes from an injected `TimeProvider`; timestamps are UTC; "today" for an organization uses its time zone.

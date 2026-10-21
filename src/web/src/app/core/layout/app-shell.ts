@@ -7,6 +7,8 @@ import {
   DestroyRef,
   ElementRef,
   afterNextRender,
+  computed,
+  effect,
   inject,
   input,
   signal,
@@ -15,8 +17,13 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
+import { rememberLastOrganization } from '../session/last-organization';
+import { SessionStore } from '../session/session.store';
 import { ThemeToggle } from '../theme/theme-toggle';
+import { OrgNotFound } from './org-not-found';
+import { OrgSwitcher } from './org-switcher';
 import { SkipLink } from './skip-link';
+import { UserMenu } from './user-menu';
 import { Wordmark } from './wordmark';
 
 interface NavItem {
@@ -30,8 +37,8 @@ interface NavItem {
 export const desktopQuery = '(min-width: 1024px)';
 
 /**
- * Layout inside an organization (SPEC 6). The organization switcher and user menu are placeholders until
- * M02; navigation is filtered by permission from M03.
+ * Layout inside an organization (SPEC 6). The organization comes from the URL and must be one of the user's
+ * memberships; otherwise the page shows "not found" in place. Navigation is filtered by permission from M03.
  */
 @Component({
   selector: 'app-shell',
@@ -44,6 +51,9 @@ export const desktopQuery = '(min-width: 1024px)';
     ThemeToggle,
     Wordmark,
     SkipLink,
+    OrgSwitcher,
+    UserMenu,
+    OrgNotFound,
   ],
   templateUrl: './app-shell.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -52,6 +62,8 @@ export class AppShell {
   /** Route parameter `:slug`. */
   readonly slug = input.required<string>();
 
+  private readonly session = inject(SessionStore);
+  protected readonly membership = computed(() => this.session.membershipBySlug(this.slug()));
   protected readonly drawerOpen = signal(false);
   protected readonly navItems: readonly NavItem[] = [
     {
@@ -78,9 +90,15 @@ export class AppShell {
     },
   ];
 
-  private readonly menuButton = viewChild.required<ElementRef<HTMLButtonElement>>('menuButton');
+  private readonly menuButton = viewChild<ElementRef<HTMLButtonElement>>('menuButton');
 
   constructor() {
+    effect(() => {
+      if (this.membership()) {
+        rememberLastOrganization(this.slug());
+      }
+    });
+
     const destroyRef = inject(DestroyRef);
 
     inject(Router)
@@ -113,6 +131,6 @@ export class AppShell {
 
   protected closeDrawer(): void {
     this.drawerOpen.set(false);
-    this.menuButton().nativeElement.focus();
+    this.menuButton()?.nativeElement.focus();
   }
 }

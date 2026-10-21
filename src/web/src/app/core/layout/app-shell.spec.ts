@@ -1,7 +1,9 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter, withComponentInputBinding } from '@angular/router';
+import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../../app.routes';
+import { loadSession, olivia, provideTestHttp } from '../../testing/session';
+import { provideCspSafeCdkStyles } from './csp-safe-style-loader';
 
 describe('AppShell', () => {
   let element: HTMLElement;
@@ -9,8 +11,14 @@ describe('AppShell', () => {
 
   beforeEach(async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes, withComponentInputBinding())],
+      providers: [
+        provideTestHttp(),
+        provideRouter(routes, withComponentInputBinding()),
+        provideCspSafeCdkStyles(),
+      ],
     });
+    localStorage.clear();
+    await loadSession(olivia);
     harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/o/brightline/jobs');
     element = harness.routeNativeElement as HTMLElement;
@@ -83,5 +91,59 @@ describe('AppShell', () => {
 
     expect(drawer()).toBeNull();
     expect(element.querySelector('main h1')?.textContent).toContain('Clients');
+  });
+
+  it('shows the current organization and switches to another from the menu', async () => {
+    const trigger = element.querySelector<HTMLButtonElement>('aside [data-testid="org-switcher"]')!;
+    expect(trigger.textContent).toContain('Brightline Cleaning Co.');
+    expect(trigger.textContent).toContain('Owner');
+
+    trigger.click();
+    await harness.fixture.whenStable();
+    const items = [
+      ...document.querySelectorAll<HTMLAnchorElement>('[role="menu"] a[role="menuitem"]'),
+    ];
+    expect(items.map((item) => item.textContent?.trim())).toEqual([
+      'Brightline Cleaning Co.',
+      'Harbor & Pine Landscaping',
+      'All organizations',
+    ]);
+    expect(items[0]?.getAttribute('aria-current')).toBe('true');
+
+    items[1]!.click();
+    await harness.fixture.whenStable();
+
+    expect(TestBed.inject(Router).url).toBe('/o/harbor-pine/dashboard');
+    expect(element.querySelector('[data-testid="current-org"]')?.textContent).toContain(
+      'Harbor & Pine',
+    );
+  });
+
+  it('remembers the organization in use for the next sign-in', () => {
+    expect(localStorage.getItem('th-last-org')).toBe('brightline');
+  });
+
+  it('shows not found in place for an organization the user does not belong to', async () => {
+    await harness.navigateByUrl('/o/someone-elses-org/jobs');
+    const page = harness.routeNativeElement as HTMLElement;
+
+    expect(page.querySelector('h1')?.textContent).toContain('Organization not found');
+    expect(page.querySelector('aside')).toBeNull();
+    expect(TestBed.inject(Router).url).toBe('/o/someone-elses-org/jobs');
+    expect(localStorage.getItem('th-last-org')).toBe('brightline');
+  });
+
+  // Regression (D023): the CDK used to add its overlay styles as an inline <style>, which the strict CSP blocks.
+  it('opening a menu adds no inline style element', async () => {
+    const overlayStyles = () =>
+      [...document.querySelectorAll('style')].filter((style) =>
+        style.textContent?.includes('.cdk-overlay-container'),
+      ).length;
+
+    element.querySelector<HTMLButtonElement>('[data-testid="user-menu"]')!.click();
+    await harness.fixture.whenStable();
+
+    expect(document.querySelector('[role="menu"]')).not.toBeNull();
+    expect(overlayStyles()).toBe(0);
   });
 });
