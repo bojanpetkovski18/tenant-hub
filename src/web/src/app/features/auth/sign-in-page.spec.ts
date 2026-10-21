@@ -68,5 +68,7 @@ describe('SignInPage', () => {
     await settle(harness.fixture);
 
     expect(TestBed.inject(Router).url).toBe('/o/harbor-pine/jobs');
+    // The shell checks the membership on the server as it opens the organization.
+    http.expectOne(`/api/orgs/${olivia.memberships[1]!.organizationId}`);
   });
 });

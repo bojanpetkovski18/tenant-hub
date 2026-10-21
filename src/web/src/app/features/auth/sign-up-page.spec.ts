@@ -97,5 +97,6 @@ describe('SignUpPage', () => {
     await settle(harness.fixture);
 
     expect(TestBed.inject(Router).url).toBe('/o/brightline/dashboard');
+    http.expectOne(`/api/orgs/${olivia.memberships[0]!.organizationId}`);
   });
 });

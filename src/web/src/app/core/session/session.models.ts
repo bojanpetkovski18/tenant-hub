@@ -7,11 +7,37 @@ export const roleLabels: Readonly<Record<Role, string>> = {
   viewer: 'Viewer',
 };
 
+/** Permission names from the API (SPEC 2). The SPA never derives them from the role (D008). */
+export type Permission =
+  | 'org.read'
+  | 'org.manage'
+  | 'org.delete'
+  | 'billing.manage'
+  | 'members.manage'
+  | 'clients.read'
+  | 'clients.write'
+  | 'clients.delete'
+  | 'jobs.read'
+  | 'jobs.create'
+  | 'jobs.manage'
+  | 'jobs.work'
+  | 'audit.read';
+
 export interface Membership {
   readonly organizationId: string;
   readonly slug: string;
   readonly name: string;
   readonly role: Role;
+  readonly permissions: readonly Permission[];
+}
+
+export interface Organization {
+  readonly id: string;
+  readonly name: string;
+  readonly slug: string;
+  readonly plan: 'free' | 'team' | 'business';
+  readonly timeZone: string;
+  readonly createdAt: string;
 }
 
 export interface SessionUser {

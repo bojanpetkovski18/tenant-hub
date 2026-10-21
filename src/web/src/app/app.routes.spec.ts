@@ -62,4 +62,15 @@ describe('app routes', () => {
 
     expect(harness.routeNativeElement?.querySelector('main h1')).not.toBeNull();
   });
+
+  it('explains on the picker that access to an organization was lost', async () => {
+    await loadSession(olivia);
+    const harness = await RouterTestingHarness.create();
+
+    await harness.navigateByUrl('/orgs?notice=access-lost');
+
+    expect(harness.routeNativeElement?.querySelector('[role="status"]')?.textContent).toContain(
+      'You no longer have access to that organization.',
+    );
+  });
 });
