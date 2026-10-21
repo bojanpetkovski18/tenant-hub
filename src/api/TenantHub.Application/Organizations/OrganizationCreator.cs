@@ -1,0 +1,54 @@
+using Microsoft.EntityFrameworkCore;
+using TenantHub.Application.Abstractions;
+using TenantHub.Domain;
+using TenantHub.Domain.Organizations;
+
+namespace TenantHub.Application.Organizations;
+
+/// <summary>
+/// Creates an organization with its Owner membership and a free slug. Shared by sign-up and "create
+/// organization". Must run inside the caller's transaction: a failed insert rolls back to EF Core's automatic
+/// savepoint, so the next slug candidate can be tried in the same transaction.
+/// </summary>
+public sealed class OrganizationCreator(IAppDbContext db, IDatabaseErrors errors, TimeProvider time)
+{
+    public const string SlugIndex = "ix_organizations_slug";
+    private const int Attempts = 3;
+
+    public async Task<Organization> CreateAsync(string name, string timeZone, Guid ownerUserId, CancellationToken cancellationToken)
+    {
+        var normalizedName = Organization.NormalizeName(name);
+        var candidates = OrganizationSlug.Candidates(normalizedName).ToList();
+
+        for (var attempt = 1; ; attempt++)
+        {
+            var taken = await db.Organizations
+                .Where(o => candidates.Contains(o.Slug))
+                .Select(o => o.Slug)
+                .ToListAsync(cancellationToken);
+            var slug = candidates.FirstOrDefault(candidate => !taken.Contains(candidate))
+                ?? throw new DomainException(
+                    "organization-name-taken",
+                    "Too many organizations already use a similar name; choose a more distinctive one.",
+                    DomainErrorKind.Validation);
+
+            var now = time.GetUtcNow();
+            var organization = Organization.Create(normalizedName, slug, timeZone, ownerUserId, now);
+            var owner = organization.AddOwner(ownerUserId, now);
+            db.Organizations.Add(organization);
+            db.Memberships.Add(owner);
+
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return organization;
+            }
+            catch (DbUpdateException exception) when (errors.IsUniqueViolation(exception, SlugIndex) && attempt < Attempts)
+            {
+                // Another request took the slug between the check and the insert; forget these rows and try again.
+                db.Organizations.Entry(organization).State = EntityState.Detached;
+                db.Memberships.Entry(owner).State = EntityState.Detached;
+            }
+        }
+    }
+}
