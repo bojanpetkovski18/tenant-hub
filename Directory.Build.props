@@ -9,5 +9,9 @@
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- packages.lock.json records every resolved package, transitive ones included; CI restores in locked mode,
+         so a merge cannot pull in a dependency version nobody reviewed (D020). -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 </Project>
