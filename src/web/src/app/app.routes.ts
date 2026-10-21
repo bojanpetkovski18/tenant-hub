@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
+import { authGuard, guestGuard } from './core/session/auth.guards';
 
-// Every page below is a placeholder until the milestone named in its description (SPEC 6, prompts/).
+// Pages not built yet are placeholders until the milestone named in their description (SPEC 6, prompts/).
 const placeholder = () =>
   import('./shared/placeholder-page/placeholder-page').then((m) => m.PlaceholderPage);
 
@@ -17,15 +18,36 @@ export const routes: Routes = [
     loadComponent: () => import('./core/layout/public-layout').then((m) => m.PublicLayout),
     children: [
       page('', 'TenantHub', 'The landing page arrives in M09.'),
-      page('sign-in', 'Sign in', 'Signing in arrives in M02.'),
-      page('sign-up', 'Sign up', 'Sign-up with an organization arrives in M02.'),
+      {
+        path: 'sign-in',
+        title: 'Sign in',
+        canActivate: [guestGuard],
+        loadComponent: () => import('./features/auth/sign-in-page').then((m) => m.SignInPage),
+      },
+      {
+        path: 'sign-up',
+        title: 'Sign up',
+        canActivate: [guestGuard],
+        loadComponent: () => import('./features/auth/sign-up-page').then((m) => m.SignUpPage),
+      },
       page('invite/:token', 'Accept invitation', 'Invitations arrive in M05.'),
-      page('orgs', 'Your organizations', 'The organization picker arrives in M02.'),
-      page('account', 'Account', 'Account settings arrive in M02.'),
+      {
+        path: 'orgs',
+        title: 'Your organizations',
+        canActivate: [authGuard],
+        loadComponent: () => import('./features/orgs/org-picker-page').then((m) => m.OrgPickerPage),
+      },
+      {
+        path: 'account',
+        title: 'Account',
+        canActivate: [authGuard],
+        loadComponent: () => import('./features/account/account-page').then((m) => m.AccountPage),
+      },
     ],
   },
   {
     path: 'o/:slug',
+    canActivate: [authGuard],
     loadComponent: () => import('./core/layout/app-shell').then((m) => m.AppShell),
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
