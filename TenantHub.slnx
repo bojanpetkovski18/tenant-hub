@@ -5,4 +5,10 @@
     <Project Path="src/api/TenantHub.Domain/TenantHub.Domain.csproj" />
     <Project Path="src/api/TenantHub.Infrastructure/TenantHub.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TenantHub.Application.Tests/TenantHub.Application.Tests.csproj" />
+    <Project Path="tests/TenantHub.ArchitectureTests/TenantHub.ArchitectureTests.csproj" />
+    <Project Path="tests/TenantHub.Domain.Tests/TenantHub.Domain.Tests.csproj" />
+    <Project Path="tests/TenantHub.IntegrationTests/TenantHub.IntegrationTests.csproj" />
+  </Folder>
 </Solution>
