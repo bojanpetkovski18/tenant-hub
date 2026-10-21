@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Pure domain model: no references to other projects or to ASP.NET Core / EF Core (D003, enforced by TenantHub.ArchitectureTests). -->
+
+</Project>
