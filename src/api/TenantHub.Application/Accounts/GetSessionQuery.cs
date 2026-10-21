@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
+using TenantHub.Application.Tenancy;
 using TenantHub.Domain.Memberships;
 
 namespace TenantHub.Application.Accounts;
@@ -18,7 +19,9 @@ public sealed class GetSessionQuery(IAppDbContext db, IIdentityService identity)
             return null;
         }
 
+        // User-scoped: the user's memberships in every organization (tenant bypass, allow-listed).
         var memberships = await db.Memberships
+            .AcrossTenants()
             .AsNoTracking()
             .Where(m => m.UserId == userId && m.RemovedAt == null)
             .Join(db.Organizations, m => m.OrganizationId, o => o.Id, (m, o) => new { o.Id, o.Slug, o.Name, m.Role })

@@ -1,23 +1,47 @@
+using System.Reflection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
+using TenantHub.Application.Tenancy;
+using TenantHub.Domain;
 using TenantHub.Domain.Memberships;
 using TenantHub.Domain.Organizations;
 using TenantHub.Infrastructure.Identity;
+using TenantHub.Infrastructure.Tenancy;
 
 namespace TenantHub.Infrastructure.Data;
 
 /// <summary>
 /// Identity's user tables (no role tables: roles are per membership) plus the domain. Table and column names are
 /// snake_case (EFCore.NamingConventions); the Identity tables are renamed to match SPEC 8.1.
+/// Tenant isolation (SPEC 3.3): every <see cref="ITenantOwned"/> entity gets the named query filter
+/// <see cref="TenantQueries.FilterName"/>, and every save goes through <see cref="TenantGuard"/>.
 /// </summary>
-public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
+public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext? tenant = null)
     : IdentityUserContext<AppUser, Guid>(options), IAppDbContext
 {
+    // No tenant (design time, migrations, tests that only inspect the model): tenant-owned queries return nothing.
+    private readonly ITenantContext _tenant = tenant ?? new TenantContext();
+
     public DbSet<Organization> Organizations => Set<Organization>();
 
     public DbSet<Membership> Memberships => Set<Membership>();
+
+    /// <summary>Read by the query filters; EF Core evaluates it per query for this context instance.</summary>
+    internal Guid? CurrentOrganizationId => _tenant.OrganizationId;
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        TenantGuard.Check(ChangeTracker, _tenant);
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        TenantGuard.Check(ChangeTracker, _tenant);
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -37,5 +61,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         builder.Entity<IdentityUserToken<Guid>>().ToTable("user_tokens");
 
         builder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+
+        // One convention for every tenant-owned entity, so a new one cannot be forgotten.
+        var applyTenantFilter = typeof(AppDbContext).GetMethod(nameof(ApplyTenantFilter), BindingFlags.NonPublic | BindingFlags.Instance)!;
+        foreach (var entityType in builder.Model.GetEntityTypes().Where(t => typeof(ITenantOwned).IsAssignableFrom(t.ClrType)))
+        {
+            applyTenantFilter.MakeGenericMethod(entityType.ClrType).Invoke(this, [builder]);
+        }
     }
+
+    private void ApplyTenantFilter<T>(ModelBuilder builder)
+        where T : class, ITenantOwned =>
+        builder.Entity<T>().HasQueryFilter(TenantQueries.FilterName, e => e.OrganizationId == CurrentOrganizationId);
 }

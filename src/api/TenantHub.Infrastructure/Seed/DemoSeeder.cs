@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using TenantHub.Application.Tenancy;
 using TenantHub.Domain.Memberships;
 using TenantHub.Domain.Organizations;
 using TenantHub.Infrastructure.Data;
@@ -12,10 +13,15 @@ namespace TenantHub.Infrastructure.Seed;
 
 /// <summary>
 /// Development and demo seed (SPEC 8.3, fictional): two organizations and one user per role, plus one person in
-/// both organizations to show the switcher. Idempotent: it does nothing once the first organization exists.
+/// both organizations to show the switcher.
 /// Clients, jobs and the full demo data set arrive with their milestones (M04, M06, M09).
 /// </summary>
-public sealed partial class DemoSeeder(AppDbContext db, UserManager<AppUser> users, TimeProvider time, ILogger<DemoSeeder> logger)
+public sealed partial class DemoSeeder(
+    AppDbContext db,
+    UserManager<AppUser> users,
+    IServiceScopeFactory scopes,
+    TimeProvider time,
+    ILogger<DemoSeeder> logger)
 {
     public const string PasswordSetting = "DEMO_PASSWORD";
 
@@ -61,6 +67,11 @@ public sealed partial class DemoSeeder(AppDbContext db, UserManager<AppUser> use
         await scope.ServiceProvider.GetRequiredService<DemoSeeder>().SeedAsync(configuration[PasswordSetting], cancellationToken);
     }
 
+    /// <summary>
+    /// Creates missing users, then each missing organization in its own scope: a scope works inside one tenant
+    /// (TenantContext), so each organization's memberships are written with that organization entered, through the
+    /// same guard as every other write. Idempotent per user and per organization.
+    /// </summary>
     public async Task SeedAsync(string? password, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(password))
@@ -69,17 +80,16 @@ public sealed partial class DemoSeeder(AppDbContext db, UserManager<AppUser> use
             return;
         }
 
-        if (await db.Organizations.AnyAsync(o => o.Slug == BrightlineSlug, cancellationToken))
-        {
-            return;
-        }
-
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var now = time.GetUtcNow();
         var ids = new Dictionary<string, Guid>(StringComparer.Ordinal);
-
         foreach (var seed in Users)
         {
+            if (await users.FindByEmailAsync(seed.Email) is { } existing)
+            {
+                ids[seed.Email] = existing.Id;
+                continue;
+            }
+
             var user = new AppUser { UserName = seed.Email, Email = seed.Email, DisplayName = seed.DisplayName, CreatedAt = now };
             var result = await users.CreateAsync(user, password);
             if (!result.Succeeded)
@@ -92,28 +102,47 @@ public sealed partial class DemoSeeder(AppDbContext db, UserManager<AppUser> use
             ids[seed.Email] = user.Id;
         }
 
+        var created = 0;
         foreach (var seed in Organizations)
         {
+            if (await db.Organizations.AnyAsync(o => o.Slug == seed.Slug, cancellationToken))
+            {
+                continue;
+            }
+
+            await using var scope = scopes.CreateAsyncScope();
+            var scopedDb = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var tenant = scope.ServiceProvider.GetRequiredService<TenantContext>();
+            await using var transaction = await scopedDb.Database.BeginTransactionAsync(cancellationToken);
+
             var (ownerEmail, _) = seed.Members[0];
             var organization = Organization.Create(seed.Name, seed.Slug, seed.TimeZone, ids[ownerEmail], now, seed.Plan, isDemoSeed: true);
-            db.Organizations.Add(organization);
+            scopedDb.Organizations.Add(organization);
+            await scopedDb.SaveChangesAsync(cancellationToken);
+
+            tenant.Enter(organization.Id, ids[ownerEmail], Role.Owner);
             foreach (var (email, role) in seed.Members)
             {
-                db.Memberships.Add(role == Role.Owner
+                scopedDb.Memberships.Add(role == Role.Owner
                     ? organization.AddOwner(ids[email], now)
                     : organization.AddMember(ids[email], role, now, invitedByUserId: ids[ownerEmail]));
             }
+
+            await scopedDb.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            created++;
         }
 
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        LogSeeded(logger, Organizations.Length, Users.Length);
+        if (created > 0)
+        {
+            LogSeeded(logger, created, Users.Length);
+        }
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Demo seed skipped: {Setting} is not set (see .env.example).")]
     private static partial void LogSkippedNoPassword(ILogger logger, string setting);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Demo seed created {Organizations} organizations and {Users} users.")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Demo seed created {Organizations} organizations ({Users} demo users).")]
     private static partial void LogSeeded(ILogger logger, int organizations, int users);
 
     private sealed record SeedUser(string Email, string DisplayName);

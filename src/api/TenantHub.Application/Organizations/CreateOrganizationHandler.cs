@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
 using TenantHub.Application.Accounts;
+using TenantHub.Application.Tenancy;
 using TenantHub.Domain;
 using TenantHub.Domain.Memberships;
 using TenantHub.Domain.Organizations;
@@ -21,7 +22,8 @@ public sealed class CreateOrganizationHandler(
 
         // Serializes this user's concurrent requests, so two at once cannot both pass the count below.
         await locks.LockUserAsync(command.UserId, cancellationToken);
-        var owned = await db.Memberships.CountAsync(
+        // Counts across all organizations (tenant bypass, allow-listed): the limit is per user, not per tenant.
+        var owned = await db.Memberships.AcrossTenants().CountAsync(
             m => m.UserId == command.UserId && m.Role == Role.Owner && m.RemovedAt == null,
             cancellationToken);
         if (owned >= Organization.MaxOwnedPerUser)

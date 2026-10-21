@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.EntityFrameworkCore;
+using TenantHub.Application.Tenancy;
 using TenantHub.Domain.Memberships;
 using TenantHub.Infrastructure.Seed;
 using TenantHub.IntegrationTests.Infrastructure;
@@ -28,7 +29,7 @@ public sealed class DemoSeederTests(PostgresFixture postgres)
         await using var db = PostgresFixture.CreateDbContext(connectionString);
         Assert.Equal(2, await db.Organizations.CountAsync(Ct));
         Assert.Equal(6, await db.Users.CountAsync(Ct));
-        Assert.Equal(7, await db.Memberships.CountAsync(Ct));
+        Assert.Equal(7, await db.Memberships.AcrossTenants().CountAsync(Ct));
         Assert.True(await db.Organizations.AllAsync(o => o.IsDemoSeed, Ct));
         Assert.All(DemoSeeder.Emails, email => Assert.EndsWith(".example", email, StringComparison.Ordinal));
     }
