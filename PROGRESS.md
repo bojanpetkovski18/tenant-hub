@@ -41,6 +41,7 @@ Every number cited in the README or docs must appear here, with its method, mach
 | Metric | Value | Method | Machine | Date |
 |---|---|---|---|---|
 | CI tool checksums (gitleaks 8.30.1 linux_x64, actionlint 1.7.12 linux_amd64, editorconfig-checker 4.0.2 linux-amd64) | all three match the values pinned in `ci.yml` | each release's published checksum file (`sha256sum` of the downloaded archive for editorconfig-checker); `git ls-remote` of `actions/checkout` tag v7.0.1 = `3d3c42e` | M1 | 2026-10-21 |
+| P0 repository checks | actionlint: 0 findings; editorconfig-checker: 0 findings; gitleaks `git` (all commits) and `dir`: no leaks; tracked files contain no e-mail addresses outside `*.example` and no local paths (only the owner's GitHub username in the compare-link template) | Windows builds of the same tool versions, checksum-verified against each release's checksum file; `git grep` for e-mail and path patterns | M1 | 2026-10-21 |
 
 Machines:
 - **M1:** AMD Ryzen 7 8840HS (16 logical CPUs), 14 GB RAM, Windows 11 Pro 10.0.26200, Node 24.20.0, .NET SDK 10.0.402, Docker 29.8.2.
