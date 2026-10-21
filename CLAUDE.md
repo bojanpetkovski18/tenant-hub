@@ -58,7 +58,7 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
 
 **API**
 - `dotnet build TenantHub.slnx`: builds everything; warnings are errors.
-- `dotnet test --solution TenantHub.slnx`: unit, architecture and integration tests (Microsoft.Testing.Platform via `global.json`); 109 tests, about 14 s after M02. Integration tests start their own PostgreSQL through Testcontainers, so Docker must be running; the dev database is not used. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-method "*Concurrent*"` runs matching tests of one project; `--output Detailed` shows the API log of a failing test.
+- `dotnet test --solution TenantHub.slnx`: unit, architecture and integration tests (Microsoft.Testing.Platform via `global.json`); 183 tests, 10–15 s after M03. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-namespace "*Isolation*"` runs the isolation suite (48 tests). Integration tests start their own PostgreSQL through Testcontainers, so Docker must be running; the dev database is not used. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-method "*Concurrent*"` runs matching tests of one project; `--output Detailed` shows the API log of a failing test.
 - `dotnet format TenantHub.slnx --verify-no-changes`: formatting and code-style check (exit 2 on a violation); drop `--verify-no-changes` to fix.
 - `dotnet restore TenantHub.slnx --locked-mode`: restore exactly what the `packages.lock.json` files record (CI does this). After changing a package version, run a plain `dotnet restore` and commit the updated lock files.
 - `dotnet run --project src/api/TenantHub.Api`: API on `http://localhost:5090` in Development. It reads the repo-root `.env`, needs the dev database running, applies migrations (`Database__MigrateOnStartup`) and seeds (`Seed__Enabled`). Readiness (includes the database) at `/health`, liveness at `/health/live`; OpenAPI at `/openapi/v1.json` and the Scalar UI at `/scalar` (Development only).
@@ -69,7 +69,7 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
 - `npm start`: dev server on `http://localhost:4200`, proxying `/api` and `/health` to the API on 5090.
 - `npm run lint`: ESLint, including Angular template accessibility rules.
 - `npm run format:check` / `npm run format`: Prettier check / fix.
-- `npm run test:ci`: Vitest component tests, single run (52 tests after M02). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
+- `npm run test:ci`: Vitest component tests, single run (58 tests after M03). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
 - `npm run build`: production build to `src/web/dist/web`.
 - `npm audit --audit-level=moderate`: npm advisories (CI gate).
 
@@ -120,7 +120,9 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
 - **Tenancy.**
   - Tenant-owned entities implement `ITenantOwned`; never set `OrganizationId` by hand outside the guard and seeding.
   - Never take the organization from a body, query string, header or claim; only from `ITenantContext`.
-  - `IgnoreQueryFilters()` only in the allow-listed places (SPEC 3.3).
+  - `IgnoreQueryFilters()` never; `AcrossTenants()` only in the allow-listed files (`TenantBypassAllowListTests`, D024).
+  - Endpoints: `.Public()`, `.UserScoped()` or `MapTenantGroup()` with `.RequirePermission(...)`; every new tenant endpoint gets a line in `tests/TenantHub.IntegrationTests/Isolation/TenantEndpointCases.cs` (D025).
+  - Tenant-scoped handlers read the organization from `ITenantContext` and rely on the query filter; they do not add their own `organization_id` condition.
 - **Database work belongs in the database.** Filtering, sorting, paging and aggregation run in SQL; never load whole tables. Use `AsNoTracking` and projections for reads.
 - **Money** is `decimal` / `numeric(12,2)`, never floating point.
 - **Validation and errors.**

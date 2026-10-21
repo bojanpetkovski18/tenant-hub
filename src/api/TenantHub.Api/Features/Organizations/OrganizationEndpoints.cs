@@ -1,7 +1,10 @@
 using System.ComponentModel.DataAnnotations;
 using TenantHub.Api.Common.Auth;
+using TenantHub.Api.Common.Tenancy;
 using TenantHub.Api.Features.Auth;
 using TenantHub.Application.Organizations;
+using TenantHub.Domain.Memberships;
+using TenantHub.Domain.Organizations;
 
 namespace TenantHub.Api.Features.Organizations;
 
@@ -9,20 +12,40 @@ public sealed record CreateOrganizationRequest(
     [property: Required(AllowEmptyStrings = true), MaxLength(200)] string Name,
     [property: Required(AllowEmptyStrings = true), MaxLength(64)] string TimeZone);
 
+public sealed record OrganizationResponse(Guid Id, string Name, string Slug, Plan Plan, string TimeZone, DateTimeOffset CreatedAt);
+
+public sealed record MemberResponse(Guid UserId, string DisplayName, string Email, Role Role, DateTimeOffset JoinedAt);
+
 public static class OrganizationEndpoints
 {
     public static IEndpointRouteBuilder MapOrganizationEndpoints(this IEndpointRouteBuilder app)
     {
-        var orgs = app.MapGroup("/api/orgs").WithTags("Organizations");
+        // User-scoped: creating an organization needs no membership.
+        app.MapPost("/api/orgs", async (CreateOrganizationRequest request, HttpContext context, CreateOrganizationHandler handler, CancellationToken ct) =>
+            {
+                var membership = await handler.HandleAsync(
+                    new CreateOrganizationCommand(context.User.GetUserId(), request.Name, request.TimeZone), ct);
+                return TypedResults.Created($"/api/orgs/{membership.OrganizationId}", MembershipResponse.From(membership));
+            })
+            .WithTags("Organizations")
+            .UserScoped();
 
-        // User-scoped: creating an organization needs no membership. Tenant-scoped routes under
-        // /api/orgs/{orgId} arrive with the tenant context in M03.
-        orgs.MapPost("/", async (CreateOrganizationRequest request, HttpContext context, CreateOrganizationHandler handler, CancellationToken ct) =>
-        {
-            var membership = await handler.HandleAsync(
-                new CreateOrganizationCommand(context.User.GetUserId(), request.Name, request.TimeZone), ct);
-            return TypedResults.Created($"/api/orgs/{membership.OrganizationId}", MembershipResponse.From(membership));
-        });
+        // Tenant-scoped: membership and permission are checked before each handler (TenantResolutionFilter).
+        var organization = app.MapTenantGroup().WithTags("Organization");
+
+        organization.MapGet("/", async (GetOrganizationQuery query, CancellationToken ct) =>
+            {
+                var o = await query.HandleAsync(ct);
+                return TypedResults.Ok(new OrganizationResponse(o.Id, o.Name, o.Slug, o.Plan, o.TimeZone, o.CreatedAt));
+            })
+            .RequirePermission(Permissions.OrgRead);
+
+        organization.MapGet("/members", async (ListMembersQuery query, CancellationToken ct) =>
+            {
+                var members = await query.HandleAsync(ct);
+                return TypedResults.Ok(members.Select(m => new MemberResponse(m.UserId, m.DisplayName, m.Email, m.Role, m.JoinedAt)).ToList());
+            })
+            .RequirePermission(Permissions.OrgRead);
 
         return app;
     }

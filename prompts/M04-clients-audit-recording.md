@@ -13,7 +13,7 @@ SPEC 4.1 (clients, audit log), 5.6, 7 (clients endpoints), 8.1 (clients, audit_e
 2. Persistence: `clients` with unique `(organization_id, id)` (the target for later composite foreign keys), the partial unique index on active names, `xmin` concurrency; `audit_entries` table and indexes (the `UPDATE` trigger comes in M07).
 3. Audit recording: a SaveChanges step collects domain events from tracked aggregates and writes audit entries (actor id and name snapshot, action, entity, summary, changed fields, trace id) before commit. Unit tests for the summaries; an integration test that a failure after the change leaves neither the change nor the entry.
 4. Endpoints from SPEC 7 for clients, with server-side search, status filter, allow-listed sorting and paging; `409` with a `code` for duplicate names, concurrency conflicts and deleting a client that has jobs (the job check activates in M06).
-5. Isolation: add every clients endpoint to the cross-tenant and permission matrices; the coverage tests must pass without allow-list changes.
+5. Isolation: add a `TenantEndpointCase` line for every clients endpoint (cross-tenant and permission matrices), including B's client ids under A's route; the coverage tests must pass without allow-list changes. Clients are the first tenant-owned entity keyed by `id` alone: add the guard test that moving a client to another organization is refused (D024).
 6. A test that every state-changing endpoint writes at least one audit entry (a table extended by later milestones).
 7. Angular:
    - a reusable list pattern: a SignalStore for query state synced with the URL, a data table (sortable headers with `aria-sort`, paging, empty and error states, skeleton rows) that becomes cards on narrow screens;

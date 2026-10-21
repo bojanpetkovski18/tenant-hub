@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Api.Features.Auth;
+using TenantHub.Application.Tenancy;
 using TenantHub.Domain.Memberships;
 using TenantHub.Domain.Organizations;
 using TenantHub.IntegrationTests.Infrastructure;
@@ -38,7 +39,7 @@ public sealed class SignUpTests(PostgresFixture postgres)
         Assert.Equal(Plan.Free, organization.Plan);
         Assert.Equal("Europe/Amsterdam", organization.TimeZone);
         Assert.Equal(session.User.Id, organization.CreatedByUserId);
-        var row = await db.Memberships.SingleAsync(Ct);
+        var row = await db.Memberships.AcrossTenants().SingleAsync(Ct);
         Assert.Equal((organization.Id, session.User.Id, Role.Owner), (row.OrganizationId, row.UserId, row.Role));
     }
 
@@ -66,7 +67,7 @@ public sealed class SignUpTests(PostgresFixture postgres)
         // Take every slug candidate for "Acme", so creating the organization fails after the user insert succeeded.
         await using (var db = PostgresFixture.CreateDbContext(connectionString))
         {
-            var ownerId = (await db.Memberships.SingleAsync(Ct)).UserId;
+            var ownerId = (await db.Memberships.AcrossTenants().SingleAsync(Ct)).UserId;
             foreach (var slug in OrganizationSlug.Candidates("Acme").Skip(1))
             {
                 db.Organizations.Add(Organization.Create("Acme", slug, "UTC", ownerId, DateTimeOffset.UtcNow));
@@ -130,6 +131,6 @@ public sealed class SignUpTests(PostgresFixture postgres)
         await using var db = PostgresFixture.CreateDbContext(connectionString);
         Assert.Equal(0, await db.Users.CountAsync(Ct));
         Assert.Equal(0, await db.Organizations.CountAsync(Ct));
-        Assert.Equal(0, await db.Memberships.CountAsync(Ct));
+        Assert.Equal(0, await db.Memberships.AcrossTenants().CountAsync(Ct));
     }
 }

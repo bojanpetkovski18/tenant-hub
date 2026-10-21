@@ -4,7 +4,7 @@ namespace TenantHub.Domain.Memberships;
 /// A user's role in one organization. Removal is soft (<see cref="RemovedAt"/>, SPEC 5.2): the row stays so jobs
 /// and audit entries can still name the person, but only active memberships grant access.
 /// </summary>
-public sealed class Membership
+public sealed class Membership : ITenantOwned
 {
     private Membership()
     {

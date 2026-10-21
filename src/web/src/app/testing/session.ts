@@ -3,8 +3,43 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { EnvironmentProviders, Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { authInterceptor } from '../core/session/auth.interceptor';
-import { SessionUser } from '../core/session/session.models';
+import { Permission, Role, SessionUser } from '../core/session/session.models';
+
+/** Test data only, mirroring the API's role map (the app itself always uses what the API sends). */
+export const permissionsFor: Readonly<Record<Role, readonly Permission[]>> = {
+  owner: [
+    'org.read',
+    'org.manage',
+    'org.delete',
+    'billing.manage',
+    'members.manage',
+    'clients.read',
+    'clients.write',
+    'clients.delete',
+    'jobs.read',
+    'jobs.create',
+    'jobs.manage',
+    'jobs.work',
+    'audit.read',
+  ],
+  admin: [
+    'org.read',
+    'org.manage',
+    'members.manage',
+    'clients.read',
+    'clients.write',
+    'clients.delete',
+    'jobs.read',
+    'jobs.create',
+    'jobs.manage',
+    'jobs.work',
+    'audit.read',
+  ],
+  member: ['org.read', 'clients.read', 'clients.write', 'jobs.read', 'jobs.create', 'jobs.work'],
+  viewer: ['org.read', 'clients.read', 'jobs.read'],
+};
 import { SessionStore } from '../core/session/session.store';
+import { tenantAccessInterceptor } from '../core/session/tenant-access.interceptor';
 
 export const olivia: SessionUser = {
   id: '0199f0a0-0000-7000-8000-000000000001',
@@ -16,19 +51,24 @@ export const olivia: SessionUser = {
       slug: 'brightline',
       name: 'Brightline Cleaning Co.',
       role: 'owner',
+      permissions: permissionsFor.owner,
     },
     {
       organizationId: '0199f0a0-0000-7000-8000-0000000000a2',
       slug: 'harbor-pine',
       name: 'Harbor & Pine Landscaping',
       role: 'admin',
+      permissions: permissionsFor.admin,
     },
   ],
 };
 
 /** HttpClient with the app's interceptor, answered by HttpTestingController. */
 export function provideTestHttp(): (Provider | EnvironmentProviders)[] {
-  return [provideHttpClient(withInterceptors([authInterceptor])), provideHttpClientTesting()];
+  return [
+    provideHttpClient(withInterceptors([authInterceptor, tenantAccessInterceptor])),
+    provideHttpClientTesting(),
+  ];
 }
 
 /** Loads the session as the app initializer would, with the given user (null = signed out). */

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using TenantHub.Application.Abstractions;
 using TenantHub.Infrastructure.Data;
 using Testcontainers.PostgreSql;
 
@@ -43,11 +44,13 @@ public sealed class PostgresFixture : IAsyncLifetime
     /// <summary>A new, completely empty database (no schema), for migration tests.</summary>
     public Task<string> CreateEmptyDatabaseAsync() => CreateDatabaseAsync(fromTemplate: false);
 
-    public static AppDbContext CreateDbContext(string connectionString)
+    /// <summary>A context for arranging and inspecting data. Without a tenant, tenant-owned queries return nothing
+    /// (use <c>AcrossTenants()</c> to inspect) and tenant-owned writes are refused, exactly as in the app.</summary>
+    public static AppDbContext CreateDbContext(string connectionString, ITenantContext? tenant = null)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>();
         DatabaseSetup.Configure(options, connectionString);
-        return new AppDbContext(options.Options);
+        return new AppDbContext(options.Options, tenant);
     }
 
     private async Task<string> CreateDatabaseAsync(bool fromTemplate)

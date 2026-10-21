@@ -1,8 +1,9 @@
+import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../../app.routes';
-import { loadSession, olivia, provideTestHttp } from '../../testing/session';
+import { loadSession, olivia, permissionsFor, provideTestHttp } from '../../testing/session';
 import { provideCspSafeCdkStyles } from './csp-safe-style-loader';
 
 describe('AppShell', () => {
@@ -145,5 +146,39 @@ describe('AppShell', () => {
 
     expect(document.querySelector('[role="menu"]')).not.toBeNull();
     expect(overlayStyles()).toBe(0);
+  });
+
+  it('checks the organization with the server when it opens it', () => {
+    TestBed.inject(HttpTestingController).expectOne(
+      `/api/orgs/${olivia.memberships[0]!.organizationId}`,
+    );
+  });
+});
+
+describe('AppShell navigation by permission', () => {
+  const viewerOnly = {
+    ...olivia,
+    memberships: [
+      { ...olivia.memberships[0]!, role: 'viewer' as const, permissions: permissionsFor.viewer },
+    ],
+  };
+
+  it.each([
+    ['viewer', viewerOnly, ['Dashboard', 'Jobs', 'Clients', 'Members']],
+    ['owner', olivia, ['Dashboard', 'Jobs', 'Clients', 'Members', 'Audit log', 'Settings']],
+  ])('shows a %s only what their permissions allow', async (_role, user, expected) => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideTestHttp(),
+        provideRouter(routes, withComponentInputBinding()),
+        provideCspSafeCdkStyles(),
+      ],
+    });
+    await loadSession(user);
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/o/brightline/dashboard');
+
+    const links = [...(harness.routeNativeElement as HTMLElement).querySelectorAll('aside nav a')];
+    expect(links.map((link) => link.textContent?.trim())).toEqual(expected);
   });
 });

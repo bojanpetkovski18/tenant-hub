@@ -21,6 +21,7 @@ import { AppTitleStrategy } from './core/app-title-strategy';
 import { provideCspSafeCdkStyles } from './core/layout/csp-safe-style-loader';
 import { authInterceptor } from './core/session/auth.interceptor';
 import { SessionStore } from './core/session/session.store';
+import { tenantAccessInterceptor } from './core/session/tenant-access.interceptor';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -31,7 +32,7 @@ export const appConfig: ApplicationConfig = {
       withFetch(),
       // The API issues the XSRF-TOKEN cookie; Angular echoes it on unsafe same-origin requests (D009).
       withXsrfConfiguration({ cookieName: 'XSRF-TOKEN', headerName: 'X-XSRF-TOKEN' }),
-      withInterceptors([authInterceptor]),
+      withInterceptors([authInterceptor, tenantAccessInterceptor]),
     ),
     // Know who is signed in before the first route (and its guards) runs.
     provideAppInitializer(() => inject(SessionStore).load()),

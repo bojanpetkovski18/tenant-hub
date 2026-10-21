@@ -201,3 +201,47 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
   - a `sha256` hash of the CDK's CSS in the CSP: breaks silently whenever that CSS changes.
 - **Trade-offs:** relies on a CDK-internal API; re-check on every CDK upgrade (the test and the per-milestone CSP browser check would catch a regression).
 - **Verified:** production build served with the API's exact CSP: sign-in, switcher menu, user menu and sign-out with 0 console errors and 0 CSP violations; the full M02 browser suite 96/96 there.
+
+## D024: How the tenancy core is built (M03)
+- **Date:** 2026-10-21
+- **Query filter:** one model-building convention gives every `ITenantOwned` entity EF Core 10's *named* query filter `Tenant` (`organization_id = current organization`), read from the context's `ITenantContext` per query. Without a resolved organization the filter matches nothing (fail closed). A named filter lets later filters (for example archived rows) coexist, and lets the bypass drop only the tenant filter.
+- **Save guard:** `TenantGuard` runs in `SaveChanges`/`SaveChangesAsync`:
+  - it stamps new rows without an organization;
+  - it refuses inserts for another organization and updates or deletes of another organization's rows;
+  - it refuses any change to `organization_id`, and any tenant-owned write while no organization is resolved;
+  - violations throw `TenantIsolationException`, which the API logs as a critical security event (event id 9001) and answers with a bare 500.
+  - For memberships EF Core itself refuses the move (the key contains `organization_id`); the guard's own move check gets its test with clients in M04.
+- **One tenant per scope:** `TenantContext` can be entered once; a second, different organization or user throws. Creating an organization enters it for its Owner after the organization row is saved, so the Owner membership passes the guard like any other write. The seeder uses one DI scope per organization.
+- **The bypass:** `AcrossTenants()` (ignores only the `Tenant` filter) is the only way past it. A source-scan architecture test bans `IgnoreQueryFilters` everywhere else and pins its call sites:
+  - the session (memberships everywhere);
+  - the owned-organization count;
+  - tenant resolution.
+
+  A source scan was chosen over IL analysis because a call site is a line a reviewer reads, and it needs no extra package (D015). Test code may use the bypass to inspect data.
+- **Mutation check:** without the filter convention, three tests fail (model coverage and two behaviour tests).
+
+## D025: Endpoint classification and the isolation harness (M03)
+- **Date:** 2026-10-21
+- **Classification:** every endpoint is `.Public()`, `.UserScoped()` or inside `MapTenantGroup()` (`/api/orgs/{orgId:guid}`, with `.RequirePermission(...)`).
+- **Tenant resolution:** a group endpoint filter loads the caller's active membership. If there is none, it answers 404 `organization-not-found`, the same for a foreign organization, an unknown id or a removed member. If the permission is missing, it answers 403 `permission-denied`. Otherwise it enters the tenant and scopes logs with `OrganizationId`/`UserId`. A malformed id never matches the `guid` route constraint and gets the plain 404.
+- **Harness** (`tests/TenantHub.IntegrationTests/Isolation`), all read from the running app:
+  - **coverage:** every endpoint classified; the public set equals a reviewed list; tenant routes declare a known permission; nothing else is routed under an organization; every tenant endpoint has a line in `TenantEndpointCase.All` and vice versa;
+  - **cross-tenant matrix:** for each line, A's Owner aims at B: 404 identical to an unknown organization, B unchanged (SHA-256 of B's rows), nothing of B in the body; a removed member gets 404; signed-out callers get 401;
+  - **permission matrix:** each line × each role, expected result from the role map (pinned to the SPEC table by PermissionsTests);
+  - **model coverage:** filter plus an organization-first index on each tenant-owned entity, and a reviewed list of the rest.
+
+  Later milestones add one `TenantEndpointCase` line per endpoint; the tests themselves stay the same.
+- **Test-only endpoints** prove two paths no real endpoint needs yet: an Owner-only route (403 for the other roles) and a route with a deliberate cross-tenant write (the guard stops it; security log; nothing changes in B).
+- **Mutation checks** (2026-10-21, all restored afterwards):
+  - (a) no filter convention → 3 failures;
+  - (b) membership check ignoring the caller → 15 failures (every cross-tenant row);
+  - (c) an unclassified endpoint → the classification test; a tenant endpoint without a case → the case test; a tenant-owned entity with neither an organization-first key nor the organization foreign key → the index test.
+
+  The index test does not fail when only the key order changes, because EF Core indexes the foreign key to organizations by itself; the check still protects an entity that lacks both.
+- **Health endpoints** answer any HTTP method (`MapHealthChecks`); harmless for read-only probes and recorded as such in the reviewed public list.
+
+## D026: Lost access in the web app (M03)
+- **Date:** 2026-10-21
+- **Decision:** the session's memberships carry `permissions`; navigation shows only what they allow (`SessionStore.can`). Opening an organization calls `GET /api/orgs/{orgId}`, which is also the server-side membership check. Any tenant call answering 404 `organization-not-found` reloads the session and opens the picker with "You no longer have access to that organization". Other 404s (a missing client or job) are left to the page.
+- **Why:** a member can be removed while signed in. The next request is the earliest moment the app can know, and the session reload makes the switcher stop offering the organization.
+- **Browser-test finding:** an intermittent failure (about 1 in 3 full runs) of a keyboard check after sign-out was traced with Angular's dev-mode `ng` API. The router updates the URL when it creates the page, and the page's bindings apply on the next frame (measured under 25 ms). Playwright sent Tab and Enter inside that gap, so `FormGroupDirective` had no form yet. People cannot act before the first paint, so the app was not changed; the check now waits for a bound attribute (`#email[aria-invalid]`) and passed 6 of 6 runs.

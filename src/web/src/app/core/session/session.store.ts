@@ -2,7 +2,13 @@ import { HttpClient } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
 import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
 import { firstValueFrom } from 'rxjs';
-import { Membership, SessionResponse, SessionUser, SignUpRequest } from './session.models';
+import {
+  Membership,
+  Permission,
+  SessionResponse,
+  SessionUser,
+  SignUpRequest,
+} from './session.models';
 
 interface SessionState {
   /** False until the first /api/auth/session answer; guards wait for it (app initializer). */
@@ -90,6 +96,16 @@ export const SessionStore = signalStore(
 
       membershipBySlug(slug: string): Membership | undefined {
         return store.user()?.memberships.find((m) => m.slug === slug);
+      },
+
+      /** Whether the user may do this in the organization; the server checks again on every request. */
+      can(slug: string, permission: Permission): boolean {
+        return (
+          store
+            .user()
+            ?.memberships.find((m) => m.slug === slug)
+            ?.permissions.includes(permission) ?? false
+        );
       },
     };
   }),

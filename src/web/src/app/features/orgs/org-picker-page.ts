@@ -4,6 +4,7 @@ import {
   ElementRef,
   Injector,
   inject,
+  input,
   signal,
   viewChild,
 } from '@angular/core';
@@ -24,6 +25,12 @@ import { browserTimeZone, timeZoneOptions } from '../../shared/forms/time-zones'
   template: `
     <div class="mx-auto max-w-2xl">
       <h1 class="text-2xl font-semibold tracking-tight">Your organizations</h1>
+      @if (notice() === 'access-lost') {
+        <div class="th-alert-error mt-4" role="status">
+          You no longer have access to that organization. It may have been deleted, or an admin
+          removed you.
+        </div>
+      }
 
       @if (session.memberships().length === 0) {
         <div class="th-card mt-6 text-center">
@@ -109,6 +116,9 @@ import { browserTimeZone, timeZoneOptions } from '../../shared/forms/time-zones'
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class OrgPickerPage {
+  /** Query parameter set when the app sends the user here after losing access to an organization. */
+  readonly notice = input<string | null>(null);
+
   protected readonly session = inject(SessionStore);
   protected readonly roleLabels = roleLabels;
   protected readonly timeZones = timeZoneOptions();

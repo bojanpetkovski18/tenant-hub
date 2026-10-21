@@ -6,8 +6,8 @@ Estimates are rough focused-work hours for agent and owner together, including r
 |---|---|---|---|---|---|---|
 | P0 | Project setup (spec, stories, rules, briefs, CI) | `#0000-project-setup` | 2 h | done | 2026-10-21 | PR #1 merged; CI green on the PR and on `dev` (secret scan, repo lint) |
 | M01 | Skeleton, architecture tests, CI, app shell | `#0001-solution-skeleton-architecture-tests-and-shell` | 6 h | done | 2026-10-21 | PR #2 merged; CI green on the PR (all 7 gates) and on `dev`. 38 API tests (incl. architecture rules shown failing) + 16 web tests; 115/115 browser checks on the dev server and 115/115 on the production build under the API CSP; merge-gate CI (D020) |
-| M02 | Accounts and organizations | `#0002-accounts-sign-up-and-organizations` | 8 h | in review | 2026-10-21 | 109 API tests (54 domain, 38 integration incl. Testcontainers) + 52 web tests; 96/96 browser checks on the dev server and on the production build under the API CSP; lock and migration-guard mutation checks |
-| M03 | Tenancy core and isolation tests | `#0003-tenancy-core-permissions-and-isolation-tests` | 8 h | todo | none | The project's centrepiece; do not rush |
+| M02 | Accounts and organizations | `#0002-accounts-sign-up-and-organizations` | 8 h | done | 2026-10-21 | PR #3 merged; CI green on the PR and on `dev`. 109 API tests (54 domain, 38 integration incl. Testcontainers) + 52 web tests; 96/96 browser checks on the dev server and on the production build under the API CSP; lock and migration-guard mutation checks |
+| M03 | Tenancy core and isolation tests | `#0003-tenancy-core-permissions-and-isolation-tests` | 8 h | in review | 2026-10-21 | 183 API tests (48 in the isolation suite) + 58 web tests; mutation checks (a) (b) (c) recorded; 13/13 M03 browser checks and the M02 suite 6/6 on the production build under the API CSP |
 | M04 | Clients and audit recording | `#0004-clients-composite-keys-and-audit-recording` | 8 h | todo | none | Sets the list, form and audit patterns |
 | M05 | Members and invitations | `#0005-members-and-invitations` | 8 h | todo | none | |
 | M06 | Jobs | `#0006-jobs-workflow-numbering-and-lists` | 10 h | todo | none | |
@@ -57,6 +57,13 @@ Every number cited in the README or docs must appear here, with its method, mach
 | Bugs found in the M02 browser pass | 2: axe label-content-name-mismatch on the menu buttons (18 findings); CDK overlay `<style>` blocked by the CSP (regression test shown failing first). Both fixed | as above | M1 | 2026-10-21 |
 | API log check | 675 lines after the browser pass: no passwords, session or XSRF cookies; SQL parameter values masked (`?`) | `grep` of the API console log | M1 | 2026-10-21 |
 | Antiforgery from the command line | sign-in without `X-XSRF-TOKEN`: 400 "Invalid or missing anti-forgery token."; with it: 200 | `curl` through the dev proxy | M1 | 2026-10-21 |
+| .NET test suite after M03 (183 tests: 69 domain, 13 application, 10 architecture, 91 integration; 48 in the isolation suite) | 10.2–14.1 s (3 runs) | `dotnet test --solution TenantHub.slnx --no-build` (MTP summary) | M1 | 2026-10-21 |
+| Isolation mutation checks | (a) filter convention removed: 3 failures; (b) membership check ignoring the caller: 15 failures (every cross-tenant row); (c) unclassified endpoint: 1 (classification test); tenant endpoint without a case: 1 (case test); tenant-owned entity without an organization-first key and without the organization foreign key: 1 (index test). Key order alone: 0 failures, because EF Core indexes the foreign key (D025) | code changed by hand, tests run, change reverted; a throwaway migration for the key change, removed and the snapshot restored from git | M1 | 2026-10-21 |
+| Web tests after M03 | 58 tests, 3 consecutive passes | `npm run test:ci` | M1 | 2026-10-21 |
+| Web initial bundle after M03 | 313.67 kB raw / 85.16 kB estimated transfer | `npm run build` output (Angular CLI estimate) | M1 | 2026-10-21 |
+| Tenant API from the command line | Viewer: session permissions `clients.read jobs.read org.read`; own organization and members 200; Harbor & Pine and a random id both 404 `organization-not-found` with the same title; signed out 401 | `curl` through the production build's proxy, seeded dev database | M1 | 2026-10-21 |
+| Browser checks, M03 | 13/13: Viewer navigation without Audit log and Settings; Member versus Admin navigation for the same person in two organizations; a foreign slug shows not found; membership removed in the database while signed in → next request lands on the picker with the notice and without the organization; picker with notice at 375/768/1280 px, 0 serious/critical axe findings | Playwright 1.63.0 + @axe-core/playwright 4.14.0, production build served with the API CSP | M1 | 2026-10-21 |
+| Flaky browser check investigated | keyboard submit after sign-out failed in 3 of 9 full M02 runs: page created, bindings applied less than 25 ms later, Playwright keys inside that gap (`ng.getDirectives`: form not yet bound). After waiting for a bound attribute: 6/6 | dev-mode `ng` API probe and a timeline of the binding state | M1 | 2026-10-21 |
 
 Machines:
 - **M1:** AMD Ryzen 7 8840HS (16 logical CPUs), 14 GB RAM, Windows 11 Pro 10.0.26200, Node 24.20.0, .NET SDK 10.0.402, Docker 29.8.2.
@@ -69,4 +76,4 @@ Deferred by the owner. Re-check them when relevant, and in M10.
 | K1 | Data-protection keys (which sign session and antiforgery cookies) use ASP.NET Core's default store. Fine on a developer machine, but a container would lose them on restart and sign everyone out. | M02 | Persist them (database or mounted volume) with the production image in M11; Fitness Merchant solved it with a database key repository (its D032). |
 
 ## Next step
-The owner reviews and merges the M02 PR once **CI result** is green (and applies the branch ruleset from `docs/CI.md` if not done yet). Then M03 (tenancy core and the isolation test harness) starts from a freshly pulled `dev`.
+The owner reviews and merges the M03 PR once **CI result** is green. Then M04 (clients, composite keys and audit recording) starts from a freshly pulled `dev`.

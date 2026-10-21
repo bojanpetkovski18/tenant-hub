@@ -11,6 +11,9 @@ public interface IIdentityService
 
     Task<UserProfile?> FindProfileAsync(Guid userId, CancellationToken cancellationToken);
 
+    /// <summary>Profiles by id, in one query; ids without an account are missing from the result.</summary>
+    Task<IReadOnlyDictionary<Guid, UserProfile>> FindProfilesAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken);
+
     /// <summary>Null on success, otherwise field errors.</summary>
     Task<FieldErrors?> UpdateDisplayNameAsync(Guid userId, string displayName);
 
