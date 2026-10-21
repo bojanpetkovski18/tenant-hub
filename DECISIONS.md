@@ -165,3 +165,39 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
 - **Also:** NuGet lock files (`RestorePackagesWithLockFile`) so CI restores exactly the reviewed dependency graph (`--locked-mode` fails on drift, shown with NU1004); a PR template with the sections every PR description uses.
 - **Why one aggregate check:** required checks are configured by name in the repository settings. With a single aggregate, adding a gate (E2E in M11) changes only the workflow, and a renamed job cannot silently stop being required.
 - **Trade-offs:** The dependency audit can block a merge because of a newly published advisory, without any code change. This is intended; such a finding is fixed or explained in this file. Branch protection itself is a repository setting the owner applies once; the agent cannot set it.
+
+## D021: A public session endpoint instead of `GET /api/me` (M02)
+- **Date:** 2026-10-21
+- **Decision:** `GET /api/auth/session` is public and returns `{ user }` (profile and active memberships) or `{ user: null }`; it also issues the `XSRF-TOKEN` cookie. It replaces the planned `GET /api/me` (SPEC 7 updated). `PATCH /api/me` and `POST /api/me/password` stay user-scoped and return or refresh the session.
+- **Why:** The SPA needs one call on startup that works for guests too (no console 401 on every visit) and gives it the antiforgery token before the first unsafe request. Two endpoints returning the same user would drift.
+- **Shape:** memberships carry `organizationId`, `slug`, `name` and `role` (camelCase string, like every enum in the API); `permissions` join them in M03.
+
+## D022: Authentication and account details (M02)
+- **Date:** 2026-10-21
+- **Rate limits:** sign-up and sign-in share a fixed window of 10 requests per 60 s per client IP (`RateLimiting:AuthPermitLimit`, `AuthWindowSeconds`), answered with `429` and `Retry-After`. Per-account brute force is covered by Identity's lockout (5 failures, 15 minutes) with the same generic answer as a wrong password, so it does not enumerate accounts. Behind a proxy the client IP needs forwarded headers (M11).
+- **Sessions:** the security stamp is validated on every request (one indexed user read), so a password change ends other sessions immediately; the session that changed it gets a refreshed cookie.
+- **Where the rules live:**
+  - request attributes check only shape (present, bounded length);
+  - the handlers (name, time zone) and Identity (email, password) check content and return every field error at once;
+  - a stricter attribute would stop the request first and hide the other errors (found in testing).
+- **Error keys:** validation problems always use JSON property names (`displayName`), whether from request validation (which reports C# names) or from a handler; normalized in one place (`ProblemDetailsSetup`).
+- **Unknown routes:** an anonymous fallback endpoint answers `404` problem details. Without it the fallback authorization policy answered `401` for any unknown URL, including file-like paths that `MapFallback`'s default pattern skips.
+- **Ports kept out of Application (D003):**
+  - `IIdentityService` (Identity's `UserManager` without Identity types);
+  - `IDatabaseLocks` (`SELECT … FOR UPDATE` on the user row for the five-owned-organizations limit; reused for plan limits in M08);
+  - `IDatabaseErrors` (recognizes a unique-index violation without referencing Npgsql).
+- **Slug races:** the creator checks the candidates, inserts, and on a unique-index violation tries the next candidate in the same transaction; EF Core rolls the failed insert back to its automatic savepoint. A same-email sign-up race hits `ux_users_normalized_user_name` and becomes the normal "email already in use" field error.
+- **Demo seed:** `DEMO_PASSWORD` must satisfy the password rules; a weak value stops startup with a clear message rather than seeding half the data. `.env.example` carries a valid placeholder.
+- **Verified:**
+  - lock mutation check: without the row lock, 8 parallel creates all succeeded (3 of 3 runs; the user would own 9); with it, exactly 4 succeed (5 of 5 runs);
+  - migration guard mutation check: a model change without a migration fails `Model_matches_the_migrations`.
+
+## D023: CDK runtime styles under the strict CSP; no component styles (M02)
+- **Date:** 2026-10-21
+- **Found:** opening a CDK menu on the production build under `style-src 'self'` logged a CSP violation. The CDK injects the overlay's structural CSS at runtime as an Angular component style, which Angular writes as an inline `<style>` element.
+- **Decision:** `CspSafeStyleLoader` replaces the CDK's internal `_CdkPrivateStyleLoader` with a no-op. The same rules are loaded from `overlay-prebuilt.css` and `a11y-prebuilt.css` (angular.json). A component test fails if opening a menu adds a `<style>` (shown failing before the fix). Components do not use `styles` either, for the same reason: Tailwind classes and `styles.css` only (CLAUDE.md).
+- **Alternatives:**
+  - per-request CSP nonces (`ngCspNonce`): need server-side rewriting of `index.html`, which only exists once the API serves the SPA (M11); reconsider then if a library needs it;
+  - a `sha256` hash of the CDK's CSS in the CSP: breaks silently whenever that CSS changes.
+- **Trade-offs:** relies on a CDK-internal API; re-check on every CDK upgrade (the test and the per-milestone CSP browser check would catch a regression).
+- **Verified:** production build served with the API's exact CSP: sign-in, switcher menu, user menu and sign-out with 0 console errors and 0 CSP violations; the full M02 browser suite 96/96 there.

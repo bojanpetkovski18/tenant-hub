@@ -11,7 +11,7 @@ SPEC sections 2 (permission table), 3 (all of it), 7 (tenant-scoped conventions)
 ## Scope
 1. `Permission` constants and the role → permission map (Domain), with a unit test that pins the SPEC table row by row.
 2. `ITenantContext` (Application) and a request-scoped implementation filled by tenant-resolution middleware or an endpoint filter for routes under `/api/orgs/{orgId}`: active membership → context; none → `404`; malformed id → `404`. A `RequirePermission(...)` endpoint convention returns `403` when the permission is missing.
-3. `GET /api/me` now returns each membership's permissions; the Angular session store exposes `can(permission)` for the current organization, and the sidebar hides navigation the user cannot use.
+3. The session (`GET /api/auth/session`, D021) now returns each membership's permissions; the Angular session store exposes `can(permission)` for the current organization, and the sidebar hides navigation the user cannot use.
 4. EF Core tenancy:
    - `ITenantOwned` marker; a single model-building convention adds the query filter to every implementing entity;
    - the SaveChanges guard (SPEC 3.3 point 3): stamps new entities, throws on writes to another organization's entities and on `organization_id` changes, logs a security event;

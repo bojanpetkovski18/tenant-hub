@@ -45,7 +45,7 @@ Roles map to fixed permission sets defined in code (custom roles are V2). The se
 One database and one schema shared by all organizations. Every tenant-owned table has an `organization_id` column. Alternatives (schema per tenant, database per tenant) and the reasons for this choice are in D005.
 
 ### 3.2 Resolving the tenant
-- Tenant-scoped API routes carry the organization: `/api/orgs/{orgId}/...`. The SPA uses the organization's slug in its own URLs (`/o/{slug}/jobs`) and maps it to the id from `GET /api/me`.
+- Tenant-scoped API routes carry the organization: `/api/orgs/{orgId}/...`. The SPA uses the organization's slug in its own URLs (`/o/{slug}/jobs`) and maps it to the id from the session (`GET /api/auth/session`).
 - On every tenant-scoped request the server loads the caller's active membership for `{orgId}`. No active membership → `404` (the organization's existence is not revealed). Membership found → a request-scoped `TenantContext` holds the organization id, user id, role and permissions. Missing permission → `403`.
 - The organization is never taken from a request body, query string, header or cookie claim. Ids of other entities in a request (client id, assignee id) are always looked up inside the current tenant.
 
@@ -203,6 +203,7 @@ All endpoints are under `/api` and return JSON. Errors are RFC 7807 problem deta
 
 | Method | Path | Notes |
 |---|---|---|
+| GET | `/api/auth/session` | `{ user }` with profile and memberships, or `{ user: null }`; issues the XSRF cookie (D021) |
 | POST | `/api/auth/sign-up` | user, organization and Owner membership; signs in |
 | POST | `/api/auth/sign-in` | rate-limited per IP and per account |
 | GET | `/api/invitations/{token}` | preview: organization name, inviter, role, masked email, state |
@@ -216,8 +217,7 @@ All endpoints are under `/api` and return JSON. Errors are RFC 7807 problem deta
 | Method | Path | Notes |
 |---|---|---|
 | POST | `/api/auth/sign-out` | |
-| GET | `/api/me` | profile and memberships (`id`, `slug`, `name`, `role`, `permissions`) |
-| PATCH | `/api/me` | display name |
+| PATCH | `/api/me` | display name; returns the session |
 | POST | `/api/me/password` | current and new password |
 | POST | `/api/orgs` | create an organization (Owner) |
 | POST | `/api/invitations/{token}/accept` | signed-in acceptance |
