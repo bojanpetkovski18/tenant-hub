@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\TenantHub.Application\TenantHub.Application.csproj" />
+  </ItemGroup>
+
+</Project>

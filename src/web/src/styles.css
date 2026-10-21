@@ -1,0 +1,131 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens (SPEC 6, D014): neutral slate surfaces and one teal accent. Light is the default; the system
+ * dark preference applies before the app boots (the CSP allows no inline script), then ThemeStore sets
+ * data-theme explicitly. Pairs were chosen for WCAG AA contrast in both themes; M10 re-checks them with tooling.
+ */
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+  --th-bg: #f8fafc;
+  --th-surface: #ffffff;
+  --th-surface-2: #f1f5f9;
+  --th-sidebar: #f1f5f9;
+  --th-border: #e2e8f0;
+  --th-text: #0f172a;
+  --th-text-muted: #475569;
+  --th-accent: #0f766e;
+  --th-accent-strong: #115e59;
+  --th-accent-soft: #ccfbf1;
+  --th-on-accent: #ffffff;
+  --th-focus: #0f766e;
+  --th-danger: #b91c1c;
+  --th-success: #15803d;
+  --th-warning: #b45309;
+  --th-backdrop: rgb(15 23 42 / 0.45);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --th-bg: #0b1220;
+    --th-surface: #111a2e;
+    --th-surface-2: #1a2438;
+    --th-sidebar: #0e1626;
+    --th-border: #26324a;
+    --th-text: #e2e8f0;
+    --th-text-muted: #94a3b8;
+    --th-accent: #2dd4bf;
+    --th-accent-strong: #5eead4;
+    --th-accent-soft: #134e4a;
+    --th-on-accent: #042f2e;
+    --th-focus: #5eead4;
+    --th-danger: #f87171;
+    --th-success: #4ade80;
+    --th-warning: #fbbf24;
+    --th-backdrop: rgb(2 6 23 / 0.6);
+  }
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  --th-bg: #0b1220;
+  --th-surface: #111a2e;
+  --th-surface-2: #1a2438;
+  --th-sidebar: #0e1626;
+  --th-border: #26324a;
+  --th-text: #e2e8f0;
+  --th-text-muted: #94a3b8;
+  --th-accent: #2dd4bf;
+  --th-accent-strong: #5eead4;
+  --th-accent-soft: #134e4a;
+  --th-on-accent: #042f2e;
+  --th-focus: #5eead4;
+  --th-danger: #f87171;
+  --th-success: #4ade80;
+  --th-warning: #fbbf24;
+  --th-backdrop: rgb(2 6 23 / 0.6);
+}
+
+@theme inline {
+  --color-bg: var(--th-bg);
+  --color-surface: var(--th-surface);
+  --color-surface-2: var(--th-surface-2);
+  --color-sidebar: var(--th-sidebar);
+  --color-border: var(--th-border);
+  --color-fg: var(--th-text);
+  --color-muted: var(--th-text-muted);
+  --color-accent: var(--th-accent);
+  --color-accent-strong: var(--th-accent-strong);
+  --color-accent-soft: var(--th-accent-soft);
+  --color-on-accent: var(--th-on-accent);
+  --color-focus: var(--th-focus);
+  --color-danger: var(--th-danger);
+  --color-success: var(--th-success);
+  --color-warning: var(--th-warning);
+  --color-backdrop: var(--th-backdrop);
+}
+
+@layer base {
+  body {
+    @apply bg-bg text-fg antialiased;
+    font-family:
+      system-ui,
+      -apple-system,
+      'Segoe UI',
+      Roboto,
+      'Helvetica Neue',
+      Arial,
+      sans-serif;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--th-focus);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .th-nav-link {
+    @apply flex min-h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-fg;
+  }
+
+  .th-nav-link[aria-current='page'] {
+    @apply bg-accent-soft text-fg;
+  }
+
+  .th-icon-button {
+    @apply inline-flex size-10 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-fg;
+  }
+}

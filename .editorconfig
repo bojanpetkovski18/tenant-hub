@@ -24,6 +24,10 @@ dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
 generated_code = true
 charset = utf-8-bom
 
+[**/packages.lock.json]
+# Written by `dotnet restore` (no final newline) and rewritten on every restore; hand edits would not stick.
+insert_final_newline = unset
+
 [tests/**.cs]
 # Test names read as sentences: Unknown_route_returns_problem_details.
 dotnet_diagnostic.CA1707.severity = none

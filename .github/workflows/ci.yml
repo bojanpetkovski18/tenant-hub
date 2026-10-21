@@ -24,8 +24,103 @@ env:
   ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
   EC_VERSION: 4.0.2
   EC_SHA256: 44efaef3ed14c6ab52eb87481d78e5e5c204796dccf26e2f4598a61ba17f8003
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
+  api:
+    name: API (format, build and test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      # Locked mode fails if a project file or Directory.Packages.props changed without its packages.lock.json.
+      - name: Restore (locked)
+        run: dotnet restore TenantHub.slnx --locked-mode
+
+      - name: Check formatting and code style
+        run: dotnet format TenantHub.slnx --verify-no-changes --no-restore
+
+      # Directory.Build.props sets TreatWarningsAsErrors, so analyzer findings fail this step.
+      - name: Build
+        run: dotnet build TenantHub.slnx --configuration Release --no-restore
+
+      # Unit, architecture and integration tests (and, from M03, the tenant-isolation suite).
+      - name: Test
+        run: dotnet test --solution TenantHub.slnx --configuration Release --no-build
+
+  web:
+    name: Web (lint, format, test and build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: src/web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: src/web/.nvmrc
+          cache: npm
+          cache-dependency-path: src/web/package-lock.json
+
+      # npm ci fails if package.json and package-lock.json disagree.
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Test
+        run: npm run test:ci
+
+      - name: Build (production)
+        run: npm run build
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: src/web/.nvmrc
+
+      # Reads the lock file only; nothing is installed. Moderate and above fail the gate (D020).
+      - name: npm audit
+        working-directory: src/web
+        run: npm audit --audit-level=moderate
+
+      - name: NuGet vulnerable packages (including transitive)
+        run: |
+          dotnet restore TenantHub.slnx --locked-mode
+          dotnet list TenantHub.slnx package --vulnerable --include-transitive | tee nuget-audit.txt
+          if grep -q "has the following vulnerable packages" nuget-audit.txt; then
+            echo "::error::Vulnerable NuGet packages found (see the list above)."
+            exit 1
+          fi
+
   secret-scan:
     name: Secret scan (full history)
     runs-on: ubuntu-latest
@@ -71,3 +166,67 @@ jobs:
 
       - name: Check .editorconfig rules
         run: '"$RUNNER_TEMP/editorconfig-checker"'
+
+  pr-conventions:
+    name: PR conventions
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # Values are passed through env, never interpolated into the script, so a branch name or commit
+      # subject cannot inject shell code.
+      - name: Check branch name, target and commit subjects
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          status=0
+
+          # Milestone branches go to dev; only dev is released to main (D018).
+          if [ "$BASE_REF" = "main" ]; then
+            if [ "$HEAD_REF" != "dev" ]; then
+              echo "::error::Only dev may be merged into main (got '$HEAD_REF')."
+              status=1
+            fi
+          elif ! printf '%s' "$HEAD_REF" | grep -Eq '^#[0-9]{4}[a-z]?-[a-z0-9]+(-[a-z0-9]+){2,6}$'; then
+            echo "::error::Branch '$HEAD_REF' does not match '#00nn-three-to-seven-kebab-words' (CLAUDE.md, Git)."
+            status=1
+          fi
+
+          # Work-in-progress commits must be squashed or reworded before merging.
+          bad=$(git log --format='%h %s' "$BASE_SHA..$HEAD_SHA" | grep -Ei '^[0-9a-f]+ (fixup!|squash!|amend!|wip\b|do not merge)' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Commits that must not be merged:"
+            printf '%s\n' "$bad"
+            status=1
+          fi
+
+          exit $status
+
+  # The single required status check for branch protection: it fails if any gate failed or was
+  # cancelled, so new gates are covered without changing the repository settings (docs/CI.md).
+  ci-result:
+    name: CI result
+    if: always()
+    needs: [api, web, dependency-audit, secret-scan, repo-lint, pr-conventions]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check every gate
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Gate results: $RESULTS"
+          for result in $RESULTS; do
+            # "skipped" is expected for PR-only gates on push events.
+            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
+              echo "::error::At least one gate did not pass."
+              exit 1
+            fi
+          done
