@@ -10,6 +10,7 @@ using TenantHub.Api.Features.Organizations;
 using TenantHub.Application;
 using TenantHub.Infrastructure;
 using TenantHub.Infrastructure.Data;
+using TenantHub.Infrastructure.Seed;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddDevelopmentDotEnv();
@@ -41,6 +42,7 @@ builder.Services.AddHealthChecks().AddDbContextCheck<AppDbContext>("database", t
 var app = builder.Build();
 
 await DatabaseSetup.MigrateIfEnabledAsync(app.Services);
+await DemoSeeder.SeedIfEnabledAsync(app.Services, app.Configuration);
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();

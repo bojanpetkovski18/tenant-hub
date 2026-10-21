@@ -27,6 +27,7 @@ public class ApiFactory(string connectionString, IReadOnlyDictionary<string, str
         builder.UseEnvironment("Testing");
         builder.UseSetting($"ConnectionStrings:{DatabaseSetup.ConnectionStringName}", connectionString);
         builder.UseSetting("Database:MigrateOnStartup", "false");
+        builder.UseSetting("Seed:Enabled", "false");
         // Raised so only the test that targets the limit can hit it.
         builder.UseSetting("RateLimiting:AuthPermitLimit", "1000");
         foreach (var (key, value) in settings ?? new Dictionary<string, string?>())

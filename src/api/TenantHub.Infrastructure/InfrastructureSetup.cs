@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using TenantHub.Application.Abstractions;
 using TenantHub.Infrastructure.Data;
 using TenantHub.Infrastructure.Identity;
+using TenantHub.Infrastructure.Seed;
 
 namespace TenantHub.Infrastructure;
 
@@ -15,6 +16,7 @@ public static class InfrastructureSetup
         services.AddScoped<IIdentityService, IdentityService>();
         services.AddScoped<IDatabaseLocks, DatabaseLocks>();
         services.AddSingleton<IDatabaseErrors, DatabaseErrors>();
+        services.AddScoped<DemoSeeder>();
         return services;
     }
 
