@@ -1,0 +1,43 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.{cs,csx}]
+indent_size = 4
+# Analyzer severities are tuned in M01 together with Directory.Build.props.
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_using_directive_placement = outside_namespace:warning
+dotnet_sort_system_directives_first = true
+csharp_prefer_braces = true:warning
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+
+[src/api/**/Migrations/*.cs]
+# EF Core migrations are tool-generated (always UTF-8 with BOM); analyzers treat them as generated code.
+generated_code = true
+charset = utf-8-bom
+
+[tests/**.cs]
+# Test names read as sentences: Unknown_route_returns_problem_details.
+dotnet_diagnostic.CA1707.severity = none
+# Constant arrays in assertions are clearer than static fields; allocation cost is irrelevant in tests.
+dotnet_diagnostic.CA1861.severity = none
+
+[*.{csproj,props,targets,slnx,xml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+# Nested list items under numbered items are indented 3 spaces (valid Markdown).
+indent_style = unset
+indent_size = unset
+
+[*.{yml,yaml,json}]
+indent_size = 2
