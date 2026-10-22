@@ -9,6 +9,11 @@ public sealed record MembershipSummary(Guid OrganizationId, string Slug, string 
 {
     /// <summary>What this role may do (D008); sent to the SPA so it never re-implements the role map.</summary>
     public IReadOnlyList<string> Permissions => [.. Domain.Memberships.Permissions.For(Role).Order(StringComparer.Ordinal)];
+
+    /// <summary>The roles this member may give others, and invite with (SPEC 4.1); for the role pickers.</summary>
+    public IReadOnlyList<Role> GrantableRoles => MembershipRules.GrantableRoles(Role);
+
+    public IReadOnlyList<Role> InvitableRoles => [.. MembershipRules.GrantableRoles(Role).Intersect(MembershipRules.InvitableRoles)];
 }
 
 public sealed record SessionUser(Guid Id, string Email, string DisplayName, IReadOnlyList<MembershipSummary> Memberships);

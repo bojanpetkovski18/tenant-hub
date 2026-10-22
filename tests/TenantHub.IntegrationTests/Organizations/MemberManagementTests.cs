@@ -45,8 +45,9 @@ public sealed class MemberManagementTests(PostgresFixture postgres)
         // Owners may make an Owner.
         var crowned = await owner.PatchJsonAsync($"{Members(tenants.OrgA)}/{memberId}", new { role = "owner" });
 
-        Assert.Equal(Role.Member, (await promoted.Content.ReadFromJsonAsync<MemberResponse>(BrowserClient.Json, Ct))!.Role);
-        Assert.Equal(Role.Owner, (await crowned.Content.ReadFromJsonAsync<MemberResponse>(BrowserClient.Json, Ct))!.Role);
+        Assert.Equal((HttpStatusCode.NoContent, HttpStatusCode.NoContent), (promoted.StatusCode, crowned.StatusCode));
+        var listed = await owner.Http.GetFromJsonAsync<List<MemberResponse>>(Members(tenants.OrgA), BrowserClient.Json, Ct);
+        Assert.Equal((Role.Member, Role.Owner), (listed!.Single(m => m.UserId == viewerId).Role, listed!.Single(m => m.UserId == memberId).Role));
         await ProblemAssert.HasFieldErrorsAsync(await owner.PatchJsonAsync($"{Members(tenants.OrgA)}/{viewerId}", new { }), "role");
         await ProblemAssert.HasCodeAsync(await owner.PatchJsonAsync($"{Members(tenants.OrgA)}/{Guid.NewGuid()}", new { role = "member" }), HttpStatusCode.NotFound, "member-not-found");
 
@@ -59,6 +60,43 @@ public sealed class MemberManagementTests(PostgresFixture postgres)
         Assert.Equal(
             [$"Changed {tenants.EmailsA[Role.Viewer].Split('@')[0]}'s role from Viewer to Member", $"Changed {tenants.EmailsA[Role.Member].Split('@')[0]}'s role from Member to Owner"],
             changes);
+    }
+
+    [Fact]
+    public async Task The_member_list_says_what_the_caller_may_do_to_whom()
+    {
+        await using var tenants = await ApiTenants.CreateAsync(postgres);
+        var adminId = await UserIdAsync(tenants, tenants.EmailsA[Role.Admin]);
+        var ownerId = await UserIdAsync(tenants, tenants.EmailsA[Role.Owner]);
+        var viewerId = await UserIdAsync(tenants, tenants.EmailsA[Role.Viewer]);
+
+        var asAdmin = await (await tenants.ClientForAsync(Role.Admin)).Http.GetFromJsonAsync<List<MemberResponse>>(Members(tenants.OrgA), BrowserClient.Json, Ct);
+        var asViewer = await (await tenants.ClientForAsync(Role.Viewer)).Http.GetFromJsonAsync<List<MemberResponse>>(Members(tenants.OrgA), BrowserClient.Json, Ct);
+
+        var self = asAdmin!.Single(m => m.UserId == adminId);
+        Assert.Equal((true, false, false, true), (self.IsYou, self.CanChangeRole, self.CanRemove, self.CanLeave));
+        var anOwner = asAdmin!.Single(m => m.UserId == ownerId);
+        Assert.Equal((false, false, false), (anOwner.IsYou, anOwner.CanChangeRole, anOwner.CanRemove));
+        var aViewer = asAdmin!.Single(m => m.UserId == viewerId);
+        Assert.Equal((true, true), (aViewer.CanChangeRole, aViewer.CanRemove));
+        Assert.All(asViewer!.Where(m => !m.IsYou), m => Assert.False(m.CanChangeRole || m.CanRemove));
+    }
+
+    [Fact]
+    public async Task The_session_says_which_roles_each_membership_may_grant_and_invite()
+    {
+        await using var tenants = await ApiTenants.CreateAsync(postgres);
+
+        var owner = (await (await tenants.ClientForAsync(Role.Owner)).SessionAsync()).User!.Memberships.Single(m => m.OrganizationId == tenants.OrgA);
+        var admin = (await (await tenants.ClientForAsync(Role.Admin)).SessionAsync()).User!.Memberships.Single(m => m.OrganizationId == tenants.OrgA);
+        var member = (await (await tenants.ClientForAsync(Role.Member)).SessionAsync()).User!.Memberships.Single(m => m.OrganizationId == tenants.OrgA);
+
+        Assert.Equal([Role.Owner, Role.Admin, Role.Member, Role.Viewer], owner.GrantableRoles);
+        Assert.Equal([Role.Admin, Role.Member, Role.Viewer], owner.InvitableRoles);
+        Assert.Equal([Role.Admin, Role.Member, Role.Viewer], admin.GrantableRoles);
+        Assert.Equal([Role.Admin, Role.Member, Role.Viewer], admin.InvitableRoles);
+        Assert.Empty(member.GrantableRoles);
+        Assert.Empty(member.InvitableRoles);
     }
 
     [Fact]
@@ -132,7 +170,7 @@ public sealed class MemberManagementTests(PostgresFixture postgres)
             owner.PatchJsonAsync($"{Members(tenants.OrgA)}/{coOwnerId}", new { role = "admin" }),
             coOwner.PatchJsonAsync($"{Members(tenants.OrgA)}/{ownerId}", new { role = "admin" }));
 
-        Assert.Single(responses, r => r.StatusCode == HttpStatusCode.OK);
+        Assert.Single(responses, r => r.StatusCode == HttpStatusCode.NoContent);
         await using var db = PostgresFixture.CreateDbContext(tenants.ConnectionString);
         Assert.Equal(1, await db.Memberships.AcrossTenants().CountAsync(m => m.OrganizationId == tenants.OrgA && m.Role == Role.Owner && m.RemovedAt == null, Ct));
     }

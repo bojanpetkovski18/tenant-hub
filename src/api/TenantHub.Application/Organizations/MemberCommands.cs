@@ -18,7 +18,7 @@ public sealed class MemberCommands(
     IDatabaseLocks locks,
     TimeProvider time)
 {
-    public async Task<MemberSummary> ChangeRoleAsync(Guid userId, Role? role, CancellationToken cancellationToken)
+    public async Task ChangeRoleAsync(Guid userId, Role? role, CancellationToken cancellationToken)
     {
         if (role is not { } newRole)
         {
@@ -33,7 +33,6 @@ public sealed class MemberCommands(
         target.ChangeRole(newRole, profile?.DisplayName ?? "A member");
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new MemberSummary(target.UserId, profile?.DisplayName ?? "", profile?.Email ?? "", target.Role, target.JoinedAt);
     }
 
     public async Task RemoveAsync(Guid userId, CancellationToken cancellationToken)

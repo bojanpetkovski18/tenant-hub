@@ -85,6 +85,7 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         new("PATCH", "/members/{userId:guid}", Permissions.MembersManage)
         {
             Resource = CaseResource.FreshMember,
+            Allowed = HttpStatusCode.NoContent,
             Audited = true,
             Body = _ => Task.FromResult<object>(new { role = "viewer" }),
         },

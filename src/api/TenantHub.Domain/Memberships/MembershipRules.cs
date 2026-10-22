@@ -78,6 +78,28 @@ public static class MembershipRules
         }
     }
 
+    /// <summary>Whether any role change of the target would pass; lets the UI disable what the API would refuse.</summary>
+    public static bool CanChangeRole(Actor actor, Membership target, int activeOwners) =>
+        GrantableRoles(actor.Role).Any(role => role != target.Role && Passes(() => EnsureCanChangeRole(actor, target, role, activeOwners)));
+
+    public static bool CanRemove(Actor actor, Membership target, int activeOwners) =>
+        Passes(() => EnsureCanRemove(actor, target, activeOwners));
+
+    public static bool CanLeave(Membership self, int activeOwners) => Passes(() => EnsureCanLeave(self, activeOwners));
+
+    private static bool Passes(Action check)
+    {
+        try
+        {
+            check();
+            return true;
+        }
+        catch (DomainException)
+        {
+            return false;
+        }
+    }
+
     private static void EnsureMayManage(Actor actor, Membership target)
     {
         if (target.Role == Role.Owner && actor.Role != Role.Owner)

@@ -102,6 +102,29 @@ public sealed class MembershipRulesTests
     public void The_last_owner_cannot_leave(Role role, int owners, string? refusal) =>
         Assert.Equal(refusal, Outcome(() => MembershipRules.EnsureCanLeave(MemberWith(role), owners)));
 
+    public static TheoryData<Role, Role, int, bool, bool> Abilities => new()
+    {
+        // actor role, target role, active Owners, may change the target's role, may remove the target (the
+        // members.manage permission is checked before the rules, so only roles that hold it appear here)
+        { Role.Owner, Role.Owner, 2, true, true },
+        { Role.Owner, Role.Admin, 1, true, true },
+        { Role.Admin, Role.Owner, 2, false, false },
+        { Role.Admin, Role.Viewer, 1, true, true },
+        { Role.Owner, Role.Owner, 1, false, false },
+    };
+
+    [Theory]
+    [MemberData(nameof(Abilities))]
+    public void The_ui_flags_match_the_rules(Role actorRole, Role targetRole, int owners, bool canChange, bool canRemove)
+    {
+        var actor = new Actor(ActorId, actorRole);
+        var target = MemberWith(targetRole);
+
+        Assert.Equal((canChange, canRemove), (MembershipRules.CanChangeRole(actor, target, owners), MembershipRules.CanRemove(actor, target, owners)));
+        Assert.False(MembershipRules.CanChangeRole(new Actor(TargetId, Role.Owner), target, owners));
+        Assert.Equal(targetRole != Role.Owner || owners > 1, MembershipRules.CanLeave(target, owners));
+    }
+
     [Fact]
     public void Refusals_about_authority_are_forbidden_and_the_rest_conflicts()
     {
