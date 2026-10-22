@@ -1,5 +1,3 @@
-using System.Text.RegularExpressions;
-
 namespace TenantHub.Domain.Clients;
 
 /// <summary>
@@ -7,12 +5,12 @@ namespace TenantHub.Domain.Clients;
 /// optional fields stored as null. <see cref="Validate"/> reports every invalid field at once, keyed by the API's
 /// property names.
 /// </summary>
-public sealed partial record ClientDetails(string Name, string? ContactName, string? Email, string? Phone, string? Address, string? Notes)
+public sealed record ClientDetails(string Name, string? ContactName, string? Email, string? Phone, string? Address, string? Notes)
 {
     public const int NameMinLength = 2;
     public const int NameMaxLength = 120;
     public const int ContactNameMaxLength = 120;
-    public const int EmailMaxLength = 254;
+    public const int EmailMaxLength = EmailAddress.MaxLength;
     public const int PhoneMaxLength = 40;
     public const int AddressMaxLength = 300;
     public const int NotesMaxLength = 2000;
@@ -49,7 +47,7 @@ public sealed partial record ClientDetails(string Name, string? ContactName, str
 
         Check(normalized.Name.Length is >= NameMinLength and <= NameMaxLength, "name", $"Enter a name of {NameMinLength}–{NameMaxLength} characters.");
         Check(normalized.ContactName is not { Length: > ContactNameMaxLength }, "contactName", $"Use at most {ContactNameMaxLength} characters.");
-        Check(normalized.Email is null || (normalized.Email.Length <= EmailMaxLength && EmailPattern().IsMatch(normalized.Email)), "email", "Enter a valid email address.");
+        Check(normalized.Email is null || EmailAddress.IsValid(normalized.Email), "email", "Enter a valid email address.");
         Check(normalized.Phone is not { Length: > PhoneMaxLength }, "phone", $"Use at most {PhoneMaxLength} characters.");
         Check(normalized.Address is not { Length: > AddressMaxLength }, "address", $"Use at most {AddressMaxLength} characters.");
         Check(normalized.Notes is not { Length: > NotesMaxLength }, "notes", $"Use at most {NotesMaxLength} characters.");
@@ -83,8 +81,4 @@ public sealed partial record ClientDetails(string Name, string? ContactName, str
 
         return keepLineBreaks ? trimmed : string.Join(' ', trimmed.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
-
-    // Deliberately simple: one @, no spaces, a dot in the domain. Deliverability is not checked.
-    [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$")]
-    private static partial Regex EmailPattern();
 }

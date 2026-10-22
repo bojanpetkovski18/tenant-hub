@@ -1,11 +1,14 @@
 namespace TenantHub.Domain;
 
-/// <summary>What kind of failure a broken rule is; the API maps it to 409, 400 or 404.</summary>
+/// <summary>What kind of failure a broken rule is; the API maps it to 409, 400, 404 or 403.</summary>
 public enum DomainErrorKind
 {
     Conflict,
     Validation,
     NotFound,
+
+    /// <summary>Allowed in general by the permission, refused for this target (an Admin acting on an Owner).</summary>
+    Forbidden,
 }
 
 /// <summary>
