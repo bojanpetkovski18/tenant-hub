@@ -314,6 +314,37 @@ public sealed class InvitationFlowTests(PostgresFixture postgres)
         Assert.Equal(1, await db.Users.CountAsync(u => u.Email == email, Ct));
     }
 
+    [Fact]
+    public async Task Sending_invitations_and_using_links_are_rate_limited()
+    {
+        await using var factory = new ApiFactory(await postgres.CreateDatabaseAsync(), new Dictionary<string, string?>
+        {
+            ["RateLimiting:InvitationPermitLimit"] = "2",
+        });
+        using var owner = new BrowserClient(factory);
+        (await owner.SignUpAsync(BrowserClient.NewEmail(), "Busy Inviters Co")).EnsureSuccessStatusCode();
+        var org = (await owner.SessionAsync()).User!.Memberships.Single().OrganizationId;
+        using var visitor = new BrowserClient(factory);
+        var token = InvitationTokens.Create().Token;
+
+        // Per user for the inviter, per client for the link: one does not use up the other.
+        var sends = new List<HttpResponseMessage>();
+        for (var i = 0; i < 3; i++)
+        {
+            sends.Add(await owner.PostJsonAsync(Invitations(org), new { email = BrowserClient.NewEmail(), role = "member" }));
+        }
+
+        var looks = new List<HttpResponseMessage>();
+        for (var i = 0; i < 3; i++)
+        {
+            looks.Add(await PreviewAsync(visitor, token));
+        }
+
+        Assert.Equal([HttpStatusCode.OK, HttpStatusCode.OK, HttpStatusCode.TooManyRequests], sends.Select(r => r.StatusCode));
+        Assert.Equal([HttpStatusCode.NotFound, HttpStatusCode.NotFound, HttpStatusCode.TooManyRequests], looks.Select(r => r.StatusCode));
+        Assert.True(sends[2].Headers.RetryAfter is not null, "Retry-After header missing.");
+    }
+
     private static async Task ExpireAsync(ApiTenants tenants, Guid invitationId)
     {
         await using var lookup = PostgresFixture.CreateDbContext(tenants.ConnectionString);
