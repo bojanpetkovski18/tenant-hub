@@ -21,7 +21,10 @@ namespace TenantHub.IntegrationTests.Infrastructure;
 /// <see cref="PostgresFixture"/>. Two test-only routes go through the real pipeline: <see cref="ThrowingPath"/>
 /// throws, and <see cref="UnannotatedPath"/> has no authorization metadata of its own.
 /// </summary>
-public class ApiFactory(string connectionString, IReadOnlyDictionary<string, string?>? settings = null)
+public class ApiFactory(
+    string connectionString,
+    IReadOnlyDictionary<string, string?>? settings = null,
+    Action<IServiceCollection>? services = null)
     : WebApplicationFactory<Program>
 {
     public const string ThrowingPath = "/api/test/throw";
@@ -41,14 +44,20 @@ public class ApiFactory(string connectionString, IReadOnlyDictionary<string, str
         builder.UseSetting($"ConnectionStrings:{DatabaseSetup.ConnectionStringName}", connectionString);
         builder.UseSetting("Database:MigrateOnStartup", "false");
         builder.UseSetting("Seed:Enabled", "false");
+        builder.UseSetting("App:PublicUrl", "https://app.tenanthub.example/");
         // Raised so only the test that targets the limit can hit it.
         builder.UseSetting("RateLimiting:AuthPermitLimit", "1000");
+        builder.UseSetting("RateLimiting:InvitationPermitLimit", "1000");
         foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
         {
             builder.UseSetting(key, value);
         }
 
-        builder.ConfigureTestServices(services => services.AddSingleton<IEndpointMapper, TestEndpoints>());
+        builder.ConfigureTestServices(testServices =>
+        {
+            testServices.AddSingleton<IEndpointMapper, TestEndpoints>();
+            services?.Invoke(testServices);
+        });
         builder.ConfigureLogging(logging => logging.AddProvider(Logs));
     }
 

@@ -8,13 +8,24 @@ internal sealed class DatabaseLocks(AppDbContext db) : IDatabaseLocks
 {
     public async Task LockUserAsync(Guid userId, CancellationToken cancellationToken)
     {
+        EnsureTransaction();
+
+        // Interpolation becomes a parameter, not string concatenation.
+        await db.Database.ExecuteSqlAsync($"SELECT 1 FROM users WHERE id = {userId} FOR UPDATE", cancellationToken);
+    }
+
+    public async Task LockOrganizationAsync(Guid organizationId, CancellationToken cancellationToken)
+    {
+        EnsureTransaction();
+        await db.Database.ExecuteSqlAsync($"SELECT 1 FROM organizations WHERE id = {organizationId} FOR UPDATE", cancellationToken);
+    }
+
+    private void EnsureTransaction()
+    {
         if (db.Database.CurrentTransaction is null)
         {
             throw new InvalidOperationException("A row lock outside a transaction would be released immediately.");
         }
-
-        // Interpolation becomes a parameter, not string concatenation.
-        await db.Database.ExecuteSqlAsync($"SELECT 1 FROM users WHERE id = {userId} FOR UPDATE", cancellationToken);
     }
 }
 

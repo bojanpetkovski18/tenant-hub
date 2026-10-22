@@ -14,6 +14,9 @@ public interface IIdentityService
     /// <summary>Profiles by id, in one query; ids without an account are missing from the result.</summary>
     Task<IReadOnlyDictionary<Guid, UserProfile>> FindProfilesAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken);
 
+    /// <summary>The account with this email (compared the way Identity normalizes it), if any.</summary>
+    Task<Guid?> FindUserIdByEmailAsync(string email, CancellationToken cancellationToken);
+
     /// <summary>Null on success, otherwise field errors.</summary>
     Task<FieldErrors?> UpdateDisplayNameAsync(Guid userId, string displayName);
 

@@ -7,6 +7,9 @@ namespace TenantHub.Application.Abstractions;
 public interface IDatabaseLocks
 {
     Task LockUserAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>Serializes membership and invitation changes in one organization (the last-Owner rule, seats).</summary>
+    Task LockOrganizationAsync(Guid organizationId, CancellationToken cancellationToken);
 }
 
 /// <summary>Recognizes provider-specific database errors without the application referencing the provider.</summary>

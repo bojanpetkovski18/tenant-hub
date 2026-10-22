@@ -105,6 +105,20 @@ public sealed class Invitation : AggregateRoot, ITenantOwned
     /// </summary>
     public void Accept(Guid userId, string accountEmail, DateTimeOffset now)
     {
+        EnsureAcceptable(now);
+        if (EmailAddress.Normalize(accountEmail) != NormalizedEmail)
+        {
+            throw new DomainException("invitation-email-mismatch", "This invitation is for a different email address.");
+        }
+
+        AcceptedAt = now;
+        AcceptedByUserId = userId;
+        Raise(new InvitationEvent(this, "invitation.accepted", $"{Email} accepted the invitation and joined as {Role}", []));
+    }
+
+    /// <summary>Refuses a used, withdrawn or expired invitation, each with its own code for the accept page.</summary>
+    public void EnsureAcceptable(DateTimeOffset now)
+    {
         switch (StateAt(now))
         {
             case InvitationState.Accepted:
@@ -114,15 +128,6 @@ public sealed class Invitation : AggregateRoot, ITenantOwned
             case InvitationState.Expired:
                 throw new DomainException("invitation-expired", "This invitation has expired. Ask for a new one.");
         }
-
-        if (EmailAddress.Normalize(accountEmail) != NormalizedEmail)
-        {
-            throw new DomainException("invitation-email-mismatch", "This invitation is for a different email address.");
-        }
-
-        AcceptedAt = now;
-        AcceptedByUserId = userId;
-        Raise(new InvitationEvent(this, "invitation.accepted", $"{Email} accepted the invitation and joined as {Role}", []));
     }
 
     private void EnsureOpen(DateTimeOffset now)

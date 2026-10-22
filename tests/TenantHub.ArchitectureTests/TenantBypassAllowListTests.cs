@@ -14,6 +14,7 @@ public sealed partial class TenantBypassAllowListTests
     {
         ["src/api/TenantHub.Application/Accounts/GetSessionQuery.cs"] = "the session lists the user's memberships in every organization",
         ["src/api/TenantHub.Application/Organizations/CreateOrganizationHandler.cs"] = "the five-owned limit counts the user's organizations everywhere",
+        ["src/api/TenantHub.Application/Invitations/InvitationAcceptance.cs"] = "the invitee is not a member yet; the invitation is found by its token hash (approved in the M05 brief)",
         ["src/api/TenantHub.Application/Tenancy/ResolveTenantQuery.cs"] = "tenant resolution reads the caller's membership before a tenant is entered",
     };
 
