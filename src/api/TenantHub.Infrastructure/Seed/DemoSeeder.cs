@@ -128,6 +128,15 @@ public sealed partial class DemoSeeder(
                     : organization.AddMember(ids[email], role, now, invitedByUserId: ids[ownerEmail]));
             }
 
+            if (seed.Slug == BrightlineSlug)
+            {
+                // Through the domain, so the seed's audit history is the same as real use would write.
+                foreach (var client in DemoClients.Create(organization.Id, now))
+                {
+                    scopedDb.Clients.Add(client);
+                }
+            }
+
             await scopedDb.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             created++;
