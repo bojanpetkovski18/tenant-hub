@@ -7,6 +7,7 @@ using TenantHub.Application.Tenancy;
 using TenantHub.Domain;
 using TenantHub.Domain.Audit;
 using TenantHub.Domain.Clients;
+using TenantHub.Domain.Invitations;
 using TenantHub.Domain.Memberships;
 using TenantHub.Domain.Organizations;
 using TenantHub.Infrastructure.Audit;
@@ -37,6 +38,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenant
     public DbSet<Client> Clients => Set<Client>();
 
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
+
+    public DbSet<Invitation> Invitations => Set<Invitation>();
 
     /// <summary>Read by the query filters; EF Core evaluates it per query for this context instance.</summary>
     internal Guid? CurrentOrganizationId => _tenant.OrganizationId;

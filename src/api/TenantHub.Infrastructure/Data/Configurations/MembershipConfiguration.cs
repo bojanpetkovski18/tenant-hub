@@ -15,6 +15,7 @@ internal sealed class MembershipConfiguration : IEntityTypeConfiguration<Members
         membership.HasKey(m => new { m.OrganizationId, m.UserId });
         membership.HasIndex(m => m.UserId);
         membership.Ignore(m => m.IsActive);
+        membership.Ignore(m => m.DomainEvents);
         membership.Property(m => m.Role).HasConversion<string>().HasMaxLength(20);
 
         membership.HasOne<Organization>().WithMany().HasForeignKey(m => m.OrganizationId).OnDelete(DeleteBehavior.Cascade);
