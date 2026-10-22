@@ -1,10 +1,11 @@
 namespace TenantHub.Domain;
 
-/// <summary>Whether a broken rule is bad input or a conflict with the current state (the API maps it to 400 or 409).</summary>
+/// <summary>What kind of failure a broken rule is; the API maps it to 409, 400 or 404.</summary>
 public enum DomainErrorKind
 {
     Conflict,
     Validation,
+    NotFound,
 }
 
 /// <summary>
