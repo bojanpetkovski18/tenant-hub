@@ -5,8 +5,11 @@ using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
 using TenantHub.Application.Tenancy;
 using TenantHub.Domain;
+using TenantHub.Domain.Audit;
+using TenantHub.Domain.Clients;
 using TenantHub.Domain.Memberships;
 using TenantHub.Domain.Organizations;
+using TenantHub.Infrastructure.Audit;
 using TenantHub.Infrastructure.Identity;
 using TenantHub.Infrastructure.Tenancy;
 
@@ -18,34 +21,45 @@ namespace TenantHub.Infrastructure.Data;
 /// Tenant isolation (SPEC 3.3): every <see cref="ITenantOwned"/> entity gets the named query filter
 /// <see cref="TenantQueries.FilterName"/>, and every save goes through <see cref="TenantGuard"/>.
 /// </summary>
-public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext? tenant = null)
+public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext? tenant = null, TimeProvider? time = null)
     : IdentityUserContext<AppUser, Guid>(options), IAppDbContext
 {
     // No tenant (design time, migrations, tests that only inspect the model): tenant-owned queries return nothing.
     private readonly ITenantContext _tenant = tenant ?? new TenantContext();
+    private AuditWriter? _audit;
+
+    private AuditWriter Audit => _audit ??= new AuditWriter(this, _tenant, time ?? TimeProvider.System);
 
     public DbSet<Organization> Organizations => Set<Organization>();
 
     public DbSet<Membership> Memberships => Set<Membership>();
 
+    public DbSet<Client> Clients => Set<Client>();
+
+    public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
+
     /// <summary>Read by the query filters; EF Core evaluates it per query for this context instance.</summary>
     internal Guid? CurrentOrganizationId => _tenant.OrganizationId;
 
+    // Audit entries first, so they pass the tenant guard like every other row, then one transaction for all.
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
+        Audit.AddEntries();
         TenantGuard.Check(ChangeTracker, _tenant);
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
-    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
+        await Audit.AddEntriesAsync(cancellationToken);
         TenantGuard.Check(ChangeTracker, _tenant);
-        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+        builder.HasPostgresExtension("citext");
 
         builder.Entity<AppUser>(user =>
         {
