@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TenantHub.Application.Abstractions;
 using TenantHub.Infrastructure.Data;
+using TenantHub.Infrastructure.Email;
 using TenantHub.Infrastructure.Identity;
 using TenantHub.Infrastructure.Seed;
 
@@ -17,7 +18,30 @@ public static class InfrastructureSetup
         services.AddScoped<IDatabaseLocks, DatabaseLocks>();
         services.AddSingleton<IDatabaseErrors, DatabaseErrors>();
         services.AddScoped<DemoSeeder>();
+        services.AddAppEmail(configuration);
         return services;
+    }
+
+    private static void AddAppEmail(this IServiceCollection services, IConfiguration configuration)
+    {
+        var email = configuration.GetSection(EmailOptions.Section).Get<EmailOptions>() ?? new EmailOptions();
+        var app = configuration.GetSection(AppOptions.Section).Get<AppOptions>() ?? new AppOptions();
+        services.AddSingleton(email);
+        if (app.PublicUrl is not { IsAbsoluteUri: true })
+        {
+            throw new InvalidOperationException("Set App__PublicUrl to the absolute address of the web app (links in emails use it).");
+        }
+
+        services.AddSingleton(app);
+        services.AddSingleton<IAppLinks, AppLinks>();
+        if (email.Mode == EmailMode.Smtp)
+        {
+            services.AddSingleton<IEmailSender, SmtpEmailSender>();
+        }
+        else
+        {
+            services.AddSingleton<IEmailSender, DisabledEmailSender>();
+        }
     }
 
     /// <summary>

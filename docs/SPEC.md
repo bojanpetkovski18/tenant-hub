@@ -179,7 +179,7 @@ Real payments; emails to real recipients from the public demo; invoicing and acc
 
 ## 6. Screens
 
-**Public:** landing page (`/`, short product pitch and "Try the demo"), sign in (with demo buttons in demo mode), sign up, accept invitation (`/invite/:token`).
+**Public:** landing page (`/`, short product pitch and "Try the demo"), sign in (with demo buttons in demo mode), sign up, accept invitation (`/invite#<token>`: the token is in the fragment, D028).
 
 **Signed in, outside an organization:** organization picker (`/orgs`) with "create organization", account settings (`/account`).
 
@@ -206,8 +206,8 @@ All endpoints are under `/api` and return JSON. Errors are RFC 7807 problem deta
 | GET | `/api/auth/session` | `{ user }` with profile and memberships, or `{ user: null }`; issues the XSRF cookie (D021) |
 | POST | `/api/auth/sign-up` | user, organization and Owner membership; signs in |
 | POST | `/api/auth/sign-in` | rate-limited per IP and per account |
-| GET | `/api/invitations/{token}` | preview: organization name, inviter, role, masked email, state |
-| POST | `/api/invitations/{token}/sign-up` | new account through an invitation |
+| POST | `/api/invitations/preview` | body `{ token }`: organization name, inviter, role, masked email, state, whether an account exists, and for a signed-in caller whether the email matches and whether they already belong (D028) |
+| POST | `/api/invitations/sign-up` | body `{ token, displayName, password }`: new account and membership in one transaction; signs in |
 | GET | `/api/demo/accounts` | demo mode only |
 | POST | `/api/demo/sign-in` | demo mode only: `{ role }` |
 | GET | `/health`, `/health/live` | readiness (includes the database) and liveness |
@@ -220,7 +220,7 @@ All endpoints are under `/api` and return JSON. Errors are RFC 7807 problem deta
 | PATCH | `/api/me` | display name; returns the session |
 | POST | `/api/me/password` | current and new password |
 | POST | `/api/orgs` | create an organization (Owner) |
-| POST | `/api/invitations/{token}/accept` | signed-in acceptance |
+| POST | `/api/invitations/accept` | body `{ token }`: signed-in acceptance; already a member → `alreadyMember: true` |
 
 **Tenant-scoped** (`/api/orgs/{orgId}`, membership required)
 
@@ -231,11 +231,12 @@ All endpoints are under `/api` and return JSON. Errors are RFC 7807 problem deta
 | DELETE | `/` | `org.delete`; body confirms the name |
 | PUT | `/plan` | `billing.manage` |
 | GET | `/dashboard` | `org.read` |
-| GET | `/members` | `org.read`: active members with name, email, role, joined |
-| PATCH | `/members/{userId}` | `members.manage`: role |
-| DELETE | `/members/{userId}` | `members.manage`, or self (leave) |
-| GET | `/invitations` | `members.manage` |
-| POST | `/invitations` | `members.manage`: email and role; returns the link when email is disabled |
+| GET | `/members` | `org.read`: active members with name, email, role, joined, and what the caller may do to each (`isYou`, `canChangeRole`, `canRemove`, `canLeave`; D028) |
+| PATCH | `/members/{userId}` | `members.manage`: role; `204` |
+| DELETE | `/members/{userId}` | `members.manage`: remove someone else |
+| DELETE | `/members/me` | `org.read`: leave (D028) |
+| GET | `/invitations` | `members.manage`: open invitations (pending and expired) |
+| POST | `/invitations` | `members.manage`: email and role; `delivery` is `sent`, `link` (email disabled) or `failed`, with the link in the last two |
 | POST | `/invitations/{id}/resend` | `members.manage` |
 | DELETE | `/invitations/{id}` | `members.manage` |
 | GET | `/clients` | `clients.read`: `q` (name, contact, email), `status` (`active` default, `archived`, `all`), `sort` (`name` default, `-name`, `updated`, `-updated`, `created`, `-created`), paging |

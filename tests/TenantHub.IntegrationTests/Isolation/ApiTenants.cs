@@ -4,18 +4,21 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Api.Features.Auth;
+using TenantHub.Application.Invitations;
 using TenantHub.Application.Tenancy;
 using TenantHub.Domain.Clients;
+using TenantHub.Domain.Invitations;
 using TenantHub.Domain.Memberships;
 using TenantHub.Infrastructure.Data;
+using TenantHub.Infrastructure.Identity;
 using TenantHub.IntegrationTests.Infrastructure;
 
 namespace TenantHub.IntegrationTests.Isolation;
 
 /// <summary>
-/// Two organizations behind the real API. A ("Alpha Cleaning") has one signed-up user per role plus a removed
-/// member; B ("Bravo Gardens") is the organization the tests try to reach from A. Every user has a password, so
-/// tests sign in exactly like a browser.
+/// Two organizations behind the real API. A ("Alpha Cleaning") has one signed-up user per role, a second Owner (so
+/// the Owner may leave) and a removed member; B ("Bravo Gardens") is the organization the tests try to reach from
+/// A. Every signed-up user has a password, so tests sign in exactly like a browser.
 /// </summary>
 public sealed class ApiTenants : IAsyncDisposable
 {
@@ -40,9 +43,19 @@ public sealed class ApiTenants : IAsyncDisposable
 
     public string ClientBName { get; } = "Bravo Private Estate";
 
+    /// <summary>A standing Viewer of B, for endpoints that take a member's user id.</summary>
+    public Guid MemberB { get; private set; }
+
+    /// <summary>A standing pending invitation in A and one in B, for endpoints that take an invitation id.</summary>
+    public Guid InvitationA { get; private set; }
+
+    public Guid InvitationB { get; private set; }
+
     public string OrgBOwnerEmail { get; } = $"owner-{Guid.NewGuid():N}@bravo.example";
 
     public string RemovedMemberEmail { get; } = $"removed-{Guid.NewGuid():N}@alpha.example";
+
+    public string CoOwnerEmail { get; } = $"co-owner-{Guid.NewGuid():N}@alpha.example";
 
     public Dictionary<Role, string> EmailsA { get; } = Enum.GetValues<Role>()
         .ToDictionary(role => role, role => $"{role.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}@alpha.example");
@@ -89,12 +102,20 @@ public sealed class ApiTenants : IAsyncDisposable
             .OrderBy(a => a.Id)
             .Select(a => new { a.Id, a.Action, a.EntityId })
             .ToListAsync(Ct);
-        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit });
+        var invitations = await db.Invitations.AcrossTenants().AsNoTracking()
+            .Where(i => i.OrganizationId == OrgB)
+            .OrderBy(i => i.Id)
+            .Select(i => new { i.Id, i.Role, i.TokenHash, i.ExpiresAt, i.AcceptedAt, i.RevokedAt })
+            .ToListAsync(Ct);
+        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit, invitations });
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
     }
 
     public Guid ClientIn(Guid organizationId) =>
         organizationId == OrgA ? ClientA : organizationId == OrgB ? ClientB : Guid.NewGuid();
+
+    public Guid InvitationIn(Guid organizationId) =>
+        organizationId == OrgA ? InvitationA : organizationId == OrgB ? InvitationB : Guid.NewGuid();
 
     /// <summary>A new client in A or B, written as that organization's Owner (like a request would).</summary>
     public async Task<Guid> CreateClientAsync(Guid organizationId, string? name = null)
@@ -110,6 +131,79 @@ public sealed class ApiTenants : IAsyncDisposable
         db.Clients.Add(client);
         await db.SaveChangesAsync(Ct);
         return client.Id;
+    }
+
+    /// <summary>A new member of A or B without a password (nobody signs in as them); returns the user id.</summary>
+    public async Task<Guid> CreateMemberAsync(Guid organizationId, Role role = Role.Member)
+    {
+        if (organizationId != OrgA && organizationId != OrgB)
+        {
+            return Guid.NewGuid();
+        }
+
+        var email = $"member-{Guid.NewGuid():N}@test.example";
+        var user = new AppUser
+        {
+            Id = Guid.CreateVersion7(),
+            UserName = email,
+            NormalizedUserName = email.ToUpperInvariant(),
+            Email = email,
+            NormalizedEmail = email.ToUpperInvariant(),
+            DisplayName = email.Split('@')[0],
+            SecurityStamp = Guid.NewGuid().ToString("N"),
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+        await using (var users = PostgresFixture.CreateDbContext(ConnectionString))
+        {
+            users.Users.Add(user);
+            await users.SaveChangesAsync(Ct);
+        }
+
+        await using var db = await OwnerContextAsync(organizationId);
+        var organization = await db.Organizations.SingleAsync(o => o.Id == organizationId, Ct);
+        db.Memberships.Add(organization.AddMember(user.Id, role, DateTimeOffset.UtcNow, null));
+        await db.SaveChangesAsync(Ct);
+        return user.Id;
+    }
+
+    /// <summary>A new pending invitation (as Member) in A or B; nobody holds its link.</summary>
+    public async Task<Guid> CreateInvitationAsync(Guid organizationId)
+    {
+        if (organizationId != OrgA && organizationId != OrgB)
+        {
+            return Guid.NewGuid();
+        }
+
+        var ownerId = await OwnerIdAsync(organizationId);
+        await using var db = ContextAs(organizationId, ownerId);
+        var invitation = Invitation.Create(
+            organizationId, $"invitee-{Guid.NewGuid():N}@test.example", Role.Member, InvitationTokens.Create().Hash,
+            new Actor(ownerId, Role.Owner), DateTimeOffset.UtcNow);
+        db.Invitations.Add(invitation);
+        await db.SaveChangesAsync(Ct);
+        return invitation.Id;
+    }
+
+    /// <summary>Brings back A's role users who left, so a case that makes the caller leave can run for every role.</summary>
+    public async Task RestoreMembersOfAAsync()
+    {
+        await using var lookup = PostgresFixture.CreateDbContext(ConnectionString);
+        var users = await lookup.Users
+            .Where(u => EmailsA.Values.Contains(u.Email!) || u.Email == CoOwnerEmail)
+            .Select(u => new { u.Id, u.Email })
+            .ToListAsync(Ct);
+        var roleOf = users.ToDictionary(
+            u => u.Id,
+            u => u.Email == CoOwnerEmail ? Role.Owner : EmailsA.Single(e => e.Value == u.Email).Key);
+
+        await using var db = await OwnerContextAsync(OrgA);
+        var left = await db.Memberships.Where(m => roleOf.Keys.Contains(m.UserId) && m.RemovedAt != null).ToListAsync(Ct);
+        foreach (var membership in left)
+        {
+            membership.Rejoin(roleOf[membership.UserId], null, DateTimeOffset.UtcNow);
+        }
+
+        await db.SaveChangesAsync(Ct);
     }
 
     public async Task<(string Name, uint Version)> ClientStateAsync(Guid clientId)
@@ -167,6 +261,7 @@ public sealed class ApiTenants : IAsyncDisposable
             (EmailsA[Role.Member], Role.Member, false),
             (EmailsA[Role.Viewer], Role.Viewer, false),
             (RemovedMemberEmail, Role.Member, true),
+            (CoOwnerEmail, Role.Owner, false),
         };
         foreach (var (email, _, _) in joiners)
         {
@@ -187,8 +282,7 @@ public sealed class ApiTenants : IAsyncDisposable
             db.Memberships.Add(membership);
             if (removed)
             {
-                // Removing members arrives in M05; set the soft-removal column directly for now.
-                db.Entry(membership).Property(m => m.RemovedAt).CurrentValue = DateTimeOffset.UtcNow;
+                membership.Remove(DateTimeOffset.UtcNow, email);
             }
         }
 
@@ -196,15 +290,27 @@ public sealed class ApiTenants : IAsyncDisposable
 
         ClientA = await CreateClientAsync(OrgA, "Alpha Standing Client");
         ClientB = await CreateClientAsync(OrgB, ClientBName);
+        MemberB = await CreateMemberAsync(OrgB, Role.Viewer);
+        InvitationA = await CreateInvitationAsync(OrgA);
+        InvitationB = await CreateInvitationAsync(OrgB);
     }
 
-    private async Task<AppDbContext> OwnerContextAsync(Guid organizationId)
+    /// <summary>A context working in the organization as its first active Owner.</summary>
+    private async Task<AppDbContext> OwnerContextAsync(Guid organizationId) =>
+        ContextAs(organizationId, await OwnerIdAsync(organizationId));
+
+    private async Task<Guid> OwnerIdAsync(Guid organizationId)
     {
         await using var lookup = PostgresFixture.CreateDbContext(ConnectionString);
-        var ownerId = await lookup.Memberships.AcrossTenants()
-            .Where(m => m.OrganizationId == organizationId && m.Role == Role.Owner)
+        return await lookup.Memberships.AcrossTenants()
+            .Where(m => m.OrganizationId == organizationId && m.Role == Role.Owner && m.RemovedAt == null)
+            .OrderBy(m => m.JoinedAt)
             .Select(m => m.UserId)
             .FirstAsync(Ct);
+    }
+
+    private AppDbContext ContextAs(Guid organizationId, Guid ownerId)
+    {
         var tenant = new TenantContext();
         tenant.Enter(organizationId, ownerId, Role.Owner);
         return PostgresFixture.CreateDbContext(ConnectionString, tenant);

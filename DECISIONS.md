@@ -87,11 +87,15 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
 - **Why:** This is how real B2B products work (consultants, accountants, agencies) and it makes the isolation story stronger: the same person has different rights in different tenants, and the tests prove it.
 - **Trade-offs:** An organization switcher and slug routing in the SPA; a user-scoped area outside any organization.
 
-## D011: Invitations with hashed single-use tokens; email through SMTP with a copy-link fallback (pending M05)
+## D011: Invitations with hashed single-use tokens; email through SMTP with a copy-link fallback (confirmed M05)
 - **Date:** 2026-10-21
 - **Decision:** 32-byte random tokens, stored as SHA-256 hashes, valid for 7 days and single use. Email goes through SMTP: Mailpit in development and Compose. When email is disabled (the public demo), the API returns the link and the UI shows a copy dialog.
 - **Why:** A database leak does not expose working links; the demo works without sending email to real people.
 - **To confirm at M05:** the Mailpit version and the email library (`System.Net.Mail` versus MailKit).
+- **Confirmed at M05 (2026-10-22):**
+  - `System.Net.Mail` (in the framework, no dependency). It is enough for one relay with plain text and HTML alternatives; MailKit's advantages (modern auth, rich MIME, connection reuse) are not needed for invitation emails. Revisit if a provider requires OAuth or the volume grows.
+  - Mailpit stays pinned at `v1.31.4` (published 2026-10-03, per the GitHub releases API on 2026-10-22). The latest, `v1.31.6` (2026-10-15), is under the two-week minimum, so it is not adopted yet.
+  - `Email__Mode` is `Smtp` or `Disabled`, and unset means disabled, so nothing is sent by accident. A failed send still keeps the invitation and gives the inviter the link (`delivery: failed`).
 
 ## D012: Audit entries from domain events, in the same transaction; append-only (pending M04)
 - **Date:** 2026-10-21
@@ -276,3 +280,16 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
   A trigram index (`pg_trgm`) would serve the search; not added until data sizes need it (re-check at M10).
 - **Dialogs and the CSP:** the CDK dialog container's own component styles became an inline `<style>`, which the CSP blocked. A style-free subclass with the same template and host bindings (`CspSafeDialogContainer`) is passed by `Confirm`; its one rule lives in `styles.css`. It is not registered app-wide, because that pulled the dialog code into the initial bundle (+18 kB transferred, measured). All dialogs open through `Confirm` (or pass the same container).
 - **Accessibility finding:** the CDK now leaves `aria-modal` false unless asked; confirm dialogs set it.
+
+## D028: Members and invitations (M05)
+- **Date:** 2026-10-22
+- **The token never travels in a URL the server sees.** Email links are `<App__PublicUrl>/invite#<token>`: browsers do not send fragments, so the token stays out of server, proxy and access logs and out of `Referer` headers. The API takes it in request bodies: `POST /api/invitations/preview`, `/sign-up` and `/accept` instead of the `{token}` routes first planned in SPEC 7. Request paths are in every log scope in production (JSON logs include scopes), so a path token would have been logged on every request; a test captures all logs and scopes at Trace level through a whole flow and finds no token.
+- **Links come from `App__PublicUrl`**, required at startup; never from the request's `Host` header, which a client controls.
+- **One file bypasses the tenant filter for invitations** (`InvitationAcceptance.cs`, approved in the M05 brief): the invitee is not a member yet, so the invitation is found by its token hash. Before anything is written, the scope enters the invitation's organization, so every write passes the tenant guard as usual.
+- **Serialization:** membership changes, invitations and acceptances take a row lock on the organization (`SELECT … FOR UPDATE`). Two Owners demoting each other at once leave exactly one Owner (without the lock the test fails 3 of 3 runs); the M08 seat check will sit under the same lock.
+- **Leaving is `DELETE /members/me`** with `org.read`, rather than `DELETE /members/{ownId}` with a conditional permission: each route declares one permission, so the permission matrix stays generic. `DELETE /members/{ownId}` answers 409 `use-leave`.
+- **The SPA does not re-implement the membership rules.** Session memberships carry `grantableRoles` and `invitableRoles`; the member list carries `canChangeRole`, `canRemove` and `canLeave` per row, all computed by `MembershipRules`. A role change answers `204` and the page reloads the list, because the flags depend on everyone's roles.
+- **Rules about who may act on whom answer 403** (`owner-protected`, `role-not-grantable`: `DomainErrorKind.Forbidden`); conflicts with the organization's state stay 409 (`last-owner`, `use-leave`, `cannot-change-own-role`).
+- **Inviting the same email again** reuses the open invitation row with a new token and a new week (resend), so there is never more than one link per email; inviting a current member is 409 `already-member`; a removed member who accepts gets their old membership row back.
+- **The accept page** keeps the token in `sessionStorage` for the detour through sign-in, so the sign-in URL carries only `returnUrl=/invite`.
+

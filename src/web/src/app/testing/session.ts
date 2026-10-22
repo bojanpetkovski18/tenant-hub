@@ -52,6 +52,8 @@ export const olivia: SessionUser = {
       name: 'Brightline Cleaning Co.',
       role: 'owner',
       permissions: permissionsFor.owner,
+      grantableRoles: ['owner', 'admin', 'member', 'viewer'],
+      invitableRoles: ['admin', 'member', 'viewer'],
     },
     {
       organizationId: '0199f0a0-0000-7000-8000-0000000000a2',
@@ -59,6 +61,8 @@ export const olivia: SessionUser = {
       name: 'Harbor & Pine Landscaping',
       role: 'admin',
       permissions: permissionsFor.admin,
+      grantableRoles: ['admin', 'member', 'viewer'],
+      invitableRoles: ['admin', 'member', 'viewer'],
     },
   ],
 };

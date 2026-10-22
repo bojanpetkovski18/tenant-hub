@@ -29,6 +29,9 @@ export interface Membership {
   readonly name: string;
   readonly role: Role;
   readonly permissions: readonly Permission[];
+  /** Roles this member may give others, and invite with; from the API's rules, never derived here. */
+  readonly grantableRoles: readonly Role[];
+  readonly invitableRoles: readonly Role[];
 }
 
 export interface Organization {

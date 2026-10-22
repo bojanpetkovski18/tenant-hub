@@ -48,17 +48,18 @@ Fill this in only after a command has actually been run and verified. Format: co
 All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 24.20.0, Docker 29.8.2. Run from the repo root unless a directory is given.
 
 **One-time setup**
-- `cp .env.example .env`: local settings; `.env` is git-ignored. With `Seed__Enabled=true` and `DEMO_PASSWORD` set, the API creates the demo organizations and users on start (M02): `olivia@brightline.example` (Owner), `adam@…` (Admin), `maya@…` (Member), `victor@…` (Viewer) at Brightline, `hana@harborpine.example` (Owner of Harbor & Pine) and `sam@tenanthub.example` (in both), all with `DEMO_PASSWORD`.
+- `cp .env.example .env`: local settings; `.env` is git-ignored. `App__PublicUrl` (required since M05) is where invitation links point; `Email__Mode=Smtp` sends through Mailpit, `Disabled` (or unset) returns the link to the inviter instead. With `Seed__Enabled=true` and `DEMO_PASSWORD` set, the API creates the demo organizations and users on start (M02): `olivia@brightline.example` (Owner), `adam@…` (Admin), `maya@…` (Member), `victor@…` (Viewer) at Brightline, `hana@harborpine.example` (Owner of Harbor & Pine) and `sam@tenanthub.example` (in both), all with `DEMO_PASSWORD`.
 - `dotnet tool restore`: installs the pinned `dotnet-ef` 10.0.13 (`dotnet-tools.json`). Verified 2026-10-21 (M02).
 - `cd src/web && npm ci`: installs the exact locked web dependencies. npm warns that `esbuild` and `@parcel/watcher` install scripts are not allowed; that is expected (D019).
 
 **Dev services** (PostgreSQL 18.6 on `127.0.0.1:5434`, Mailpit SMTP `1025` and UI `http://localhost:8025`)
 - `docker compose -f docker-compose.dev.yml up -d --wait`: starts both and returns when they are healthy. Docker Desktop must be running.
+- Invitation emails land in Mailpit at `http://localhost:8025`; its API (`/api/v1/messages`, `/api/v1/message/{ID}`) is handy in scripts. Verified 2026-10-22 (M05).
 - `docker compose -f docker-compose.dev.yml ps`: status. `docker compose -f docker-compose.dev.yml down`: stops them and keeps the data volume.
 
 **API**
 - `dotnet build TenantHub.slnx`: builds everything; warnings are errors.
-- `dotnet test --solution TenantHub.slnx`: unit, architecture and integration tests (Microsoft.Testing.Platform via `global.json`); 281 tests, about 13 s after M04. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-namespace "*Isolation*"` runs the isolation suite (119 tests). Integration tests start their own PostgreSQL through Testcontainers, so Docker must be running; the dev database is not used. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-method "*Concurrent*"` runs matching tests of one project; `--output Detailed` shows the API log of a failing test.
+- `dotnet test --solution TenantHub.slnx`: unit, architecture and integration tests (Microsoft.Testing.Platform via `global.json`); 428 tests, about 20 s after M05. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-namespace "*Isolation*"` runs the isolation suite (187 tests). Integration tests start their own PostgreSQL through Testcontainers, so Docker must be running; the dev database is not used. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-method "*Concurrent*"` runs matching tests of one project; `--output Detailed` shows the API log of a failing test.
 - `dotnet format TenantHub.slnx --verify-no-changes`: formatting and code-style check (exit 2 on a violation); drop `--verify-no-changes` to fix.
 - `dotnet restore TenantHub.slnx --locked-mode`: restore exactly what the `packages.lock.json` files record (CI does this). After changing a package version, run a plain `dotnet restore` and commit the updated lock files.
 - `dotnet run --project src/api/TenantHub.Api`: API on `http://localhost:5090` in Development. It reads the repo-root `.env`, needs the dev database running, applies migrations (`Database__MigrateOnStartup`) and seeds (`Seed__Enabled`). Readiness (includes the database) at `/health`, liveness at `/health/live`; OpenAPI at `/openapi/v1.json` and the Scalar UI at `/scalar` (Development only).
@@ -70,7 +71,7 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
 - `npm start`: dev server on `http://localhost:4200`, proxying `/api` and `/health` to the API on 5090.
 - `npm run lint`: ESLint, including Angular template accessibility rules.
 - `npm run format:check` / `npm run format`: Prettier check / fix.
-- `npm run test:ci`: Vitest component tests, single run (74 tests after M04). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
+- `npm run test:ci`: Vitest component tests, single run (88 tests after M05). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
 - `npm run build`: production build to `src/web/dist/web`.
 - `npm audit --audit-level=moderate`: npm advisories (CI gate).
 

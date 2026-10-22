@@ -30,7 +30,15 @@ export const routes: Routes = [
         canActivate: [guestGuard],
         loadComponent: () => import('./features/auth/sign-up-page').then((m) => m.SignUpPage),
       },
-      page('invite/:token', 'Accept invitation', 'Invitations arrive in M05.'),
+      {
+        // The token is in the fragment (/invite#…), never in the path (D028). Open to guests and signed-in users.
+        path: 'invite',
+        title: 'Accept invitation',
+        loadComponent: () =>
+          import('./features/invitations/accept-invitation-page').then(
+            (m) => m.AcceptInvitationPage,
+          ),
+      },
       {
         path: 'orgs',
         title: 'Your organizations',
@@ -79,7 +87,11 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/clients/client-form-page').then((m) => m.ClientFormPage),
       },
-      page('members', 'Members', 'Members and invitations arrive in M05.'),
+      {
+        path: 'members',
+        title: 'Members',
+        loadComponent: () => import('./features/members/members-page').then((m) => m.MembersPage),
+      },
       page('audit', 'Audit log', 'The audit log viewer arrives in M07.'),
       page('settings', 'Settings', 'Organization settings arrive in M08.'),
     ],
