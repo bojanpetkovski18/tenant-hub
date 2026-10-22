@@ -98,7 +98,7 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
 - **Decision:** Aggregates raise domain events; a SaveChanges step turns them into audit entries before the transaction commits. Entries store an actor-name snapshot and changed fields as `jsonb`. A database trigger rejects `UPDATE` on `audit_entries`.
 - **Why:** The audit trail cannot drift from the data (same transaction) and is meaningful ("Job JOB-0042 moved from Scheduled to In progress") rather than a generic row diff. A test checks that every state-changing endpoint produces an entry, so a forgotten event is caught.
 - **Alternatives:** A generic change-tracking interceptor (complete but noisy, hard to read, and logs fields nobody cares about); writing entries explicitly in each handler (easy to forget).
-- **To confirm at M04:** how changed fields are captured.
+- **Confirmed at M04 (D027):** changed fields are captured by the domain method that makes the change (it knows the old and new values and how to name them), not by a change-tracker diff.
 
 ## D013: Plan limits checked in the command under a lock on the organization row
 - **Date:** 2026-10-21
@@ -245,3 +245,34 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
 - **Decision:** the session's memberships carry `permissions`; navigation shows only what they allow (`SessionStore.can`). Opening an organization calls `GET /api/orgs/{orgId}`, which is also the server-side membership check. Any tenant call answering 404 `organization-not-found` reloads the session and opens the picker with "You no longer have access to that organization". Other 404s (a missing client or job) are left to the page.
 - **Why:** a member can be removed while signed in. The next request is the earliest moment the app can know, and the session reload makes the switcher stop offering the organization.
 - **Browser-test finding:** an intermittent failure (about 1 in 3 full runs) of a keyboard check after sign-out was traced with Angular's dev-mode `ng` API. The router updates the URL when it creates the page, and the page's bindings apply on the next frame (measured under 25 ms). Playwright sent Tab and Enter inside that gap, so `FormGroupDirective` had no form yet. People cannot act before the first paint, so the app was not changed; the check now waits for a bound attribute (`#email[aria-invalid]`) and passed 6 of 6 runs.
+
+## D027: Clients, audit recording and the list pattern (M04)
+- **Date:** 2026-10-22
+- **Audit recording (confirms D012):**
+  - aggregates raise `IAuditableEvent`s that carry the action, a readable summary and the changed fields (old → new);
+  - `AuditWriter` turns them into `audit_entries` rows just before `SaveChanges`, with the actor's display name as a snapshot and the request's trace id;
+  - the change and its entry commit or roll back together: tested with a rolled-back transaction, with a change the database refuses, and with the audit table missing (the API answers 500 and saves nothing);
+  - `changes` is one `jsonb` value per entry (read whole, never queried per field).
+- **Clients:**
+  - `citext` name, so case-insensitive uniqueness, sorting and comparison need no `lower()` expressions; a partial unique index on `(organization_id, name) WHERE status = 'Active'`, so an archived name can be reused;
+  - the `(organization_id, id)` alternate key, the target of the composite foreign keys from jobs in M06;
+  - `xmin` mapped to a domain `Version`: the edit form sends back the version it loaded, and a newer one means 409 `concurrency-conflict`;
+  - archive and restore are idempotent; delete is for clients without jobs (the check arrives with jobs in M06);
+  - duplicate names come from the unique index (409 `client-name-taken`), so there is no race between a check and an insert.
+- **Errors:** domain errors gain a `NotFound` kind (404 with a code, for example `client-not-found`). Field errors from the domain are one `DomainValidationException` (400, every field at once).
+- **The guard's move check** became reachable: audit entries are keyed by `id` alone, so EF Core allows the change and the guard is what refuses it (tested). Clients, like memberships, carry `organization_id` in a key, so EF Core refuses that move first.
+- **Isolation suite:**
+  - endpoints with an `{id}` get a resource (A's standing client, a fresh client for deletes);
+  - a new matrix sends B's ids under A's own route (404 `client-not-found`, B unchanged);
+  - cases are prepared before the "before" snapshot, so test setup is not mistaken for a leak (found when setup archived B's client);
+  - every audited endpoint must write an entry, and every state-changing endpoint must be marked audited.
+
+  Mutation check: client handlers bypassing the filter fail six tests.
+- **The list pattern (web):** the query (search, status, sort, page) is the URL, bound to inputs; a reusable paged-list SignalStore only fetches and ignores late answers. Sort keys and status values are allow-listed on both sides; unknown values fall back to the defaults. Table on wide screens, cards on narrow ones.
+- **Query plans** (10,000 synthetic clients in one organization, PostgreSQL 18.6):
+  - the default page (active, by name) uses `ux_clients_active_name` (0.66 ms);
+  - the count and the substring search scan the table (1.7 ms and 6.3 ms).
+
+  A trigram index (`pg_trgm`) would serve the search; not added until data sizes need it (re-check at M10).
+- **Dialogs and the CSP:** the CDK dialog container's own component styles became an inline `<style>`, which the CSP blocked. A style-free subclass with the same template and host bindings (`CspSafeDialogContainer`) is passed by `Confirm`; its one rule lives in `styles.css`. It is not registered app-wide, because that pulled the dialog code into the initial bundle (+18 kB transferred, measured). All dialogs open through `Confirm` (or pass the same container).
+- **Accessibility finding:** the CDK now leaves `aria-modal` false unless asked; confirm dialogs set it.

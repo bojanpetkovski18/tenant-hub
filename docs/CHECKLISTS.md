@@ -17,7 +17,7 @@ A milestone is done when all of the following are true and shown in the mileston
 - **Handlers:** success path, validation errors, not found inside the tenant, permission refused, resource rule refused, concurrency conflict (`409`), plan limit (`403 plan-limit-reached`).
 - **API (integration):** status codes and problem-details shape; the permission table rows for the endpoint (allowed and refused roles); antiforgery required on unsafe methods; rate limits where specified.
 - **Isolation:** the endpoint has a line in `TenantEndpointCases.cs` (the coverage test fails otherwise), so it runs in the cross-tenant and permission matrices; foreign ids under the own route and the own ids under a foreign route give `404`; the other organization's data is unchanged; a new entity is tenant-owned or on the reviewed allow-list.
-- **Audit:** each state-changing endpoint writes the expected entry, and a rolled-back command writes none.
+- **Audit:** each state-changing endpoint is marked `Audited` in `TenantEndpointCases.cs` (AuditCoverageTests enforces it) and writes the expected entry; a rolled-back command writes none.
 - **Web:** component tests for forms (validation and server errors), permission-based visibility, and the loading, empty and error states.
 - **Browser pass:** the user stories of the milestone, step by step, at the three widths and by keyboard.
 

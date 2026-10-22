@@ -238,11 +238,11 @@ All endpoints are under `/api` and return JSON. Errors are RFC 7807 problem deta
 | POST | `/invitations` | `members.manage`: email and role; returns the link when email is disabled |
 | POST | `/invitations/{id}/resend` | `members.manage` |
 | DELETE | `/invitations/{id}` | `members.manage` |
-| GET | `/clients` | `clients.read`: `q`, `status`, `sort`, paging |
+| GET | `/clients` | `clients.read`: `q` (name, contact, email), `status` (`active` default, `archived`, `all`), `sort` (`name` default, `-name`, `updated`, `-updated`, `created`, `-created`), paging |
 | POST | `/clients` | `clients.write` |
 | GET | `/clients/{id}` | `clients.read` |
-| PUT | `/clients/{id}` | `clients.write`; concurrency token |
-| POST | `/clients/{id}/archive`, `/clients/{id}/restore` | `clients.write` |
+| PUT | `/clients/{id}` | `clients.write`; body includes the `version` read earlier; a newer one → `409 concurrency-conflict` |
+| POST | `/clients/{id}/archive`, `/clients/{id}/restore` | `clients.write`; idempotent; restoring onto a taken active name → `409 client-name-taken` |
 | DELETE | `/clients/{id}` | `clients.delete`; `409` if the client has jobs |
 | GET | `/jobs` | `jobs.read`: `q`, `status[]`, `assignee` (id, `me`, `none`), `clientId`, `priority[]`, `overdue`, `dueFrom`, `dueTo`, `sort`, paging |
 | POST | `/jobs` | `jobs.create` |

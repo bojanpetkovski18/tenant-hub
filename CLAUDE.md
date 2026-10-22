@@ -58,18 +58,19 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
 
 **API**
 - `dotnet build TenantHub.slnx`: builds everything; warnings are errors.
-- `dotnet test --solution TenantHub.slnx`: unit, architecture and integration tests (Microsoft.Testing.Platform via `global.json`); 183 tests, 10–15 s after M03. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-namespace "*Isolation*"` runs the isolation suite (48 tests). Integration tests start their own PostgreSQL through Testcontainers, so Docker must be running; the dev database is not used. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-method "*Concurrent*"` runs matching tests of one project; `--output Detailed` shows the API log of a failing test.
+- `dotnet test --solution TenantHub.slnx`: unit, architecture and integration tests (Microsoft.Testing.Platform via `global.json`); 281 tests, about 13 s after M04. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-namespace "*Isolation*"` runs the isolation suite (119 tests). Integration tests start their own PostgreSQL through Testcontainers, so Docker must be running; the dev database is not used. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-method "*Concurrent*"` runs matching tests of one project; `--output Detailed` shows the API log of a failing test.
 - `dotnet format TenantHub.slnx --verify-no-changes`: formatting and code-style check (exit 2 on a violation); drop `--verify-no-changes` to fix.
 - `dotnet restore TenantHub.slnx --locked-mode`: restore exactly what the `packages.lock.json` files record (CI does this). After changing a package version, run a plain `dotnet restore` and commit the updated lock files.
 - `dotnet run --project src/api/TenantHub.Api`: API on `http://localhost:5090` in Development. It reads the repo-root `.env`, needs the dev database running, applies migrations (`Database__MigrateOnStartup`) and seeds (`Seed__Enabled`). Readiness (includes the database) at `/health`, liveness at `/health/live`; OpenAPI at `/openapi/v1.json` and the Scalar UI at `/scalar` (Development only).
 - `dotnet ef migrations add <Name> --project src/api/TenantHub.Infrastructure --startup-project src/api/TenantHub.Infrastructure --output-dir Data/Migrations`: adds a migration (a design-time factory means the API need not start). Review it as SQL with `dotnet ef migrations script --project src/api/TenantHub.Infrastructure --startup-project src/api/TenantHub.Infrastructure` (it builds first; `--no-build` uses the last build). A forgotten migration fails `Model_matches_the_migrations`.
 - `dotnet list TenantHub.slnx package --vulnerable --include-transitive`: NuGet advisories.
+- A fresh, fully seeded database without touching the dev data (verified 2026-10-22, M04): `docker compose -f docker-compose.dev.yml exec -T db psql -U tenant_hub -d tenant_hub -c "CREATE DATABASE tenant_hub_scratch"`, then run the API with `ConnectionStrings__Database="Host=localhost;Port=5434;Database=tenant_hub_scratch;Username=tenant_hub;Password=change-me"`; it migrates and seeds that database on start.
 
 **Web** (`src/web`)
 - `npm start`: dev server on `http://localhost:4200`, proxying `/api` and `/health` to the API on 5090.
 - `npm run lint`: ESLint, including Angular template accessibility rules.
 - `npm run format:check` / `npm run format`: Prettier check / fix.
-- `npm run test:ci`: Vitest component tests, single run (58 tests after M03). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
+- `npm run test:ci`: Vitest component tests, single run (74 tests after M04). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
 - `npm run build`: production build to `src/web/dist/web`.
 - `npm audit --audit-level=moderate`: npm advisories (CI gate).
 
@@ -131,6 +132,8 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
 - **UI states and accessibility.**
   - Every screen has loading, empty, error and success states.
   - No component `styles` or inline `style` attributes: Angular injects component styles as inline `<style>` elements, which the strict CSP blocks. Use Tailwind classes and `styles.css` (D023).
+  - Dialogs open through `Confirm` (or pass `CspSafeDialogContainer`), never with the CDK's default container, which brings its own component styles (D027).
+  - List pages keep their query in the URL (query parameters bound as inputs) and fetch with `createPagedListStore` (D027).
   - Everything interactive has an accessible name and keyboard support; visible focus; respect `prefers-reduced-motion`.
   - The UI hides actions the user lacks permission for, using the permissions from the session (`GET /api/auth/session`); it never re-implements the role map.
 - **Logging and time.**
