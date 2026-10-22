@@ -9,6 +9,7 @@ using TenantHub.Api.Features.Account;
 using TenantHub.Api.Features.Auth;
 using TenantHub.Api.Features.Clients;
 using TenantHub.Api.Features.Invitations;
+using TenantHub.Api.Features.Jobs;
 using TenantHub.Api.Features.Organizations;
 using TenantHub.Application;
 using TenantHub.Infrastructure;
@@ -73,6 +74,7 @@ app.MapAccountEndpoints();
 app.MapOrganizationEndpoints();
 app.MapClientEndpoints();
 app.MapInvitationEndpoints();
+app.MapJobEndpoints();
 foreach (var mapper in app.Services.GetServices<IEndpointMapper>())
 {
     mapper.Map(app);

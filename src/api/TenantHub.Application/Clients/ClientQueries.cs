@@ -92,6 +92,9 @@ internal static class ClientErrors
     public static DomainException NotFound() =>
         new("client-not-found", "Client not found.", DomainErrorKind.NotFound);
 
+    public static DomainException HasJobs() =>
+        new("client-has-jobs", "This client has jobs, so it cannot be deleted. Archive it instead.", DomainErrorKind.Conflict);
+
     public static DomainException NameTaken() =>
         new("client-name-taken", "Another active client already has this name.", DomainErrorKind.Conflict);
 

@@ -26,6 +26,12 @@ public enum CaseResource
 
     /// <summary>An invitation created just for this request (for revokes).</summary>
     FreshInvitation,
+
+    /// <summary>The organization's standing job (A's is assigned to its Member).</summary>
+    Job,
+
+    /// <summary>A New job created just for this request, assigned to the caller's role when known, else the Owner.</summary>
+    FreshJob,
 }
 
 /// <summary>The organization and resource a case is sent to.</summary>
@@ -59,6 +65,7 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         CaseResource.Client or CaseResource.FreshClient => "client-not-found",
         CaseResource.FreshMember => "member-not-found",
         CaseResource.Invitation or CaseResource.FreshInvitation => "invitation-not-found",
+        CaseResource.Job or CaseResource.FreshJob => "job-not-found",
         _ => throw new InvalidOperationException($"{Key} takes no id."),
     };
 
@@ -68,6 +75,7 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         CaseResource.Client or CaseResource.FreshClient => tenants.ClientB,
         CaseResource.FreshMember => tenants.MemberB,
         CaseResource.Invitation or CaseResource.FreshInvitation => tenants.InvitationB,
+        CaseResource.Job or CaseResource.FreshJob => tenants.JobB,
         _ => throw new InvalidOperationException($"{Key} takes no id."),
     };
 
@@ -153,6 +161,47 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
             Audited = true,
         },
 
+        new("GET", "/jobs/", Permissions.JobsRead),
+        new("POST", "/jobs/", Permissions.JobsCreate)
+        {
+            Allowed = HttpStatusCode.Created,
+            Audited = true,
+            Body = input => Task.FromResult<object>(new { title = $"Matrix job {Guid.NewGuid():N}", clientId = input.Tenants.ClientIn(input.OrganizationId) }),
+        },
+        new("GET", "/jobs/{id:guid}", Permissions.JobsRead) { Resource = CaseResource.Job },
+        new("GET", "/jobs/{id:guid}/history", Permissions.JobsRead) { Resource = CaseResource.Job },
+        new("PUT", "/jobs/{id:guid}", Permissions.JobsWork)
+        {
+            // Assigned to the caller, so the resource rule (jobs.work only on your own jobs) passes for every role that has jobs.work.
+            Resource = CaseResource.FreshJob,
+            Audited = true,
+            Body = async input =>
+            {
+                var details = await input.Tenants.JobDetailsAsync(input.ResourceId!.Value);
+                return new
+                {
+                    title = details.Title,
+                    description = $"Note {Guid.NewGuid():N}",
+                    clientId = details.ClientId,
+                    assigneeUserId = details.AssigneeUserId,
+                    priority = "high",
+                    version = await input.Tenants.JobVersionAsync(input.ResourceId!.Value),
+                };
+            },
+        },
+        new("POST", "/jobs/{id:guid}/transitions", Permissions.JobsWork)
+        {
+            Resource = CaseResource.FreshJob,
+            Audited = true,
+            Body = _ => Task.FromResult<object>(new { to = "inProgress" }),
+        },
+        new("DELETE", "/jobs/{id:guid}", Permissions.JobsManage)
+        {
+            Resource = CaseResource.FreshJob,
+            Allowed = HttpStatusCode.NoContent,
+            Audited = true,
+        },
+
         // Test-only endpoints (ApiFactory): the 403 path, and the guard stopping a deliberate bug (500).
         new("GET", ApiFactory.OwnerOnlyPattern, Permissions.BillingManage),
         new("POST", ApiFactory.IsolationViolationPattern, Permissions.OrgRead) { Allowed = HttpStatusCode.InternalServerError },
@@ -162,7 +211,7 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
     /// Resolves the <c>{id}</c> (<paramref name="resourceId"/> when given, else this organization's resource) and runs
     /// <see cref="Arrange"/>. Tests that compare snapshots take them after this, so setup is not mistaken for a leak.
     /// </summary>
-    public async Task<CaseInput> PrepareAsync(ApiTenants tenants, Guid organizationId, Guid? resourceId = null)
+    public async Task<CaseInput> PrepareAsync(ApiTenants tenants, Guid organizationId, Guid? resourceId = null, Role? caller = null)
     {
         resourceId ??= Resource switch
         {
@@ -171,6 +220,8 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
             CaseResource.FreshMember => await tenants.CreateMemberAsync(organizationId),
             CaseResource.Invitation => tenants.InvitationIn(organizationId),
             CaseResource.FreshInvitation => await tenants.CreateInvitationAsync(organizationId),
+            CaseResource.Job => tenants.JobIn(organizationId),
+            CaseResource.FreshJob => await tenants.CreateJobAsync(organizationId, caller),
             _ => null,
         };
         var input = new CaseInput(tenants, organizationId, resourceId);
@@ -182,8 +233,10 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         return input;
     }
 
-    public async Task<HttpResponseMessage> SendAsync(BrowserClient client, ApiTenants tenants, Guid organizationId, Guid? resourceId = null) =>
-        await SendAsync(client, await PrepareAsync(tenants, organizationId, resourceId));
+    /// <summary><paramref name="caller"/> is the role of A's member sending, for resources that must belong to them.</summary>
+    public async Task<HttpResponseMessage> SendAsync(
+        BrowserClient client, ApiTenants tenants, Guid organizationId, Guid? resourceId = null, Role? caller = null) =>
+        await SendAsync(client, await PrepareAsync(tenants, organizationId, resourceId, caller));
 
     public async Task<HttpResponseMessage> SendAsync(BrowserClient client, CaseInput input)
     {
