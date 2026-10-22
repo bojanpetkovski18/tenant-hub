@@ -24,9 +24,9 @@ internal static class InvitationEmails
             <!doctype html>
             <html lang="en">
             <body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #0f172a;">
-              <p>{html.Encode(inviterName)} invited you to join <strong>{html.Encode(organizationName)}</strong> on TenantHub as {html.Encode(role.ToString())}.</p>
-              <p><a href="{html.Encode(link)}">Accept the invitation</a></p>
-              <p>The link works once and expires on {html.Encode(expires)} (UTC). If you were not expecting this, you can ignore it.</p>
+                <p>{html.Encode(inviterName)} invited you to join <strong>{html.Encode(organizationName)}</strong> on TenantHub as {html.Encode(role.ToString())}.</p>
+                <p><a href="{html.Encode(link)}">Accept the invitation</a></p>
+                <p>The link works once and expires on {html.Encode(expires)} (UTC). If you were not expecting this, you can ignore it.</p>
             </body>
             </html>
             """;
