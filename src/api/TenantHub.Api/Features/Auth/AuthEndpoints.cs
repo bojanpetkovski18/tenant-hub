@@ -97,7 +97,7 @@ public static class AuthEndpoints
         return TypedResults.Ok(await ReadSessionAsync(context.User, session, ct));
     }
 
-    private static async Task StartSessionAsync(HttpContext context, AppUser user, SignInManager<AppUser> signIn, XsrfCookie xsrf)
+    internal static async Task StartSessionAsync(HttpContext context, AppUser user, SignInManager<AppUser> signIn, XsrfCookie xsrf)
     {
         await signIn.SignInAsync(user, isPersistent: true);
         // The cookie only applies from the next request; this one continues as the new user for the XSRF token.

@@ -33,7 +33,7 @@ public sealed class TenantEndpointTests(PostgresFixture postgres)
         var members = await member.Http.GetFromJsonAsync<List<MemberResponse>>($"/api/orgs/{tenants.OrgA}/members", BrowserClient.Json, Ct);
 
         Assert.Equal(
-            [(tenants.EmailsA[Role.Owner], Role.Owner), (tenants.EmailsA[Role.Admin], Role.Admin), (tenants.EmailsA[Role.Member], Role.Member), (tenants.EmailsA[Role.Viewer], Role.Viewer)],
+            [(tenants.CoOwnerEmail, Role.Owner), (tenants.EmailsA[Role.Owner], Role.Owner), (tenants.EmailsA[Role.Admin], Role.Admin), (tenants.EmailsA[Role.Member], Role.Member), (tenants.EmailsA[Role.Viewer], Role.Viewer)],
             members!.Select(m => (m.Email, m.Role)));
         Assert.DoesNotContain(members!, m => m.Email == tenants.RemovedMemberEmail || m.Email == tenants.OrgBOwnerEmail);
     }

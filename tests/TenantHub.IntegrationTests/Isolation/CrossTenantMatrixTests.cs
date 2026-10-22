@@ -88,14 +88,14 @@ public sealed class CrossTenantMatrixTests(PostgresFixture postgres)
         var tenants = await SharedApiTenants.GetAsync<CrossTenantMatrixTests>(postgres);
         var endpoint = TenantEndpointCase.All.Single(c => c.Key == key);
         var owner = await tenants.ClientForAsync(Role.Owner);
-        // A's route, A's membership, B's client id: the tenant filter makes it simply not exist.
-        var input = await endpoint.PrepareAsync(tenants, tenants.OrgA, tenants.ClientB);
+        // A's route, A's membership, B's resource id: the tenant filter makes it simply not exist.
+        var input = await endpoint.PrepareAsync(tenants, tenants.OrgA, endpoint.ForeignResource(tenants));
         var before = await tenants.SnapshotOfBAsync();
 
         var response = await endpoint.SendAsync(owner, input);
 
         var problem = await ProblemAssert.IsProblemAsync(response, HttpStatusCode.NotFound);
-        Assert.Equal("client-not-found", problem.GetProperty("code").GetString());
+        Assert.Equal(endpoint.NotFoundCode, problem.GetProperty("code").GetString());
         Assert.DoesNotContain(tenants.ClientBName, problem.GetRawText(), StringComparison.OrdinalIgnoreCase);
         Assert.Equal(before, await tenants.SnapshotOfBAsync());
     }

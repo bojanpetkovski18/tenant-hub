@@ -14,6 +14,8 @@ public sealed record CreateOrganizationRequest(
 
 public sealed record OrganizationResponse(Guid Id, string Name, string Slug, Plan Plan, string TimeZone, DateTimeOffset CreatedAt);
 
+public sealed record ChangeRoleRequest(Role? Role);
+
 public sealed record MemberResponse(Guid UserId, string DisplayName, string Email, Role Role, DateTimeOffset JoinedAt);
 
 public static class OrganizationEndpoints
@@ -44,6 +46,29 @@ public static class OrganizationEndpoints
             {
                 var members = await query.HandleAsync(ct);
                 return TypedResults.Ok(members.Select(m => new MemberResponse(m.UserId, m.DisplayName, m.Email, m.Role, m.JoinedAt)).ToList());
+            })
+            .RequirePermission(Permissions.OrgRead);
+
+        organization.MapPatch("/members/{userId:guid}", async (Guid userId, ChangeRoleRequest request, MemberCommands commands, CancellationToken ct) =>
+            {
+                var m = await commands.ChangeRoleAsync(userId, request.Role, ct);
+                return TypedResults.Ok(new MemberResponse(m.UserId, m.DisplayName, m.Email, m.Role, m.JoinedAt));
+            })
+            .RequirePermission(Permissions.MembersManage);
+
+        organization.MapDelete("/members/{userId:guid}", async (Guid userId, MemberCommands commands, CancellationToken ct) =>
+            {
+                await commands.RemoveAsync(userId, ct);
+                return TypedResults.NoContent();
+            })
+            .RequirePermission(Permissions.MembersManage);
+
+        // Leaving needs no management permission: every member may leave (unless the last Owner, SPEC 5.2). A route
+        // of its own, so each route declares one permission (D028).
+        organization.MapDelete("/members/me", async (MemberCommands commands, CancellationToken ct) =>
+            {
+                await commands.LeaveAsync(ct);
+                return TypedResults.NoContent();
             })
             .RequirePermission(Permissions.OrgRead);
 

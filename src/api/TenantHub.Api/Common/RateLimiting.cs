@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
+using TenantHub.Api.Common.Auth;
 
 namespace TenantHub.Api.Common;
 
@@ -12,11 +13,17 @@ public sealed class RateLimitOptions
     public int AuthPermitLimit { get; init; } = 10;
 
     public int AuthWindowSeconds { get; init; } = 60;
+
+    /// <summary>Invitation sends (per user) and invitation look-ups and acceptances (per client IP) per window.</summary>
+    public int InvitationPermitLimit { get; init; } = 20;
+
+    public int InvitationWindowSeconds { get; init; } = 60;
 }
 
 public static class RateLimiting
 {
     public const string AuthPolicy = "auth";
+    public const string InvitationPolicy = "invitations";
 
     public static IServiceCollection AddAppRateLimiting(this IServiceCollection services, IConfiguration configuration)
     {
@@ -54,6 +61,18 @@ public static class RateLimiting
                 {
                     PermitLimit = options.AuthPermitLimit,
                     Window = TimeSpan.FromSeconds(options.AuthWindowSeconds),
+                    QueueLimit = 0,
+                }));
+
+            // Signed in: per user, so one account cannot flood inboxes from many addresses. Otherwise per client IP.
+            limiter.AddPolicy(InvitationPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
+                context.User.Identity?.IsAuthenticated == true
+                    ? "user:" + context.User.GetUserId()
+                    : "ip:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = options.InvitationPermitLimit,
+                    Window = TimeSpan.FromSeconds(options.InvitationWindowSeconds),
                     QueueLimit = 0,
                 }));
         });

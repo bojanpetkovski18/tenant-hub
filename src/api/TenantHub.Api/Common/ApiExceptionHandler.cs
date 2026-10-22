@@ -7,9 +7,10 @@ namespace TenantHub.Api.Common;
 
 /// <summary>
 /// Turns the application's expected failures into problem details: <see cref="RequestValidationException"/>
-/// becomes a 400 validation problem with field errors, <see cref="DomainException"/> a 400 or 409 with its stable
-/// <c>code</c> (SPEC 7). A <see cref="TenantIsolationException"/> is logged as a security event and answered with a
-/// bare 500. Anything else falls through to the generic 500 without exception details.
+/// becomes a 400 validation problem with field errors, <see cref="DomainException"/> a 400, 403, 404 or 409 with
+/// its stable <c>code</c> (SPEC 7; 403 for a rule about who may do what to whom). A
+/// <see cref="TenantIsolationException"/> is logged as a security event and answered with a bare 500. Anything else
+/// falls through to the generic 500 without exception details.
 /// </summary>
 public sealed partial class ApiExceptionHandler(IProblemDetailsService problemDetails, ILogger<ApiExceptionHandler> logger) : IExceptionHandler
 {
@@ -47,6 +48,7 @@ public sealed partial class ApiExceptionHandler(IProblemDetailsService problemDe
                 {
                     DomainErrorKind.Validation => StatusCodes.Status400BadRequest,
                     DomainErrorKind.NotFound => StatusCodes.Status404NotFound,
+                    DomainErrorKind.Forbidden => StatusCodes.Status403Forbidden,
                     _ => StatusCodes.Status409Conflict,
                 },
                 Title = domain.Message,
