@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using TenantHub.Domain.Audit;
 using TenantHub.Domain.Clients;
 using TenantHub.Domain.Invitations;
+using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
 using TenantHub.Domain.Organizations;
 
@@ -24,6 +25,8 @@ public interface IAppDbContext
     DbSet<AuditEntry> AuditEntries { get; }
 
     DbSet<Invitation> Invitations { get; }
+
+    DbSet<Job> Jobs { get; }
 
     /// <summary>For optimistic concurrency: handlers set the version the client last saw as the original value.</summary>
     EntityEntry<TEntity> Entry<TEntity>(TEntity entity)
