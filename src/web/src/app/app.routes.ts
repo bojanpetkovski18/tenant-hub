@@ -55,9 +55,30 @@ export const routes: Routes = [
       page('jobs', 'Jobs', 'Jobs arrive in M06.'),
       page('jobs/new', 'New job', 'Jobs arrive in M06.'),
       page('jobs/:id', 'Job', 'Jobs arrive in M06.'),
-      page('clients', 'Clients', 'Clients arrive in M04.'),
-      page('clients/new', 'New client', 'Clients arrive in M04.'),
-      page('clients/:id', 'Client', 'Clients arrive in M04.'),
+      {
+        path: 'clients',
+        title: 'Clients',
+        loadComponent: () =>
+          import('./features/clients/clients-list-page').then((m) => m.ClientsListPage),
+      },
+      {
+        path: 'clients/new',
+        title: 'New client',
+        loadComponent: () =>
+          import('./features/clients/client-form-page').then((m) => m.ClientFormPage),
+      },
+      {
+        path: 'clients/:id',
+        title: 'Client',
+        loadComponent: () =>
+          import('./features/clients/client-detail-page').then((m) => m.ClientDetailPage),
+      },
+      {
+        path: 'clients/:id/edit',
+        title: 'Edit client',
+        loadComponent: () =>
+          import('./features/clients/client-form-page').then((m) => m.ClientFormPage),
+      },
       page('members', 'Members', 'Members and invitations arrive in M05.'),
       page('audit', 'Audit log', 'The audit log viewer arrives in M07.'),
       page('settings', 'Settings', 'Organization settings arrive in M08.'),

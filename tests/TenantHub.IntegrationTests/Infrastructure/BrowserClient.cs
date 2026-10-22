@@ -86,6 +86,13 @@ public sealed class BrowserClient : IDisposable
         return await Http.PatchAsJsonAsync(path, body, Ct);
     }
 
+    public async Task<HttpResponseMessage> SendJsonAsync(HttpMethod method, string path, object? body)
+    {
+        await EnsureXsrfAsync();
+        using var request = new HttpRequestMessage(method, path) { Content = body is null ? null : JsonContent.Create(body) };
+        return await Http.SendAsync(request, Ct);
+    }
+
     private async Task EnsureXsrfAsync()
     {
         if (Cookies.GetCookies(BaseAddress)["XSRF-TOKEN"] is null)

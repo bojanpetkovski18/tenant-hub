@@ -29,6 +29,12 @@ public sealed partial class ApiExceptionHandler(IProblemDetailsService problemDe
 
         ProblemDetails? problem = exception switch
         {
+            DomainValidationException fields => new ValidationProblemDetails(fields.Errors.ToDictionary(e => e.Key, e => e.Value))
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = fields.Message,
+                Extensions = { ["code"] = fields.Code },
+            },
             RequestValidationException validation => new ValidationProblemDetails(
                 validation.Errors.Errors.ToDictionary(e => e.Key, e => e.Value))
             {
@@ -37,7 +43,12 @@ public sealed partial class ApiExceptionHandler(IProblemDetailsService problemDe
             },
             DomainException domain => new ProblemDetails
             {
-                Status = domain.Kind == DomainErrorKind.Validation ? StatusCodes.Status400BadRequest : StatusCodes.Status409Conflict,
+                Status = domain.Kind switch
+                {
+                    DomainErrorKind.Validation => StatusCodes.Status400BadRequest,
+                    DomainErrorKind.NotFound => StatusCodes.Status404NotFound,
+                    _ => StatusCodes.Status409Conflict,
+                },
                 Title = domain.Message,
                 Extensions = { ["code"] = domain.Code },
             },

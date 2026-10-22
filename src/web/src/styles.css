@@ -21,6 +21,7 @@
   --th-on-accent: #ffffff;
   --th-focus: #0f766e;
   --th-danger: #b91c1c;
+  --th-on-danger: #ffffff;
   --th-success: #15803d;
   --th-warning: #b45309;
   --th-backdrop: rgb(15 23 42 / 0.45);
@@ -42,6 +43,7 @@
     --th-on-accent: #042f2e;
     --th-focus: #5eead4;
     --th-danger: #f87171;
+    --th-on-danger: #1a0505;
     --th-success: #4ade80;
     --th-warning: #fbbf24;
     --th-backdrop: rgb(2 6 23 / 0.6);
@@ -63,6 +65,7 @@
   --th-on-accent: #042f2e;
   --th-focus: #5eead4;
   --th-danger: #f87171;
+  --th-on-danger: #1a0505;
   --th-success: #4ade80;
   --th-warning: #fbbf24;
   --th-backdrop: rgb(2 6 23 / 0.6);
@@ -82,6 +85,7 @@
   --color-on-accent: var(--th-on-accent);
   --color-focus: var(--th-focus);
   --color-danger: var(--th-danger);
+  --color-on-danger: var(--th-on-danger);
   --color-success: var(--th-success);
   --color-warning: var(--th-warning);
   --color-backdrop: var(--th-backdrop);
@@ -157,6 +161,10 @@
     @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-accent px-4 text-sm font-semibold text-on-accent transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60;
   }
 
+  .th-button-danger {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-danger px-4 text-sm font-semibold text-on-danger transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
   .th-button-secondary {
     @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-border bg-surface px-4 text-sm font-medium text-fg transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60;
   }
@@ -175,6 +183,19 @@
 
   .th-menu-item {
     @apply flex min-h-10 w-full items-center gap-3 rounded-md px-3 text-left text-sm text-fg hover:bg-surface-2 focus:bg-surface-2 focus:outline-none;
+  }
+
+  /* The CDK dialog container's only rule, here instead of as an inline component style (D027). */
+  .cdk-dialog-container {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: inherit;
+    max-height: inherit;
+  }
+
+  .th-dialog-backdrop {
+    background: var(--th-backdrop);
   }
 
   .th-badge {

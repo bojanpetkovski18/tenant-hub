@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Tenancy;
+using TenantHub.Domain.Clients;
 using TenantHub.Domain.Memberships;
 using TenantHub.Infrastructure.Seed;
 using TenantHub.IntegrationTests.Infrastructure;
@@ -31,6 +32,11 @@ public sealed class DemoSeederTests(PostgresFixture postgres)
         Assert.Equal(6, await db.Users.CountAsync(Ct));
         Assert.Equal(7, await db.Memberships.AcrossTenants().CountAsync(Ct));
         Assert.True(await db.Organizations.AllAsync(o => o.IsDemoSeed, Ct));
+        Assert.Equal(40, await db.Clients.AcrossTenants().CountAsync(Ct));
+        Assert.Equal(5, await db.Clients.AcrossTenants().CountAsync(c => c.Status == ClientStatus.Archived, Ct));
+        Assert.All(await db.Clients.AcrossTenants().Select(c => c.Email!).ToListAsync(Ct), email => Assert.EndsWith(".example", email, StringComparison.Ordinal));
+        // The seed goes through the domain, so its history is complete: 40 created and 5 archived.
+        Assert.Equal(45, await db.AuditEntries.AcrossTenants().CountAsync(Ct));
         Assert.All(DemoSeeder.Emails, email => Assert.EndsWith(".example", email, StringComparison.Ordinal));
     }
 

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using TenantHub.Application.Abstractions;
 using TenantHub.Application.Accounts;
+using TenantHub.Application.Clients;
 using TenantHub.Application.Organizations;
 using TenantHub.Application.Tenancy;
 
@@ -20,5 +21,8 @@ public static class ApplicationSetup
         .AddScoped<ChangePasswordHandler>()
         .AddScoped<CreateOrganizationHandler>()
         .AddScoped<GetOrganizationQuery>()
-        .AddScoped<ListMembersQuery>();
+        .AddScoped<ListMembersQuery>()
+        .AddScoped<ListClientsQuery>()
+        .AddScoped<GetClientQuery>()
+        .AddScoped<ClientCommands>();
 }

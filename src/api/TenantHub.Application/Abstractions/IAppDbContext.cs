@@ -1,5 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using TenantHub.Domain.Audit;
+using TenantHub.Domain.Clients;
 using TenantHub.Domain.Memberships;
 using TenantHub.Domain.Organizations;
 
@@ -14,6 +17,14 @@ public interface IAppDbContext
     DbSet<Organization> Organizations { get; }
 
     DbSet<Membership> Memberships { get; }
+
+    DbSet<Client> Clients { get; }
+
+    DbSet<AuditEntry> AuditEntries { get; }
+
+    /// <summary>For optimistic concurrency: handlers set the version the client last saw as the original value.</summary>
+    EntityEntry<TEntity> Entry<TEntity>(TEntity entity)
+        where TEntity : class;
 
     DatabaseFacade Database { get; }
 

@@ -15,6 +15,7 @@ import {
   provideRouter,
   withComponentInputBinding,
   withInMemoryScrolling,
+  withRouterConfig,
 } from '@angular/router';
 import { routes } from './app.routes';
 import { AppTitleStrategy } from './core/app-title-strategy';
@@ -40,6 +41,8 @@ export const appConfig: ApplicationConfig = {
       routes,
       withComponentInputBinding(),
       withInMemoryScrolling({ scrollPositionRestoration: 'enabled' }),
+      // Child pages under /o/:slug receive the slug as an input too.
+      withRouterConfig({ paramsInheritanceStrategy: 'always' }),
     ),
     { provide: TitleStrategy, useClass: AppTitleStrategy },
   ],
