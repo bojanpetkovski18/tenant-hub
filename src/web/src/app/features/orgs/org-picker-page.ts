@@ -25,6 +25,9 @@ import { browserTimeZone, timeZoneOptions } from '../../shared/forms/time-zones'
   template: `
     <div class="mx-auto max-w-2xl">
       <h1 class="text-2xl font-semibold tracking-tight">Your organizations</h1>
+      @if (notice() === 'left') {
+        <div class="th-alert-success mt-4" role="status">You left the organization.</div>
+      }
       @if (notice() === 'access-lost') {
         <div class="th-alert-error mt-4" role="status">
           You no longer have access to that organization. It may have been deleted, or an admin

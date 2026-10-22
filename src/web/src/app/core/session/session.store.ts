@@ -89,6 +89,11 @@ export const SessionStore = signalStore(
         await firstValueFrom(http.post<void>('/api/me/password', { currentPassword, newPassword }));
       },
 
+      /** A session the API returned from another call (accepting an invitation signs in and joins). */
+      apply(session: SessionResponse): void {
+        setUser(session.user);
+      },
+
       /** The server no longer recognizes the session (401): forget it locally. */
       clear(): void {
         setUser(null);
