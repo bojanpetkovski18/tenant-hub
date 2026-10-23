@@ -60,9 +60,26 @@ export const routes: Routes = [
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
       page('dashboard', 'Dashboard', 'The dashboard arrives in M09.'),
-      page('jobs', 'Jobs', 'Jobs arrive in M06.'),
-      page('jobs/new', 'New job', 'Jobs arrive in M06.'),
-      page('jobs/:id', 'Job', 'Jobs arrive in M06.'),
+      {
+        path: 'jobs',
+        title: 'Jobs',
+        loadComponent: () => import('./features/jobs/jobs-list-page').then((m) => m.JobsListPage),
+      },
+      {
+        path: 'jobs/new',
+        title: 'New job',
+        loadComponent: () => import('./features/jobs/job-form-page').then((m) => m.JobFormPage),
+      },
+      {
+        path: 'jobs/:id',
+        title: 'Job',
+        loadComponent: () => import('./features/jobs/job-detail-page').then((m) => m.JobDetailPage),
+      },
+      {
+        path: 'jobs/:id/edit',
+        title: 'Edit job',
+        loadComponent: () => import('./features/jobs/job-form-page').then((m) => m.JobFormPage),
+      },
       {
         path: 'clients',
         title: 'Clients',

@@ -70,5 +70,14 @@ describe('SignInPage', () => {
     expect(TestBed.inject(Router).url).toBe('/o/harbor-pine/jobs');
     // The shell checks the membership on the server as it opens the organization.
     http.expectOne(`/api/orgs/${olivia.memberships[1]!.organizationId}`);
+    // The jobs page it lands on loads its list and its filter options.
+    const jobsPage = http.match((r) =>
+      r.url.startsWith(`/api/orgs/${olivia.memberships[1]!.organizationId}/`),
+    );
+    expect(jobsPage.map((r) => r.request.url.split('/').pop())).toEqual([
+      'jobs',
+      'members',
+      'clients',
+    ]);
   });
 });

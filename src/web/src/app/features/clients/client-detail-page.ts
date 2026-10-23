@@ -13,13 +13,16 @@ import { ApiProblem, toApiProblem } from '../../core/http/api-problem';
 import { SessionStore } from '../../core/session/session.store';
 import { Confirm } from '../../shared/ui/confirm-dialog';
 import { EmptyState, ErrorState } from '../../shared/ui/states';
+import { PagedList } from '../../shared/list/paged-list.store';
+import { JobStatusBadge } from '../jobs/job-badges';
+import { JobListItem, JobsApi } from '../jobs/jobs.api';
 import { ClientStatusBadge } from './client-status-badge';
 import { Client, ClientsApi } from './clients.api';
 
 /** US-20: one client, with the actions the user's permissions allow. */
 @Component({
   selector: 'app-client-detail-page',
-  imports: [RouterLink, DatePipe, EmptyState, ErrorState, ClientStatusBadge],
+  imports: [RouterLink, DatePipe, EmptyState, ErrorState, ClientStatusBadge, JobStatusBadge],
   template: `
     <a [routerLink]="listLink()" class="text-sm text-muted hover:text-fg">← Clients</a>
 
@@ -122,10 +125,42 @@ import { Client, ClientsApi } from './clients.api';
       </section>
 
       <section class="th-card mt-5" aria-labelledby="jobs-heading">
-        <h2 id="jobs-heading" class="text-lg font-semibold">Jobs</h2>
-        <p class="mt-1 text-sm text-muted">
-          This client's jobs will appear here once jobs are available.
-        </p>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="jobs-heading" class="text-lg font-semibold">Jobs</h2>
+          @if (canCreateJob() && client.status === 'active') {
+            <a
+              [routerLink]="['/o', slug(), 'jobs', 'new']"
+              [queryParams]="{ clientId: client.id }"
+              class="th-button-secondary"
+              >New job</a
+            >
+          }
+        </div>
+        @if (jobsError(); as error) {
+          <div class="mt-3"><app-error-state [message]="error.title" (retry)="loadJobs()" /></div>
+        } @else if (jobs() === null) {
+          <div class="mt-3 h-16 animate-pulse rounded bg-surface-2" aria-busy="true"></div>
+        } @else if (jobs()!.total === 0) {
+          <p class="mt-2 text-sm text-muted">No jobs for this client yet.</p>
+        } @else {
+          <ul class="mt-3 divide-y divide-border" aria-label="This client's latest jobs">
+            @for (job of jobs()!.items; track job.id) {
+              <li class="flex flex-wrap items-center justify-between gap-2 py-2">
+                <a [routerLink]="['/o', slug(), 'jobs', job.id]" class="min-w-0 hover:underline">
+                  <span class="font-mono text-xs text-muted">{{ job.label }}</span>
+                  {{ job.title }}
+                </a>
+                <app-job-status-badge [status]="job.status" />
+              </li>
+            }
+          </ul>
+          <a
+            [routerLink]="['/o', slug(), 'jobs']"
+            [queryParams]="{ clientId: client.id }"
+            class="mt-3 inline-block text-sm text-accent underline-offset-2 hover:underline"
+            >View all {{ jobs()!.total }} jobs, with filters</a
+          >
+        }
       </section>
     }
   `,
@@ -136,6 +171,7 @@ export class ClientDetailPage {
   readonly id = input.required<string>();
 
   private readonly api = inject(ClientsApi);
+  private readonly jobsApi = inject(JobsApi);
   private readonly session = inject(SessionStore);
   private readonly confirm = inject(Confirm);
   private readonly router = inject(Router);
@@ -145,6 +181,12 @@ export class ClientDetailPage {
   // Absolute: ".." from a multi-segment route (clients/:id) would leave the clients section entirely.
   protected readonly listLink = computed(() => ['/o', this.slug(), 'clients']);
   protected readonly canDelete = computed(() => this.session.can(this.slug(), 'clients.delete'));
+  protected readonly canCreateJob = computed(() => this.session.can(this.slug(), 'jobs.create'));
+
+  /** The client's latest jobs (SPEC 4.1) and how many are open, for the archive warning (SPEC 5.4). */
+  protected readonly jobs = signal<PagedList<JobListItem> | null>(null);
+  protected readonly jobsError = signal<ApiProblem | null>(null);
+  private openJobs = 0;
 
   protected readonly client = signal<Client | null>(null);
   protected readonly loading = signal(true);
@@ -171,6 +213,7 @@ export class ClientDetailPage {
     this.loadError.set(null);
     try {
       this.client.set(await this.api.get(membership.organizationId, this.id()));
+      void this.loadJobs();
     } catch (error) {
       const problem = toApiProblem(error);
       this.notFound.set(problem.code === 'client-not-found');
@@ -180,11 +223,35 @@ export class ClientDetailPage {
     }
   }
 
+  protected async loadJobs(): Promise<void> {
+    const organizationId = this.membership()!.organizationId;
+    this.jobsError.set(null);
+    try {
+      const [latest, open] = await Promise.all([
+        this.jobsApi.list(organizationId, { clientId: this.id(), sort: '-number', pageSize: '5' }),
+        this.jobsApi.list(organizationId, {
+          clientId: this.id(),
+          status: ['new', 'scheduled', 'inProgress'],
+          pageSize: '1',
+        }),
+      ]);
+      this.jobs.set(latest);
+      this.openJobs = open.total;
+    } catch (error) {
+      this.jobsError.set(toApiProblem(error));
+    }
+  }
+
   protected async archive(client: Client): Promise<void> {
+    const open =
+      this.openJobs === 0
+        ? ''
+        : ` It has ${this.openJobs} open ${this.openJobs === 1 ? 'job' : 'jobs'}; they stay as they are.`;
     const confirmed = await this.confirm.ask({
       title: `Archive ${client.name}?`,
       message:
-        'Archived clients are hidden from the list and cannot get new jobs. You can restore them at any time.',
+        'Archived clients are hidden from the list and cannot get new jobs. You can restore them at any time.' +
+        open,
       confirmLabel: 'Archive',
     });
     if (confirmed) {
