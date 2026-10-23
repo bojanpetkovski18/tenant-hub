@@ -1,4 +1,5 @@
 import { CdkTrapFocus } from '@angular/cdk/a11y';
+import { Dialog } from '@angular/cdk/dialog';
 import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -15,7 +16,14 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import {
+  NavigationEnd,
+  NavigationStart,
+  Router,
+  RouterLink,
+  RouterLinkActive,
+  RouterOutlet,
+} from '@angular/router';
 import { filter } from 'rxjs';
 import { CurrentOrganizationStore } from '../session/current-organization.store';
 import { rememberLastOrganization } from '../session/last-organization';
@@ -134,6 +142,16 @@ export class AppShell {
         takeUntilDestroyed(),
       )
       .subscribe(() => this.drawerOpen.set(false));
+
+    // A link inside a dialog (the plan link in a limit message) leaves the page; the CDK closes dialogs only on
+    // history navigation, so close them on every router navigation too, or the new page stays behind a modal.
+    const dialogs = inject(Dialog);
+    inject(Router)
+      .events.pipe(
+        filter((event) => event instanceof NavigationStart),
+        takeUntilDestroyed(),
+      )
+      .subscribe(() => dialogs.closeAll());
 
     // Growing past the breakpoint shows the static sidebar, so a drawer left open would be a duplicate.
     const view = inject(DOCUMENT).defaultView;

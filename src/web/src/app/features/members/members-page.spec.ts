@@ -1,6 +1,11 @@
 import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter, withComponentInputBinding, withRouterConfig } from '@angular/router';
+import {
+  Router,
+  provideRouter,
+  withComponentInputBinding,
+  withRouterConfig,
+} from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../../app.routes';
 import { provideCspSafeCdkStyles } from '../../core/layout/csp-safe-style-loader';
@@ -129,6 +134,38 @@ describe('members page', () => {
 
     const selects = [...main(element).querySelectorAll<HTMLSelectElement>('li select')];
     expect(selects.map((s) => s.value)).toEqual(['admin', 'member']);
+  });
+
+  it('closes the invite dialog when its plan link navigates away (regression)', async () => {
+    const element = await open('/o/brightline/members');
+    http.expectOne(membersUrl).flush(asOwner);
+    await settle(harness.fixture);
+
+    button(main(element), 'Invite')!.click();
+    await settle(harness.fixture);
+    const email = document.querySelector('#invite-email') as HTMLInputElement;
+    email.value = 'nina@brightline.example';
+    email.dispatchEvent(new Event('input'));
+    button(document.body, 'Send invitation')!.click();
+    await settle(harness.fixture);
+    http.expectOne(invitationsUrl).flush(
+      {
+        title: 'Your Free plan allows 3 seats, and 3 are in use.',
+        code: 'plan-limit-reached',
+        plan: 'free',
+        limit: 'seats',
+        allowed: 3,
+        usage: 3,
+      },
+      { status: 403, statusText: 'Forbidden' },
+    );
+    await settle(harness.fixture);
+
+    (document.querySelector('app-limit-reached a') as HTMLAnchorElement).click();
+    await settle(harness.fixture);
+
+    expect(TestBed.inject(Router).url).toBe('/o/brightline/settings#plan');
+    expect(document.querySelector('app-invite-dialog')).toBeNull();
   });
 
   it('shows a Viewer the list with roles only', async () => {
