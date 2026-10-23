@@ -247,9 +247,10 @@ All endpoints are under `/api` and return JSON. Errors are RFC 7807 problem deta
 | DELETE | `/clients/{id}` | `clients.delete`; `409` if the client has jobs |
 | GET | `/jobs` | `jobs.read`: `q`, `status[]`, `assignee` (id, `me`, `none`), `clientId`, `priority[]`, `overdue`, `dueFrom`, `dueTo`, `sort`, paging |
 | POST | `/jobs` | `jobs.create` |
-| GET | `/jobs/{id}` | `jobs.read`; includes the transitions allowed for the caller |
-| PUT | `/jobs/{id}` | `jobs.manage`, or `jobs.work` if assigned (a member cannot reassign); concurrency token |
-| POST | `/jobs/{id}/transitions` | `{ to, reason? }`; rules in 5.4 |
+| GET | `/jobs/{id}` | `jobs.read`; includes the transitions allowed for the caller (each with what is still missing), and whether the caller may edit, assign and delete it (D029) |
+| GET | `/jobs/{id}/history` | `jobs.read`: the job's audit entries, newest first (US-40: everyone who can read the job sees its history) |
+| PUT | `/jobs/{id}` | route permission `jobs.work`; the domain allows `jobs.manage` on any job, `jobs.work` only on the caller's own job, and only managers change the assignee or the scheduled date; concurrency token |
+| POST | `/jobs/{id}/transitions` | `jobs.work` at the route, rules in 5.4: `{ to, reason? }`; a move outside the table → `409 invalid-transition` with `allowed`; someone else's job → `403 job-not-yours`; a managers-only move → `403 manager-only`; a missing field or reason → `400` |
 | DELETE | `/jobs/{id}` | `jobs.manage`; New or Cancelled only |
 | GET | `/audit` | `audit.read`: `actorId`, `action`, `entityType`, `entityId`, `from`, `to`, paging |
 
