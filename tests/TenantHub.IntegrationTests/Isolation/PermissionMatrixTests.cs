@@ -33,7 +33,7 @@ public sealed class PermissionMatrixTests(PostgresFixture postgres)
         var endpoint = TenantEndpointCase.All.Single(c => c.Key == key);
         var client = await tenants.ClientForAsync(role);
 
-        var response = await endpoint.SendAsync(client, tenants, tenants.OrgA);
+        var response = await endpoint.SendAsync(client, tenants, tenants.OrgA, caller: role);
 
         if (Permissions.For(role).Contains(endpoint.Permission))
         {

@@ -18,7 +18,10 @@ interface PagedListState<T> {
   readonly loading: boolean;
   readonly error: ApiProblem | null;
   /** The last request, so "Try again" repeats it exactly. */
-  readonly lastRequest: { readonly url: string; readonly params: Record<string, string> } | null;
+  readonly lastRequest: {
+    readonly url: string;
+    readonly params: Record<string, string | readonly string[]>;
+  } | null;
 }
 
 /**
@@ -37,7 +40,7 @@ export function createPagedListStore<T>() {
     withMethods((store, http = inject(HttpClient)) => {
       let latest = 0;
       return {
-        async load(url: string, params: Record<string, string>): Promise<void> {
+        async load(url: string, params: Record<string, string | readonly string[]>): Promise<void> {
           const request = ++latest;
           patchState(store, { loading: true, error: null, lastRequest: { url, params } });
           try {

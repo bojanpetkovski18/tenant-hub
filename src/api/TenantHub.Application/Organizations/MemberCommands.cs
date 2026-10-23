@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using TenantHub.Application.Abstractions;
 using TenantHub.Domain;
+using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
 
 namespace TenantHub.Application.Organizations;
@@ -42,8 +43,9 @@ public sealed class MemberCommands(
         MembershipRules.EnsureCanRemove(Actor(), target, await ActiveOwnersAsync(cancellationToken));
 
         var profile = await identity.FindProfileAsync(userId, cancellationToken);
-        target.Remove(time.GetUtcNow(), profile?.DisplayName ?? "a member");
-        // M06: unassign the member's jobs that are not Completed or Cancelled here, in the same save (SPEC 5.2).
+        var name = profile?.DisplayName ?? "a member";
+        target.Remove(time.GetUtcNow(), name);
+        await UnassignOpenJobsAsync(userId, name, "was removed", cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -55,10 +57,27 @@ public sealed class MemberCommands(
         MembershipRules.EnsureCanLeave(self, await ActiveOwnersAsync(cancellationToken));
 
         var profile = await identity.FindProfileAsync(self.UserId, cancellationToken);
-        self.Leave(time.GetUtcNow(), profile?.DisplayName ?? "A member");
-        // M06: unassign open jobs, as for removal.
+        var name = profile?.DisplayName ?? "A member";
+        self.Leave(time.GetUtcNow(), name);
+        await UnassignOpenJobsAsync(self.UserId, name, "left the organization", cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Jobs that are not Completed or Cancelled lose their assignee in the same save as the removal, each with its own
+    /// audit entry (SPEC 5.2). Closed jobs keep the former member as assignee, for history.
+    /// </summary>
+    private async Task UnassignOpenJobsAsync(Guid userId, string memberName, string why, CancellationToken cancellationToken)
+    {
+        var now = time.GetUtcNow();
+        var open = await db.Jobs
+            .Where(j => j.AssigneeUserId == userId && j.Status != JobStatus.Completed && j.Status != JobStatus.Cancelled)
+            .ToListAsync(cancellationToken);
+        foreach (var job in open)
+        {
+            job.Unassign(memberName, why, now);
+        }
     }
 
     private Actor Actor() => new(tenant.UserId!.Value, tenant.Role!.Value);

@@ -8,6 +8,7 @@ using TenantHub.Application.Invitations;
 using TenantHub.Application.Tenancy;
 using TenantHub.Domain.Clients;
 using TenantHub.Domain.Invitations;
+using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
 using TenantHub.Infrastructure.Data;
 using TenantHub.Infrastructure.Identity;
@@ -50,6 +51,13 @@ public sealed class ApiTenants : IAsyncDisposable
     public Guid InvitationA { get; private set; }
 
     public Guid InvitationB { get; private set; }
+
+    /// <summary>A standing job in A (assigned to A's Member) and one in B, for endpoints that take a job id.</summary>
+    public Guid JobA { get; private set; }
+
+    public Guid JobB { get; private set; }
+
+    public string JobBTitle { get; } = "Bravo Hedge Trimming";
 
     public string OrgBOwnerEmail { get; } = $"owner-{Guid.NewGuid():N}@bravo.example";
 
@@ -107,12 +115,20 @@ public sealed class ApiTenants : IAsyncDisposable
             .OrderBy(i => i.Id)
             .Select(i => new { i.Id, i.Role, i.TokenHash, i.ExpiresAt, i.AcceptedAt, i.RevokedAt })
             .ToListAsync(Ct);
-        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit, invitations });
+        var jobs = await db.Jobs.AcrossTenants().AsNoTracking()
+            .Where(j => j.OrganizationId == OrgB)
+            .OrderBy(j => j.Id)
+            .Select(j => new { j.Id, j.Number, j.Title, j.Status, j.AssigneeUserId, j.Version })
+            .ToListAsync(Ct);
+        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit, invitations, jobs, next = organization.NextJobNumber });
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
     }
 
     public Guid ClientIn(Guid organizationId) =>
         organizationId == OrgA ? ClientA : organizationId == OrgB ? ClientB : Guid.NewGuid();
+
+    public Guid JobIn(Guid organizationId) =>
+        organizationId == OrgA ? JobA : organizationId == OrgB ? JobB : Guid.NewGuid();
 
     public Guid InvitationIn(Guid organizationId) =>
         organizationId == OrgA ? InvitationA : organizationId == OrgB ? InvitationB : Guid.NewGuid();
@@ -131,6 +147,56 @@ public sealed class ApiTenants : IAsyncDisposable
         db.Clients.Add(client);
         await db.SaveChangesAsync(Ct);
         return client.Id;
+    }
+
+    /// <summary>The user id of A's member with this role.</summary>
+    public async Task<Guid> UserIdOfAsync(Role role)
+    {
+        await using var lookup = PostgresFixture.CreateDbContext(ConnectionString);
+        return await lookup.Users.Where(u => u.Email == EmailsA[role]).Select(u => u.Id).SingleAsync(Ct);
+    }
+
+    /// <summary>
+    /// A new New job in A or B, created like a manager would (numbered from the organization's counter). Assigned to
+    /// A's member with <paramref name="assignTo"/> when given, otherwise to the organization's Owner.
+    /// </summary>
+    public async Task<Guid> CreateJobAsync(Guid organizationId, Role? assignTo = null, string? title = null)
+    {
+        if (organizationId != OrgA && organizationId != OrgB)
+        {
+            return Guid.NewGuid();
+        }
+
+        var ownerId = await OwnerIdAsync(organizationId);
+        var assignee = organizationId == OrgA && assignTo is { } role ? await UserIdOfAsync(role) : ownerId;
+        await using var db = ContextAs(organizationId, ownerId);
+        var organization = await db.Organizations.SingleAsync(o => o.Id == organizationId, Ct);
+        var clientId = ClientIn(organizationId);
+        var details = JobDetails.Validate(title ?? $"Job {Guid.NewGuid():N}", null, clientId, assignee, JobPriority.Normal, null, null, null);
+        var job = Job.Create(
+            organizationId,
+            organization.TakeJobNumber(),
+            details,
+            JobActor.From(ownerId, Role.Owner),
+            new Dictionary<Guid, string>(),
+            DateTimeOffset.UtcNow);
+        db.Jobs.Add(job);
+        await db.SaveChangesAsync(Ct);
+        return job.Id;
+    }
+
+    public async Task<JobDetails> JobDetailsAsync(Guid jobId)
+    {
+        await using var db = PostgresFixture.CreateDbContext(ConnectionString);
+        var job = await db.Jobs.AcrossTenants().AsNoTracking().SingleOrDefaultAsync(j => j.Id == jobId, Ct);
+        return job?.Details ?? JobDetails.Validate("Unknown job", null, Guid.NewGuid(), null, null, null, null, null);
+    }
+
+    public async Task<uint> JobVersionAsync(Guid jobId)
+    {
+        await using var db = PostgresFixture.CreateDbContext(ConnectionString);
+        var job = await db.Jobs.AcrossTenants().AsNoTracking().SingleOrDefaultAsync(j => j.Id == jobId, Ct);
+        return job?.Version ?? 0;
     }
 
     /// <summary>A new member of A or B without a password (nobody signs in as them); returns the user id.</summary>
@@ -293,6 +359,8 @@ public sealed class ApiTenants : IAsyncDisposable
         MemberB = await CreateMemberAsync(OrgB, Role.Viewer);
         InvitationA = await CreateInvitationAsync(OrgA);
         InvitationB = await CreateInvitationAsync(OrgB);
+        JobA = await CreateJobAsync(OrgA, Role.Member, "Alpha Standing Job");
+        JobB = await CreateJobAsync(OrgB, title: JobBTitle);
     }
 
     /// <summary>A context working in the organization as its first active Owner.</summary>

@@ -29,7 +29,7 @@ public sealed class Organization
     /// <summary>IANA time-zone name; "today", "overdue" and "this month" are computed in it.</summary>
     public string TimeZone { get; private set; } = "";
 
-    /// <summary>The next per-organization job number (SPEC 5.4); used from M06.</summary>
+    /// <summary>The next per-organization job number (SPEC 5.4).</summary>
     public int NextJobNumber { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
@@ -73,6 +73,18 @@ public sealed class Organization
     /// <summary>Seeding and, from M05, invitations: a member with any role.</summary>
     public Membership AddMember(Guid userId, Role role, DateTimeOffset now, Guid? invitedByUserId) =>
         Membership.Create(Id, userId, role, now, invitedByUserId);
+
+    /// <summary>
+    /// Hands out the next job number (SPEC 5.4). Callers hold the organization-row lock in the same transaction
+    /// (D028), so numbers are sequential, unique and never reused even when jobs are created in parallel.
+    /// </summary>
+    public int TakeJobNumber() => NextJobNumber++;
+
+    /// <summary>"Today" in the organization's time zone: what overdue, "this month" and due dates are judged against.</summary>
+    public DateOnly TodayAt(DateTimeOffset now) => TodayIn(TimeZone, now);
+
+    public static DateOnly TodayIn(string timeZone, DateTimeOffset now) =>
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, TimeZoneInfo.FindSystemTimeZoneById(timeZone)).DateTime);
 
     public static string NormalizeName(string name)
     {

@@ -32,6 +32,13 @@ export interface ClientInput {
   readonly notes: string;
 }
 
+/** A client as a picker shows it (job forms and filters). */
+export interface ClientOption {
+  readonly id: string;
+  readonly name: string;
+  readonly status: ClientStatus;
+}
+
 export const clientsUrl = (organizationId: string) =>
   `/api/orgs/${encodeURIComponent(organizationId)}/clients`;
 
@@ -39,6 +46,19 @@ export const clientsUrl = (organizationId: string) =>
 @Injectable({ providedIn: 'root' })
 export class ClientsApi {
   private readonly http = inject(HttpClient);
+
+  /**
+   * Every client by name, for pickers: one page of the maximum size (100). Organizations with more clients find
+   * the rest through the client pages, which link to their jobs (D029).
+   */
+  async options(organizationId: string): Promise<ClientOption[]> {
+    const page = await firstValueFrom(
+      this.http.get<{ items: ClientListItem[] }>(clientsUrl(organizationId), {
+        params: { status: 'all', sort: 'name', pageSize: '100' },
+      }),
+    );
+    return page.items.map(({ id, name, status }) => ({ id, name, status }));
+  }
 
   get(organizationId: string, id: string): Promise<Client> {
     return firstValueFrom(this.http.get<Client>(`${clientsUrl(organizationId)}/${id}`));

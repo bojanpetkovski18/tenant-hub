@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TenantHub.Application.Tenancy;
+using TenantHub.Domain.Clients;
 using TenantHub.Domain.Memberships;
 using TenantHub.Domain.Organizations;
 using TenantHub.Infrastructure.Data;
@@ -131,10 +132,21 @@ public sealed partial class DemoSeeder(
             if (seed.Slug == BrightlineSlug)
             {
                 // Through the domain, so the seed's audit history is the same as real use would write.
-                foreach (var client in DemoClients.Create(organization.Id, now))
+                var clients = DemoClients.Create(organization.Id, now).ToList();
+                scopedDb.Clients.AddRange(clients);
+                await scopedDb.SaveChangesAsync(cancellationToken);
+
+                var names = clients.ToDictionary(c => c.Id, c => c.Name);
+                var workers = seed.Members
+                    .Where(m => m.Role != Role.Viewer)
+                    .Select(m => (UserId: ids[m.Email], Name: Users.Single(u => u.Email == m.Email).DisplayName))
+                    .ToList();
+                foreach (var worker in workers)
                 {
-                    scopedDb.Clients.Add(client);
+                    names[worker.UserId] = worker.Name;
                 }
+
+                scopedDb.Jobs.AddRange(DemoJobs.Create(organization, [.. clients.Where(c => c.Status == ClientStatus.Active)], workers, ids[ownerEmail], names, now));
             }
 
             await scopedDb.SaveChangesAsync(cancellationToken);

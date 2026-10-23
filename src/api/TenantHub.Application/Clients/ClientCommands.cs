@@ -59,10 +59,15 @@ public sealed class ClientCommands(IAppDbContext db, ITenantContext tenant, IDat
         return ToView(client);
     }
 
-    /// <summary>Clients with jobs are archived instead (SPEC 5.6); that check arrives with jobs in M06.</summary>
+    /// <summary>Clients with jobs are archived instead (SPEC 5.6); the composite foreign key is the backstop.</summary>
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
         var client = await LoadAsync(id, cancellationToken);
+        if (await db.Jobs.AnyAsync(j => j.ClientId == id, cancellationToken))
+        {
+            throw ClientErrors.HasJobs();
+        }
+
         client.MarkDeleted();
         db.Clients.Remove(client);
         await SaveAsync(cancellationToken);

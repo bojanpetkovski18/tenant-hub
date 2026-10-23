@@ -1,7 +1,9 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using TenantHub.Application.Abstractions;
 using TenantHub.Domain;
+using TenantHub.Domain.Jobs;
 
 namespace TenantHub.Api.Common;
 
@@ -53,7 +55,7 @@ public sealed partial class ApiExceptionHandler(IProblemDetailsService problemDe
                 },
                 Title = domain.Message,
                 Extensions = { ["code"] = domain.Code },
-            },
+            }.WithAllowed(domain),
             _ => null,
         };
 
@@ -73,4 +75,18 @@ public sealed partial class ApiExceptionHandler(IProblemDetailsService problemDe
 
     [LoggerMessage(EventId = 9001, Level = LogLevel.Critical, Message = "SECURITY: tenant isolation violation blocked ({Detail}) on {Method} {Path}.")]
     private static partial void LogIsolationViolation(ILogger logger, string detail, string method, PathString path);
+}
+
+internal static class ProblemExtensions
+{
+    /// <summary>An invalid job transition lists the moves the caller may choose instead (SPEC 5.4), as camelCase statuses.</summary>
+    public static ProblemDetails WithAllowed(this ProblemDetails problem, DomainException exception)
+    {
+        if (exception is InvalidJobTransitionException transition)
+        {
+            problem.Extensions["allowed"] = transition.Allowed.Select(s => JsonNamingPolicy.CamelCase.ConvertName(s.ToString())).ToList();
+        }
+
+        return problem;
+    }
 }
