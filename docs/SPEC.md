@@ -170,7 +170,7 @@ Real payments; emails to real recipients from the public demo; invoicing and acc
 | Active clients | 25 | 500 | unlimited |
 | Open jobs (not Completed or Cancelled) | 50 | 2,000 | unlimited |
 
-- Reaching a limit returns `403` with problem type `plan-limit-reached`, the limit name, the limit and the current usage (D013).
+- Reaching a limit returns `403` with code `plan-limit-reached`, `plan`, `limit` (`seats`, `activeClients`, `openJobs`), `allowed` and `usage` (D013). Seats are active members plus pending (not expired) invitations; renewing an expired invitation takes a seat again, and accepting one turns its seat into a membership.
 - Archived clients and closed jobs do not count, so restoring a client or reopening a job is also limit-checked.
 
 ### 5.6 Clients
@@ -226,10 +226,10 @@ All endpoints are under `/api` and return JSON. Errors are RFC 7807 problem deta
 
 | Method | Path | Permission |
 |---|---|---|
-| GET | `/` | `org.read`: id, name, slug, plan, time zone, created (usage from M08) |
-| PATCH | `/` | `org.manage` |
-| DELETE | `/` | `org.delete`; body confirms the name |
-| PUT | `/plan` | `billing.manage` |
+| GET | `/` | `org.read`: id, name, slug, plan, time zone, created, `usage` (seats, active clients, open jobs), `limits` of the plan (null = unlimited) and every plan's limits |
+| PATCH | `/` | `org.manage`: `{ name, timeZone }` (IANA); both errors reported together; audited |
+| DELETE | `/` | `org.delete`; body `{ confirmName }` (whitespace collapsed, case-sensitive); cascades everything the organization owns, its audit entries included, so the deletion is logged instead (D031) |
+| PUT | `/plan` | `billing.manage`: `{ plan }`; a downgrade that does not fit → `409 plan-downgrade-blocked` with `blocking` (limit, allowed, usage per limit); audited |
 | GET | `/dashboard` | `org.read` |
 | GET | `/members` | `org.read`: active members with name, email, role, joined, and what the caller may do to each (`isYou`, `canChangeRole`, `canRemove`, `canLeave`; D028) |
 | PATCH | `/members/{userId}` | `members.manage`: role; `204` |
