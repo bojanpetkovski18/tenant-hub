@@ -109,7 +109,11 @@ export const routes: Routes = [
         title: 'Members',
         loadComponent: () => import('./features/members/members-page').then((m) => m.MembersPage),
       },
-      page('audit', 'Audit log', 'The audit log viewer arrives in M07.'),
+      {
+        path: 'audit',
+        title: 'Audit log',
+        loadComponent: () => import('./features/audit/audit-page').then((m) => m.AuditLogPage),
+      },
       page('settings', 'Settings', 'Organization settings arrive in M08.'),
     ],
   },
