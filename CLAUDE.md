@@ -59,7 +59,7 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
 
 **API**
 - `dotnet build TenantHub.slnx`: builds everything; warnings are errors.
-- `dotnet test --solution TenantHub.slnx`: unit, architecture and integration tests (Microsoft.Testing.Platform via `global.json`); 618 tests, about 22 s after M06. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-namespace "*Isolation*"` runs the isolation suite (254 tests). Integration tests start their own PostgreSQL through Testcontainers, so Docker must be running; the dev database is not used. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-method "*Concurrent*"` runs matching tests of one project; `--output Detailed` shows the API log of a failing test.
+- `dotnet test --solution TenantHub.slnx`: unit, architecture and integration tests (Microsoft.Testing.Platform via `global.json`); 650 tests, about 22 s after M07. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-namespace "*Isolation*"` runs the isolation suite (262 tests). Integration tests start their own PostgreSQL through Testcontainers, so Docker must be running; the dev database is not used. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-method "*Concurrent*"` runs matching tests of one project; `--output Detailed` shows the API log of a failing test.
 - `dotnet format TenantHub.slnx --verify-no-changes`: formatting and code-style check (exit 2 on a violation); drop `--verify-no-changes` to fix.
 - `dotnet restore TenantHub.slnx --locked-mode`: restore exactly what the `packages.lock.json` files record (CI does this). After changing a package version, run a plain `dotnet restore` and commit the updated lock files.
 - `dotnet run --project src/api/TenantHub.Api`: API on `http://localhost:5090` in Development. It reads the repo-root `.env`, needs the dev database running, applies migrations (`Database__MigrateOnStartup`) and seeds (`Seed__Enabled`). Readiness (includes the database) at `/health`, liveness at `/health/live`; OpenAPI at `/openapi/v1.json` and the Scalar UI at `/scalar` (Development only).
@@ -71,7 +71,7 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
 - `npm start`: dev server on `http://localhost:4200`, proxying `/api` and `/health` to the API on 5090.
 - `npm run lint`: ESLint, including Angular template accessibility rules.
 - `npm run format:check` / `npm run format`: Prettier check / fix.
-- `npm run test:ci`: Vitest component tests, single run (102 tests after M06). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
+- `npm run test:ci`: Vitest component tests, single run (112 tests after M07). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
 - `npm run build`: production build to `src/web/dist/web`.
 - `npm audit --audit-level=moderate`: npm advisories (CI gate).
 
@@ -134,6 +134,7 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
   - Every screen has loading, empty, error and success states.
   - No component `styles` or inline `style` attributes: Angular injects component styles as inline `<style>` elements, which the strict CSP blocks. Use Tailwind classes and `styles.css` (D023).
   - Dialogs open through `Confirm` (or pass `CspSafeDialogContainer`), never with the CDK's default container, which brings its own component styles (D027).
+  - A `<select>` whose options come from `@for` marks the chosen option with `[selected]`, not `[value]` on the select: the value is lost when the options render after it (found in M07).
   - List pages keep their query in the URL (query parameters bound as inputs) and fetch with `createPagedListStore` (D027).
   - Everything interactive has an accessible name and keyboard support; visible focus; respect `prefers-reduced-motion`.
   - The UI hides actions the user lacks permission for, using the permissions from the session (`GET /api/auth/session`); it never re-implements the role map.

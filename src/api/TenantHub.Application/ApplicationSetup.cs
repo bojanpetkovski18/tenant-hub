@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using TenantHub.Application.Abstractions;
 using TenantHub.Application.Accounts;
+using TenantHub.Application.Audit;
 using TenantHub.Application.Clients;
 using TenantHub.Application.Invitations;
 using TenantHub.Application.Jobs;
@@ -34,5 +35,6 @@ public static class ApplicationSetup
         .AddScoped<ListJobsQuery>()
         .AddScoped<GetJobQuery>()
         .AddScoped<JobHistoryQuery>()
-        .AddScoped<JobCommands>();
+        .AddScoped<JobCommands>()
+        .AddScoped<ListAuditEntriesQuery>();
 }

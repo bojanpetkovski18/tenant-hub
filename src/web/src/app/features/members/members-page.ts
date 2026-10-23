@@ -107,12 +107,13 @@ type Tab = 'members' | 'pending';
                       #roleSelect
                       class="th-input w-auto"
                       [id]="'role-' + member.userId"
-                      [value]="member.role"
                       [disabled]="busy()"
                       (change)="changeRole(member, roleSelect)"
                     >
                       @for (role of rolesFor(member); track role) {
-                        <option [value]="role">{{ roleLabels[role] }}</option>
+                        <option [value]="role" [selected]="role === member.role">
+                          {{ roleLabels[role] }}
+                        </option>
                       }
                     </select>
                   } @else {

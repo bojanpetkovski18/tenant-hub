@@ -86,6 +86,23 @@ public sealed class Organization
     public static DateOnly TodayIn(string timeZone, DateTimeOffset now) =>
         DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, TimeZoneInfo.FindSystemTimeZoneById(timeZone)).DateTime);
 
+    /// <summary>
+    /// The instant a local day starts in the organization's time zone, for date-range filters ("entries on 22
+    /// October" means 22 October where the organization is). A day that starts inside a daylight-saving gap starts at
+    /// the first valid local time after midnight.
+    /// </summary>
+    public static DateTimeOffset StartOfDayIn(string timeZone, DateOnly day)
+    {
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(timeZone);
+        var local = day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        while (zone.IsInvalidTime(local))
+        {
+            local = local.AddMinutes(15);
+        }
+
+        return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, zone), TimeSpan.Zero);
+    }
+
     public static string NormalizeName(string name)
     {
         // Collapse runs of whitespace so "Acme   Ltd " and "Acme Ltd" are the same name.

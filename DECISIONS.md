@@ -308,3 +308,17 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
 - **Pickers:** the client and assignee selects load all members and the first 100 clients by name (the maximum page). Larger organizations reach other clients' jobs from the client pages, which link to the filtered list; a search-as-you-type picker is a V2 candidate.
 - **Money on screen** uses `Intl.NumberFormat` rather than `CurrencyPipe`, which pulled Angular's currency table into the initial bundle (+7 kB).
 
+## D030: The audit log: append-only in the database, keyset paging, no totals (M07)
+- **Date:** 2026-10-23
+- **Append-only (confirms D012):** a `BEFORE UPDATE` trigger on `audit_entries` raises `restrict_violation` for any update, from the application or anywhere else. `DELETE` stays allowed for organization deletion (cascade) and the demo reset (M09). Tested with raw SQL; removing the trigger fails exactly those tests.
+- **Keyset paging, measured with 50,000 entries in one organization:**
+  - Offset paging grows with depth (page 1 0.7 ms; 25,000 deep 16–18 ms; the last page 34–35 ms), and totals are scans (6–13 ms).
+  - Keyset paging on `(occurred_at, id)` with the index `(organization_id, occurred_at desc, id desc)` costs 0.15–0.25 ms at any depth.
+  - The redundant `occurred_at <= @at` in the cursor condition gives PostgreSQL an index bound; EF Core cannot express a row comparison without the provider.
+  - The API returns `nextCursor` and no total. The page offers "Older entries" and "Newest". The cursor is in the URL, so reload and Back work.
+- **Date ranges are days in the organization's time zone:** "from" is the instant that day starts there, "to" runs until the next day starts. A day whose midnight falls in a daylight-saving gap starts at the first valid local time (tested with Chile).
+- **`entityExists`:** checked per page with one tenant-filtered query per entity type. The viewer links only to clients and jobs that exist, members who are active, and invitations that are open. History stays readable without the entity because summaries and changed values are snapshots of names.
+- **Summaries reviewed:** every action is driven through the API in one test, which asserts that each appears, starts with a capitalized verb (or with the person it is about), and contains no ids in the summary or the changed values. "Removed X" became "Removed X from the organization"; a missing name reads "a member" in the middle of a sentence.
+- **Filters:** actor, action, type, entity id and date range. Unknown values match nothing or are ignored, as in the other lists. The action list in the SPA is a fixed catalog, grouped by entity.
+- **Members cannot reach it:** no navigation entry (permission-driven, as before), an explanation on the page without calling the API, and `403` from the API (permission matrix).
+

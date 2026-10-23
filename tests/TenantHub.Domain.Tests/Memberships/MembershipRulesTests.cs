@@ -148,7 +148,7 @@ public sealed class MembershipRulesTests
         member.Rejoin(Role.Viewer, ActorId, Now.AddDays(1));
 
         Assert.Equal(
-            ["Changed Maya Torres's role from Member to Admin", "Removed Maya Torres"],
+            ["Changed Maya Torres's role from Member to Admin", "Removed Maya Torres from the organization"],
             member.DomainEvents.Cast<MembershipEvent>().Select(e => e.Summary));
         Assert.True(member.IsActive);
         Assert.Equal((Role.Viewer, Now.AddDays(1)), (member.Role, member.JoinedAt));

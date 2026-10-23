@@ -31,7 +31,7 @@ public sealed class MemberCommands(
         MembershipRules.EnsureCanChangeRole(Actor(), target, newRole, await ActiveOwnersAsync(cancellationToken));
 
         var profile = await identity.FindProfileAsync(userId, cancellationToken);
-        target.ChangeRole(newRole, profile?.DisplayName ?? "A member");
+        target.ChangeRole(newRole, profile?.DisplayName ?? "a member");
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }

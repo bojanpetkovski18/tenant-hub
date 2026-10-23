@@ -166,12 +166,12 @@ namespace TenantHub.Infrastructure.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_audit_entries");
 
-                    b.HasIndex("OrganizationId", "OccurredAt")
-                        .IsDescending(false, true)
-                        .HasDatabaseName("ix_audit_entries_organization_id_occurred_at");
-
                     b.HasIndex("OrganizationId", "EntityType", "EntityId")
                         .HasDatabaseName("ix_audit_entries_organization_id_entity_type_entity_id");
+
+                    b.HasIndex("OrganizationId", "OccurredAt", "Id")
+                        .IsDescending(false, true, true)
+                        .HasDatabaseName("ix_audit_entries_timeline");
 
                     b.ToTable("audit_entries", (string)null);
                 });

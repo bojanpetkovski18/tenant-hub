@@ -122,6 +122,15 @@ describe('members page', () => {
     expect(button(main(element), 'Invite')).toBeDefined();
   });
 
+  it('shows each member’s current role in their picker (regression: options render after the select)', async () => {
+    const element = await open('/o/brightline/members');
+    http.expectOne(membersUrl).flush(asOwner);
+    await settle(harness.fixture);
+
+    const selects = [...main(element).querySelectorAll<HTMLSelectElement>('li select')];
+    expect(selects.map((s) => s.value)).toEqual(['admin', 'member']);
+  });
+
   it('shows a Viewer the list with roles only', async () => {
     const element = await open('/o/brightline/members', viewer);
     http.expectOne(membersUrl).flush([

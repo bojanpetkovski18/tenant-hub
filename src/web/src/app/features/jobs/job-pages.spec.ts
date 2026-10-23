@@ -123,6 +123,42 @@ describe('job pages', () => {
   const main = (element: HTMLElement) => element.querySelector('main') ?? element;
 
   describe('list', () => {
+    it('shows the URL assignee and client in their pickers once the options arrive (regression)', async () => {
+      const maya = '0199f0a0-0000-7000-8000-000000000003';
+      const acme = '0199f0a0-0000-7000-8000-0000000000c1';
+      const element = await open(`/o/brightline/jobs?assignee=${maya}&clientId=${acme}`);
+      http
+        .expectOne((r) => r.url.endsWith('/members'))
+        .flush([
+          {
+            userId: maya,
+            displayName: 'Maya Torres',
+            email: 'maya@brightline.example',
+            role: 'member',
+            joinedAt: '2026-10-01T00:00:00Z',
+            isYou: false,
+            canChangeRole: false,
+            canRemove: false,
+            canLeave: false,
+          },
+        ]);
+      http
+        .expectOne((r) => r.url.endsWith('/clients'))
+        .flush({
+          items: [{ id: acme, name: 'Acme Offices', status: 'active' }],
+          page: 1,
+          pageSize: 100,
+          total: 1,
+        });
+      http
+        .expectOne((r) => r.url === jobsUrl)
+        .flush({ items: [], page: 1, pageSize: 25, total: 0 });
+      await settle(harness.fixture);
+
+      expect((main(element).querySelector('#job-assignee') as HTMLSelectElement).value).toBe(maya);
+      expect((main(element).querySelector('#job-client') as HTMLSelectElement).value).toBe(acme);
+    });
+
     it('sends the URL filters to the API, as repeated parameters', async () => {
       await open(
         '/o/brightline/jobs?status=new,scheduled&priority=urgent&assignee=me&overdue=true&sort=due&page=2&q=window',
