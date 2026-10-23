@@ -13,15 +13,18 @@ import {
 } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
-import { toApiProblem } from '../../core/http/api-problem';
+import { ApiProblem, toApiProblem } from '../../core/http/api-problem';
 import { Role, roleLabels } from '../../core/session/session.models';
 import { focusFirstInvalid } from '../../shared/forms/focus-first-invalid';
 import { applyProblem, controlError } from '../../shared/forms/server-errors';
 import { CspSafeDialogContainer } from '../../shared/ui/dialog-container';
+import { LimitReached } from '../../shared/ui/limit-reached';
 import { InvitationSent, MembersApi } from './members.api';
 
 export interface InviteDialogData {
   readonly organizationId: string;
+  /** For the plan link when the seat limit is reached. */
+  readonly slug: string;
   /** From the session (the API's rules): Admins never see Owner, nobody is invited as Owner. */
   readonly roles: readonly Role[];
 }
@@ -34,7 +37,7 @@ const messages = {
 /** US-10: invite by email with a role. Closes with the result; the page shows the link when it was not emailed. */
 @Component({
   selector: 'app-invite-dialog',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, LimitReached],
   host: {
     class:
       'block w-[min(28rem,calc(100vw-2rem))] rounded-lg border border-border bg-surface p-6 shadow-xl',
@@ -43,7 +46,9 @@ const messages = {
     <h2 id="invite-title" class="text-lg font-semibold">Invite a teammate</h2>
     <p class="mt-1 text-sm text-muted">They get a link that works once, for 7 days.</p>
     <form #formEl class="mt-5 space-y-5" [formGroup]="form" (ngSubmit)="submit()" novalidate>
-      @if (formError(); as message) {
+      @if (limit(); as problem) {
+        <app-limit-reached [problem]="problem" [slug]="data.slug" />
+      } @else if (formError(); as message) {
         <div class="th-alert-error" role="alert">{{ message }}</div>
       }
       <div>
@@ -110,6 +115,7 @@ export class InviteDialog {
   });
   protected readonly pending = signal(false);
   protected readonly formError = signal<string | null>(null);
+  protected readonly limit = signal<ApiProblem | null>(null);
 
   protected error(field: keyof typeof messages): string | null {
     return controlError(this.form.controls[field], messages[field]);
@@ -117,6 +123,7 @@ export class InviteDialog {
 
   protected async submit(): Promise<void> {
     this.formError.set(null);
+    this.limit.set(null);
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       focusFirstInvalid(this.formEl(), this.injector);
@@ -128,8 +135,13 @@ export class InviteDialog {
       const { email, role } = this.form.getRawValue();
       this.ref.close(await this.api.invite(this.data.organizationId, email.trim(), role as Role));
     } catch (error) {
+      const problem = toApiProblem(error);
+      if (problem.code === 'plan-limit-reached') {
+        this.limit.set(problem);
+        return;
+      }
       this.formError.set(
-        applyProblem(this.form, toApiProblem(error), {
+        applyProblem(this.form, problem, {
           'already-member': 'email',
           'owner-not-invitable': 'role',
           'role-not-grantable': 'role',

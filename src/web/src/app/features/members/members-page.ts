@@ -284,6 +284,7 @@ export class MembersPage {
     }
     const sent = await this.dialogs.invite({
       organizationId: membership.organizationId,
+      slug: membership.slug,
       roles: membership.invitableRoles,
     });
     if (sent) {

@@ -8,6 +8,18 @@ export interface ApiProblem {
   readonly code?: string;
   /** Messages per request field, keyed by the JSON property name. */
   readonly fieldErrors: Readonly<Record<string, readonly string[]>>;
+  /** `plan-limit-reached`: which limit, its value on the plan, and the usage (SPEC 5.5). */
+  readonly limit?: PlanLimitDetail & { readonly plan: string };
+  /** `plan-downgrade-blocked`: every limit the usage exceeds on the target plan. */
+  readonly blocking?: readonly PlanLimitDetail[];
+}
+
+export type LimitName = 'seats' | 'activeClients' | 'openJobs';
+
+export interface PlanLimitDetail {
+  readonly limit: LimitName;
+  readonly allowed: number;
+  readonly usage: number;
 }
 
 export function toApiProblem(error: unknown): ApiProblem {
@@ -29,6 +41,13 @@ export function toApiProblem(error: unknown): ApiProblem {
     title: typeof body['title'] === 'string' ? body['title'] : fallbackTitle(error.status),
     code: typeof body['code'] === 'string' ? body['code'] : undefined,
     fieldErrors: isRecord(body['errors']) ? toFieldErrors(body['errors']) : {},
+    limit:
+      typeof body['limit'] === 'string' && typeof body['plan'] === 'string'
+        ? { plan: body['plan'], ...toLimit(body) }
+        : undefined,
+    blocking: Array.isArray(body['blocking'])
+      ? body['blocking'].filter(isRecord).map(toLimit)
+      : undefined,
   };
 }
 
@@ -49,6 +68,14 @@ function toFieldErrors(errors: Record<string, unknown>): Record<string, readonly
     }
   }
   return result;
+}
+
+function toLimit(value: Record<string, unknown>): PlanLimitDetail {
+  return {
+    limit: value['limit'] as LimitName,
+    allowed: Number(value['allowed']),
+    usage: Number(value['usage']),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
