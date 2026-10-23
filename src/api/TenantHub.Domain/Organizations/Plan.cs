@@ -1,6 +1,6 @@
 namespace TenantHub.Domain.Organizations;
 
-/// <summary>Subscription plan (SPEC 5.5). Limits arrive with the plan policy in M08.</summary>
+/// <summary>Subscription plan (SPEC 5.5); its limits are <see cref="PlanLimits"/>.</summary>
 public enum Plan
 {
     Free,
