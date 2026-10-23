@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
+using TenantHub.Application.Organizations;
 using TenantHub.Application.Tenancy;
 using TenantHub.Domain;
 using TenantHub.Domain.Invitations;
 using TenantHub.Domain.Memberships;
+using TenantHub.Domain.Organizations;
 
 namespace TenantHub.Application.Invitations;
 
@@ -38,6 +40,7 @@ public sealed class InvitationAcceptance(
     TenantContext tenant,
     IIdentityService identity,
     IDatabaseLocks locks,
+    PlanLimitsCheck limits,
     TimeProvider time)
 {
     public async Task<InvitationPreview> PreviewAsync(string token, Guid? signedInUserId, CancellationToken cancellationToken)
@@ -116,6 +119,10 @@ public sealed class InvitationAcceptance(
         var now = time.GetUtcNow();
         tenant.Enter(invitation.OrganizationId, userId, invitation.Role);
         invitation.Accept(userId, accountEmail, now);
+
+        // Seats (SPEC 5.5): the pending invitation already held this seat, so it is not counted twice; the check only
+        // refuses if the organization is somehow over its limit. Under the organization lock FindLockedAsync took.
+        await limits.EnsureRoomForAsync(LimitKind.Seats, cancellationToken, alreadyCounted: 1);
 
         // A removed member invited again gets their old row back (SPEC 5.2), so past jobs and audit still name them.
         var former = await db.Memberships.SingleOrDefaultAsync(m => m.UserId == userId, cancellationToken);

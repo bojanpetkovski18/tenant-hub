@@ -19,7 +19,7 @@ public sealed class AuditCoverageTests(PostgresFixture postgres)
     public void Every_state_changing_endpoint_is_marked_audited()
     {
         var unmarked = TenantEndpointCase.All
-            .Where(c => c.Method != "GET" && !c.Audited && !c.Pattern.StartsWith("/test/", StringComparison.Ordinal))
+            .Where(c => c.Method != "GET" && !c.Audited && c.NotAuditedBecause is null && !c.Pattern.StartsWith("/test/", StringComparison.Ordinal))
             .Select(c => c.Key)
             .ToList();
 

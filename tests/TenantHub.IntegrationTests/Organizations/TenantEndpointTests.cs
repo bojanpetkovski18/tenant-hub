@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using TenantHub.Api.Features.Organizations;
+using TenantHub.Application.Organizations;
 using TenantHub.Domain.Memberships;
 using TenantHub.Domain.Organizations;
 using TenantHub.IntegrationTests.Infrastructure;
@@ -19,9 +20,9 @@ public sealed class TenantEndpointTests(PostgresFixture postgres)
         var tenants = await SharedApiTenants.GetAsync<TenantEndpointTests>(postgres);
         var viewer = await tenants.ClientForAsync(Role.Viewer);
 
-        var organization = await viewer.Http.GetFromJsonAsync<OrganizationResponse>($"/api/orgs/{tenants.OrgA}", BrowserClient.Json, Ct);
+        var organization = await viewer.Http.GetFromJsonAsync<OrganizationOverview>($"/api/orgs/{tenants.OrgA}", BrowserClient.Json, Ct);
 
-        Assert.Equal((tenants.OrgA, "Alpha Cleaning", "alpha-cleaning", Plan.Free), (organization!.Id, organization.Name, organization.Slug, organization.Plan));
+        Assert.Equal((tenants.OrgA, "Alpha Cleaning", "alpha-cleaning", Plan.Business), (organization!.Id, organization.Name, organization.Slug, organization.Plan));
     }
 
     [Fact]

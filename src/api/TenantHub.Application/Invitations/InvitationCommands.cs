@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
+using TenantHub.Application.Organizations;
 using TenantHub.Domain;
 using TenantHub.Domain.Invitations;
 using TenantHub.Domain.Memberships;
+using TenantHub.Domain.Organizations;
 
 namespace TenantHub.Application.Invitations;
 
@@ -35,6 +37,7 @@ public sealed class InvitationCommands(
     IDatabaseErrors errors,
     IEmailSender email,
     IAppLinks links,
+    PlanLimitsCheck limits,
     TimeProvider time)
 {
     public const string OpenEmailIndex = "ux_invitations_open_email";
@@ -69,14 +72,20 @@ public sealed class InvitationCommands(
             throw new DomainException("already-member", $"{emailAddress} is already a member of this organization.");
         }
 
-        // Seat limit (SPEC 5.3, 6): pending invitations count as seats. The check arrives with plans in M08, here,
-        // under the organization lock taken above, so two concurrent invitations cannot both take the last seat.
         var (token, hash) = InvitationTokens.Create();
         var normalized = EmailAddress.IsValid(emailAddress) ? EmailAddress.Normalize(emailAddress) : null;
         var open = normalized is null
             ? null
             : await db.Invitations.SingleOrDefaultAsync(
                 i => i.NormalizedEmail == normalized && i.AcceptedAt == null && i.RevokedAt == null, cancellationToken);
+
+        // Seats (SPEC 5.3, 5.5): a pending invitation already holds one, so replacing it takes none; a new one, or
+        // renewing an expired one, takes a seat. Under the organization lock taken above, so two concurrent
+        // invitations cannot both take the last seat. An invalid email is left to the validation below (400).
+        if (normalized is not null && open?.StateAt(now) != InvitationState.Pending)
+        {
+            await limits.EnsureRoomForAsync(LimitKind.Seats, cancellationToken);
+        }
 
         Invitation invitation;
         if (open is not null)
@@ -98,10 +107,21 @@ public sealed class InvitationCommands(
 
     public async Task<InvitationSent> ResendAsync(Guid id, CancellationToken cancellationToken)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await locks.LockOrganizationAsync(tenant.OrganizationId!.Value, cancellationToken);
         var invitation = await LoadAsync(id, cancellationToken);
+        var now = time.GetUtcNow();
+
+        // An expired invitation holds no seat; renewing it takes one again.
+        if (invitation.StateAt(now) == InvitationState.Expired)
+        {
+            await limits.EnsureRoomForAsync(LimitKind.Seats, cancellationToken);
+        }
+
         var (token, hash) = InvitationTokens.Create();
-        invitation.Resend(hash, invitation.Role, Actor(), time.GetUtcNow());
+        invitation.Resend(hash, invitation.Role, Actor(), now);
         await SaveAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return await DeliverAsync(invitation, token, cancellationToken);
     }
 

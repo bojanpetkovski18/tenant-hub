@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.RegularExpressions;
 using TenantHub.Api.Common.Tenancy;
 using TenantHub.Domain.Memberships;
+using TenantHub.Domain.Organizations;
 using TenantHub.IntegrationTests.Infrastructure;
 
 namespace TenantHub.IntegrationTests.Isolation;
@@ -32,6 +33,12 @@ public enum CaseResource
 
     /// <summary>A New job created just for this request, assigned to the caller's role when known, else the Owner.</summary>
     FreshJob,
+
+    /// <summary>
+    /// A new organization standing in for the requested one (for deletes, which use it up): like A (A's role users,
+    /// same roles) when A is requested, owned by B's Owner when B is, and a random id otherwise.
+    /// </summary>
+    FreshOrganization,
 }
 
 /// <summary>The organization and resource a case is sent to.</summary>
@@ -56,8 +63,14 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
 
     public Func<CaseInput, Task<object>>? Body { get; init; }
 
-    /// <summary>Undoes what a successful call did to the shared fixture (for example, the caller leaving).</summary>
-    public Func<ApiTenants, Task>? Restore { get; init; }
+    /// <summary>Undoes what the call (or its Arrange) did to the shared fixture; runs after every call, whatever the answer.</summary>
+    public Func<CaseInput, Task>? Restore { get; init; }
+
+    /// <summary>
+    /// Why a state-changing endpoint writes no audit entry, reviewed case by case (the audit rule test accepts only
+    /// these). Deleting an organization deletes its audit entries with it; the API logs the deletion instead.
+    /// </summary>
+    public string? NotAuditedBecause { get; init; }
 
     /// <summary>The code when the id belongs to another organization: the tenant filter makes it not exist.</summary>
     public string NotFoundCode => Resource switch
@@ -89,6 +102,26 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
     public static IReadOnlyList<TenantEndpointCase> All { get; } =
     [
         new("GET", "/", Permissions.OrgRead),
+        new("PATCH", "/", Permissions.OrgManage)
+        {
+            Audited = true,
+            Body = _ => Task.FromResult<object>(new { name = $"Alpha Cleaning {Guid.NewGuid():N}", timeZone = "Europe/Amsterdam" }),
+        },
+        new("PUT", "/plan", Permissions.BillingManage)
+        {
+            // A is on Team for the call, so moving it to Business is a change; it is put back on Business afterwards.
+            Audited = true,
+            Arrange = input => input.OrganizationId == input.Tenants.OrgA ? input.Tenants.SetPlanAsync(input.OrganizationId, Plan.Team) : Task.CompletedTask,
+            Body = _ => Task.FromResult<object>(new { plan = "business" }),
+            Restore = input => input.OrganizationId == input.Tenants.OrgA ? input.Tenants.SetPlanAsync(input.OrganizationId, Plan.Business) : Task.CompletedTask,
+        },
+        new("DELETE", "/", Permissions.OrgDelete)
+        {
+            Resource = CaseResource.FreshOrganization,
+            Allowed = HttpStatusCode.NoContent,
+            NotAuditedBecause = "the organization's audit entries are deleted with it; the API logs the deletion instead",
+            Body = async input => new { confirmName = await input.Tenants.OrganizationNameAsync(input.OrganizationId) },
+        },
         new("GET", "/members", Permissions.OrgRead),
         new("PATCH", "/members/{userId:guid}", Permissions.MembersManage)
         {
@@ -107,7 +140,7 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         {
             Allowed = HttpStatusCode.NoContent,
             Audited = true,
-            Restore = tenants => tenants.RestoreMembersOfAAsync(),
+            Restore = input => input.Tenants.RestoreMembersOfAAsync(),
         },
 
         new("GET", "/invitations/", Permissions.MembersManage),
@@ -215,6 +248,11 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
     /// </summary>
     public async Task<CaseInput> PrepareAsync(ApiTenants tenants, Guid organizationId, Guid? resourceId = null, Role? caller = null)
     {
+        if (Resource == CaseResource.FreshOrganization)
+        {
+            organizationId = await tenants.CreateOrganizationLikeAsync(organizationId);
+        }
+
         resourceId ??= Resource switch
         {
             CaseResource.Client => tenants.ClientIn(organizationId),
@@ -227,7 +265,7 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
             _ => null,
         };
         var input = new CaseInput(tenants, organizationId, resourceId);
-        if (Arrange is not null && resourceId is not null)
+        if (Arrange is not null)
         {
             await Arrange(input);
         }
@@ -256,13 +294,13 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
             "POST" => await client.PostJsonAsync(path, body),
             "PUT" => await client.SendJsonAsync(HttpMethod.Put, path, body),
             "PATCH" => await client.PatchJsonAsync(path, body),
-            "DELETE" => await client.SendJsonAsync(HttpMethod.Delete, path, null),
+            "DELETE" => await client.SendJsonAsync(HttpMethod.Delete, path, Body is null ? null : body),
             _ => throw new NotSupportedException(Method),
         };
 
-        if (Restore is not null && response.IsSuccessStatusCode)
+        if (Restore is not null)
         {
-            await Restore(input.Tenants);
+            await Restore(input);
         }
 
         return response;
