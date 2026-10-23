@@ -66,6 +66,17 @@ namespace TenantHub.Infrastructure.Data.Migrations
                 column: "created_by_user_id");
 
             migrationBuilder.CreateIndex(
+                name: "ix_jobs_due",
+                table: "jobs",
+                columns: new[] { "organization_id", "due_on", "number" });
+
+            migrationBuilder.CreateIndex(
+                name: "ix_jobs_open_due",
+                table: "jobs",
+                columns: new[] { "organization_id", "due_on" },
+                filter: "status <> 'Completed' AND status <> 'Cancelled'");
+
+            migrationBuilder.CreateIndex(
                 name: "ix_jobs_organization_id_assignee_user_id",
                 table: "jobs",
                 columns: new[] { "organization_id", "assignee_user_id" });

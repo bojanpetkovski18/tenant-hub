@@ -165,8 +165,9 @@ public sealed partial class ListJobsQuery(IAppDbContext db, ITenantContext tenan
             "updated" => jobs.OrderBy(j => j.UpdatedAt).ThenBy(j => j.Number),
             "-updated" => jobs.OrderByDescending(j => j.UpdatedAt).ThenBy(j => j.Number),
 
-            // Jobs without a due date go last in both directions.
-            "due" => jobs.OrderBy(j => j.DueOn == null).ThenBy(j => j.DueOn).ThenBy(j => j.Number),
+            // Jobs without a due date go last in both directions. Ascending, PostgreSQL already puts NULLs last, and
+            // without an IS NULL sort key ix_jobs_due serves the page (D029).
+            "due" => jobs.OrderBy(j => j.DueOn).ThenBy(j => j.Number),
             "-due" => jobs.OrderBy(j => j.DueOn == null).ThenByDescending(j => j.DueOn).ThenBy(j => j.Number),
 
             // Stored as names, so rank them: Urgent > High > Normal > Low.

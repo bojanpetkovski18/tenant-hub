@@ -419,9 +419,16 @@ namespace TenantHub.Infrastructure.Data.Migrations
                     b.HasIndex("OrganizationId", "ClientId")
                         .HasDatabaseName("ix_jobs_organization_id_client_id");
 
+                    b.HasIndex("OrganizationId", "DueOn")
+                        .HasDatabaseName("ix_jobs_open_due")
+                        .HasFilter("status <> 'Completed' AND status <> 'Cancelled'");
+
                     b.HasIndex("OrganizationId", "Number")
                         .IsUnique()
                         .HasDatabaseName("ux_jobs_number");
+
+                    b.HasIndex("OrganizationId", "DueOn", "Number")
+                        .HasDatabaseName("ix_jobs_due");
 
                     b.ToTable("jobs", (string)null);
                 });
