@@ -71,7 +71,7 @@ public static partial class OrganizationEndpoints
                 // request has none, and the caller would get the not-found fallback instead of a 400 on confirmName.
                 var deleted = await commands.DeleteAsync((await ReadConfirmationAsync(context, ct))?.ConfirmName, ct);
                 // Its audit entries are deleted with it (cascade), so the deletion is recorded here instead.
-                LogDeleted(loggers.CreateLogger("TenantHub.Organizations"), deleted.Id, deleted.Slug, deleted.Members, context.User.GetUserId());
+                LogDeleted(loggers.CreateLogger("TenantHub.Organizations"), deleted.Id, deleted.Slug, context.User.GetUserId(), deleted.Members);
                 return TypedResults.NoContent();
             })
             .RequirePermission(Permissions.OrgDelete);
@@ -110,8 +110,8 @@ public static partial class OrganizationEndpoints
         return app;
     }
 
-    [LoggerMessage(EventId = 2001, Level = LogLevel.Warning, Message = "Organization {OrganizationId} ({Slug}) with {Members} active members was deleted by user {UserId}.")]
-    private static partial void LogDeleted(ILogger logger, Guid organizationId, string slug, int members, Guid userId);
+    [LoggerMessage(EventId = 2001, Level = LogLevel.Warning, Message = "Organization {OrganizationId} ({Slug}) was deleted by user {UserId} (active members: {Members}).")]
+    private static partial void LogDeleted(ILogger logger, Guid organizationId, string slug, Guid userId, int members);
 
     /// <summary>The optional confirmation body; malformed or missing JSON counts as no confirmation (400 on confirmName).</summary>
     private static async Task<DeleteOrganizationRequest?> ReadConfirmationAsync(HttpContext context, CancellationToken ct)

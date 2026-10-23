@@ -96,7 +96,8 @@ public sealed class OrganizationSettingsTests(PostgresFixture postgres)
         await ProblemAssert.HasCodeAsync(await member.Http.GetAsync($"/api/orgs/{tenants.OrgA}/jobs", Ct), HttpStatusCode.NotFound, TenantResolutionFilter.OrganizationNotFoundCode);
         Assert.DoesNotContain((await member.SessionAsync()).User!.Memberships, m => m.OrganizationId == tenants.OrgA);
         Assert.Contains(tenants.Factory.Logs.Entries, e =>
-            e.Level == LogLevel.Warning && e.Message.Contains($"Organization {tenants.OrgA} (alpha-cleaning) with 5 active members was deleted by user", StringComparison.Ordinal));
+            e.Level == LogLevel.Warning && e.Message.Contains($"Organization {tenants.OrgA} (alpha-cleaning) was deleted by user", StringComparison.Ordinal)
+            && e.Message.EndsWith("(active members: 5).", StringComparison.Ordinal));
     }
 
     /// <summary>Every tenant-owned table, from the model: a new tenant-owned entity is checked without editing this test.</summary>
