@@ -37,8 +37,11 @@ internal sealed class AuditEntryConfiguration : IEntityTypeConfiguration<AuditEn
                     v => v.Aggregate(0, (hash, change) => HashCode.Combine(hash, change.GetHashCode())),
                     v => v.ToList()));
 
-        // The viewer lists an organization's newest entries first, and an entity's history (M07).
-        entry.HasIndex(a => new { a.OrganizationId, a.OccurredAt }).IsDescending(false, true);
+        // The viewer pages newest first by keyset (occurred_at, id): with id in the index the next page is a
+        // range scan at any depth (0.2 ms at 50,000 entries, D030). The second index serves an entity's history.
+        entry.HasIndex(a => new { a.OrganizationId, a.OccurredAt, a.Id })
+            .IsDescending(false, true, true)
+            .HasDatabaseName("ix_audit_entries_timeline");
         entry.HasIndex(a => new { a.OrganizationId, a.EntityType, a.EntityId });
 
         entry.HasOne<Organization>().WithMany().HasForeignKey(a => a.OrganizationId).OnDelete(DeleteBehavior.Cascade);
