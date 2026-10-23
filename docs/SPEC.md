@@ -252,7 +252,7 @@ All endpoints are under `/api` and return JSON. Errors are RFC 7807 problem deta
 | PUT | `/jobs/{id}` | route permission `jobs.work`; the domain allows `jobs.manage` on any job, `jobs.work` only on the caller's own job, and only managers change the assignee or the scheduled date; concurrency token |
 | POST | `/jobs/{id}/transitions` | `jobs.work` at the route, rules in 5.4: `{ to, reason? }`; a move outside the table → `409 invalid-transition` with `allowed`; someone else's job → `403 job-not-yours`; a managers-only move → `403 manager-only`; a missing field or reason → `400` |
 | DELETE | `/jobs/{id}` | `jobs.manage`; New or Cancelled only |
-| GET | `/audit` | `audit.read`: `actorId`, `action`, `entityType`, `entityId`, `from`, `to`, paging |
+| GET | `/audit` | `audit.read`: `actor` (user id), `action`, `entityType`, `entityId`, `from` and `to` (days in the organization's time zone), `before` (cursor), `pageSize` (50, at most 100). Newest first; returns `items` (each with `entityExists`) and `nextCursor`; no total (D030) |
 
 API documentation is generated from the code (OpenAPI document plus a Scalar UI in development).
 
@@ -271,7 +271,7 @@ Names are snake_case. Every timestamp is `timestamptz` in UTC. Rows marked "tena
   - Foreign key `(organization_id, client_id)` → `clients(organization_id, id)`.
   - Foreign key `(organization_id, assignee_user_id)` → `memberships(organization_id, user_id)`: an assignee is always a current or former member of the same organization (memberships are never hard-deleted while the organization exists).
   - Indexes for the list filters, decided with `EXPLAIN` at M06.
-- **audit_entries** (tenant-owned): `id` (bigint identity), `organization_id`, `occurred_at`, `actor_user_id`, `actor_name` (snapshot), `action` (for example `job.status_changed`), `entity_type`, `entity_id`, `summary`, `changes` (`jsonb`), `trace_id`. Indexes `(organization_id, occurred_at desc)` and `(organization_id, entity_type, entity_id)`. A trigger rejects `UPDATE`. `DELETE` happens only when the organization is deleted or during the demo reset.
+- **audit_entries** (tenant-owned): `id` (bigint identity), `organization_id`, `occurred_at`, `actor_user_id`, `actor_name` (snapshot), `action` (for example `job.status_changed`), `entity_type`, `entity_id`, `summary`, `changes` (`jsonb`), `trace_id`. Indexes `(organization_id, occurred_at desc, id desc)` (the timeline, keyset paging) and `(organization_id, entity_type, entity_id)`. A trigger rejects `UPDATE` (M07). `DELETE` happens only when the organization is deleted or during the demo reset.
 
 Organization deletion cascades to every tenant-owned table.
 
