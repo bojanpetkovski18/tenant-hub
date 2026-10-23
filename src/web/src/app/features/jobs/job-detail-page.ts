@@ -12,6 +12,7 @@ import { Router, RouterLink } from '@angular/router';
 import { ApiProblem, toApiProblem } from '../../core/http/api-problem';
 import { SessionStore } from '../../core/session/session.store';
 import { Confirm } from '../../shared/ui/confirm-dialog';
+import { LimitReached } from '../../shared/ui/limit-reached';
 import { EmptyState, ErrorState } from '../../shared/ui/states';
 import { JobPriorityLabel, JobStatusBadge, OverdueMarker } from './job-badges';
 import {
@@ -51,6 +52,7 @@ const fieldLabels: Readonly<Record<string, string>> = {
     JobStatusBadge,
     JobPriorityLabel,
     OverdueMarker,
+    LimitReached,
   ],
   template: `
     <a [routerLink]="listLink()" class="text-sm text-muted hover:text-fg">← Jobs</a>
@@ -100,7 +102,9 @@ const fieldLabels: Readonly<Record<string, string>> = {
         }
       </div>
 
-      @if (actionError(); as message) {
+      @if (limit(); as problem) {
+        <div class="mt-4"><app-limit-reached [problem]="problem" [slug]="slug()" /></div>
+      } @else if (actionError(); as message) {
         <div class="th-alert-error mt-4" role="alert">{{ message }}</div>
       }
       @if (actionDone(); as message) {
@@ -257,6 +261,7 @@ export class JobDetailPage {
   protected readonly historyError = signal<ApiProblem | null>(null);
   protected readonly busy = signal(false);
   protected readonly actionError = signal<string | null>(null);
+  protected readonly limit = signal<ApiProblem | null>(null);
   protected readonly actionDone = signal<string | null>(null);
 
   constructor() {
@@ -325,6 +330,7 @@ export class JobDetailPage {
 
     this.busy.set(true);
     this.actionError.set(null);
+    this.limit.set(null);
     this.actionDone.set(null);
     try {
       const moved = await this.api.transition(
@@ -338,6 +344,11 @@ export class JobDetailPage {
       void this.loadHistory();
     } catch (error) {
       const problem = toApiProblem(error);
+      // Reopening counts toward the open-job limit (SPEC 5.5).
+      if (problem.code === 'plan-limit-reached') {
+        this.limit.set(problem);
+        return;
+      }
       // Someone else moved it first (409 invalid-transition): show what it is now and what is possible.
       this.actionError.set(problem.title);
       if (problem.code === 'invalid-transition') {

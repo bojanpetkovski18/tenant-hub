@@ -12,6 +12,7 @@ internal sealed class OrganizationConfiguration : IEntityTypeConfiguration<Organ
         organization.ToTable("organizations");
         organization.HasKey(o => o.Id);
         organization.Property(o => o.Id).ValueGeneratedNever();
+        organization.Ignore(o => o.DomainEvents);
 
         organization.Property(o => o.Name).HasMaxLength(Organization.NameMaxLength);
         organization.Property(o => o.Slug).HasMaxLength(OrganizationSlug.MaxLength);

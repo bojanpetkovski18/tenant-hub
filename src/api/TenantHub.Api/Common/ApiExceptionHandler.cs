@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using TenantHub.Application.Abstractions;
 using TenantHub.Domain;
 using TenantHub.Domain.Jobs;
+using TenantHub.Domain.Organizations;
 
 namespace TenantHub.Api.Common;
 
@@ -55,7 +56,7 @@ public sealed partial class ApiExceptionHandler(IProblemDetailsService problemDe
                 },
                 Title = domain.Message,
                 Extensions = { ["code"] = domain.Code },
-            }.WithAllowed(domain),
+            }.WithDetails(domain),
             _ => null,
         };
 
@@ -79,14 +80,34 @@ public sealed partial class ApiExceptionHandler(IProblemDetailsService problemDe
 
 internal static class ProblemExtensions
 {
-    /// <summary>An invalid job transition lists the moves the caller may choose instead (SPEC 5.4), as camelCase statuses.</summary>
-    public static ProblemDetails WithAllowed(this ProblemDetails problem, DomainException exception)
+    /// <summary>
+    /// Business-rule details a client acts on, as camelCase values: an invalid job transition lists the moves the
+    /// caller may choose (SPEC 5.4); a plan limit names the limit, its value and the usage, and a blocked downgrade
+    /// lists every limit in the way (SPEC 5.5).
+    /// </summary>
+    public static ProblemDetails WithDetails(this ProblemDetails problem, DomainException exception)
     {
-        if (exception is InvalidJobTransitionException transition)
+        switch (exception)
         {
-            problem.Extensions["allowed"] = transition.Allowed.Select(s => JsonNamingPolicy.CamelCase.ConvertName(s.ToString())).ToList();
+            case InvalidJobTransitionException transition:
+                problem.Extensions["allowed"] = transition.Allowed.Select(s => Camel(s.ToString())).ToList();
+                break;
+            case PlanLimitReachedException reached:
+                problem.Extensions["plan"] = Camel(reached.Plan.ToString());
+                problem.Extensions["limit"] = Camel(reached.Breach.Limit.ToString());
+                problem.Extensions["allowed"] = reached.Breach.Allowed;
+                problem.Extensions["usage"] = reached.Breach.Usage;
+                break;
+            case PlanDowngradeBlockedException blocked:
+                problem.Extensions["plan"] = Camel(blocked.Target.ToString());
+                problem.Extensions["blocking"] = blocked.Blocking
+                    .Select(b => new Dictionary<string, object> { ["limit"] = Camel(b.Limit.ToString()), ["allowed"] = b.Allowed, ["usage"] = b.Usage })
+                    .ToList();
+                break;
         }
 
         return problem;
     }
+
+    private static string Camel(string name) => JsonNamingPolicy.CamelCase.ConvertName(name);
 }

@@ -322,3 +322,35 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
 - **Filters:** actor, action, type, entity id and date range. Unknown values match nothing or are ignored, as in the other lists. The action list in the SPA is a fixed catalog, grouped by entity.
 - **Members cannot reach it:** no navigation entry (permission-driven, as before), an explanation on the page without calling the API, and `403` from the API (permission matrix).
 
+## D031: Plan limits, plan changes and organization settings (M08)
+- **Date:** 2026-10-23
+- **Policy in the domain (confirms D013):**
+  - `PlanLimits` for each plan (null means unlimited), `PlanUsage`, and `PlanPolicy.EnsureRoomFor` / `BlockingLimits`;
+  - `Organization.ChangePlan(target, usage)` refuses a downgrade with every blocking limit;
+  - the organization became an aggregate whose settings and plan changes are audited (`organization.updated`, `organization.plan_changed`).
+- **Where limits are checked:** `PlanLimitsCheck` counts the usage under the organization-row lock, in the transaction of every command that consumes a limit:
+  - inviting, unless the invitation replaces a pending one;
+  - renewing an expired invitation;
+  - accepting an invitation (its seat is already counted, so this only refuses an organization that is over its limit);
+  - creating a client, and restoring an archived one;
+  - creating a job, and reopening a completed one.
+
+  Without the lock, the races fail every run (PROGRESS).
+- **Seats** are active members plus pending invitations, where pending means not accepted, not revoked and not expired. An expired invitation frees its seat until it is renewed.
+- **Refusals carry data, not just text:**
+  - `403 plan-limit-reached` with `plan`, `limit`, `allowed` and `usage`;
+  - `409 plan-downgrade-blocked` with `blocking`.
+
+  The SPA shows one shared message with a link to the plan for Owners (US-50: "the same clear message").
+- **Deleting an organization:**
+  - the name is typed (whitespace collapsed, case-sensitive);
+  - the database cascades everything the organization owns, its audit entries included (deletes are allowed by the M07 trigger);
+  - so the deletion is a structured warning in the logs (event 2001), not an audit entry;
+  - `DELETE /` reads its optional JSON body itself: a bound body made routing skip the endpoint for a body-less request, which then got the not-found fallback.
+- **Isolation harness:** a "fresh organization" resource stands in for the requested one, so `DELETE /` runs through every matrix without consuming the fixture. A reviewed `NotAuditedBecause` reason exempts it from the audit rule. The fixture's organizations are on Business, so limits do not interfere; limit tests use their own Free organizations.
+- **UI:**
+  - meters use `role="meter"` with the usage as text; the fill uses width classes in 5% steps, not an inline style (CSP, D023);
+  - a plan change asks for confirmation;
+  - a refused downgrade lists the blocking limits;
+  - the shell closes open dialogs on every router navigation (bug found in the browser pass).
+

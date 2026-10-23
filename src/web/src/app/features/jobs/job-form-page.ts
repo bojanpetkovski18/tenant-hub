@@ -17,6 +17,7 @@ import { SessionStore } from '../../core/session/session.store';
 import { focusFirstInvalid } from '../../shared/forms/focus-first-invalid';
 import { applyProblem, controlError } from '../../shared/forms/server-errors';
 import { Confirm } from '../../shared/ui/confirm-dialog';
+import { LimitReached } from '../../shared/ui/limit-reached';
 import { EmptyState, ErrorState } from '../../shared/ui/states';
 import { ClientOption, ClientsApi } from '../clients/clients.api';
 import { Member, MembersApi } from '../members/members.api';
@@ -49,7 +50,7 @@ type Field = keyof typeof messages;
  */
 @Component({
   selector: 'app-job-form-page',
-  imports: [ReactiveFormsModule, RouterLink, EmptyState, ErrorState],
+  imports: [ReactiveFormsModule, RouterLink, EmptyState, ErrorState, LimitReached],
   template: `
     <a [routerLink]="backLink()" class="text-sm text-muted hover:text-fg">← Back</a>
     <h1 class="mt-3 text-2xl font-semibold tracking-tight">
@@ -79,7 +80,9 @@ type Field = keyof typeof messages;
         (ngSubmit)="save()"
         novalidate
       >
-        @if (formError(); as message) {
+        @if (limit(); as problem) {
+          <app-limit-reached [problem]="problem" [slug]="slug()" />
+        } @else if (formError(); as message) {
           <div class="th-alert-error" role="alert">{{ message }}</div>
         }
 
@@ -316,6 +319,7 @@ export class JobFormPage {
   protected readonly loadError = signal<ApiProblem | null>(null);
   protected readonly saving = signal(false);
   protected readonly formError = signal<string | null>(null);
+  protected readonly limit = signal<ApiProblem | null>(null);
 
   constructor() {
     effect(() => {
@@ -368,6 +372,7 @@ export class JobFormPage {
 
   protected async save(): Promise<void> {
     this.formError.set(null);
+    this.limit.set(null);
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       this.focusInvalid();
@@ -397,6 +402,10 @@ export class JobFormPage {
       const problem = toApiProblem(error);
       if (problem.code === 'concurrency-conflict') {
         await this.resolveConflict();
+        return;
+      }
+      if (problem.code === 'plan-limit-reached') {
+        this.limit.set(problem);
         return;
       }
       this.formError.set(applyProblem(this.form, problem));

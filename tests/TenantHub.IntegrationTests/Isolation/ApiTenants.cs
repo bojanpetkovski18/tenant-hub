@@ -10,6 +10,7 @@ using TenantHub.Domain.Clients;
 using TenantHub.Domain.Invitations;
 using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
+using TenantHub.Domain.Organizations;
 using TenantHub.Infrastructure.Data;
 using TenantHub.Infrastructure.Identity;
 using TenantHub.IntegrationTests.Infrastructure;
@@ -319,6 +320,8 @@ public sealed class ApiTenants : IAsyncDisposable
     {
         OrgA = await SignUpAsync(EmailsA[Role.Owner], "Alpha Cleaning");
         OrgB = await SignUpAsync(OrgBOwnerEmail, OrgBName);
+        await SetPlanAsync(OrgA, Plan.Business);
+        await SetPlanAsync(OrgB, Plan.Business);
 
         // Everyone else signs up too (so they have passwords; their own organizations are irrelevant), then joins A.
         var joiners = new List<(string Email, Role Role, bool Removed)>
@@ -361,6 +364,65 @@ public sealed class ApiTenants : IAsyncDisposable
         InvitationB = await CreateInvitationAsync(OrgB);
         JobA = await CreateJobAsync(OrgA, Role.Member, "Alpha Standing Job");
         JobB = await CreateJobAsync(OrgB, title: JobBTitle);
+    }
+
+    /// <summary>
+    /// Sets an organization's plan directly. The fixture's organizations are on Business, so the matrices and flows are
+    /// not limited; tests about limits use their own Free organizations.
+    /// </summary>
+    public async Task SetPlanAsync(Guid organizationId, Plan plan)
+    {
+        await using var db = PostgresFixture.CreateDbContext(ConnectionString);
+        var organization = await db.Organizations.SingleOrDefaultAsync(o => o.Id == organizationId, Ct);
+        if (organization is not null)
+        {
+            db.Entry(organization).Property(o => o.Plan).CurrentValue = plan;
+            await db.SaveChangesAsync(Ct);
+        }
+    }
+
+    /// <summary>
+    /// A new organization standing in for <paramref name="like"/>: A's role users with their roles when it is A, B's
+    /// Owner alone when it is B, and a random id (no organization) otherwise. Business plan, like the fixture.
+    /// </summary>
+    public async Task<Guid> CreateOrganizationLikeAsync(Guid like)
+    {
+        if (like != OrgA && like != OrgB)
+        {
+            return Guid.NewGuid();
+        }
+
+        await using var lookup = PostgresFixture.CreateDbContext(ConnectionString);
+        var members = await lookup.Memberships.AcrossTenants()
+            .Where(m => m.OrganizationId == like && m.RemovedAt == null && (like == OrgB || EmailsA.Values.Contains(lookup.Users.Single(u => u.Id == m.UserId).Email!)))
+            .Select(m => new { m.UserId, m.Role })
+            .ToListAsync(Ct);
+        var ownerId = members.First(m => m.Role == Role.Owner).UserId;
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var organization = Organization.Create($"Disposable {suffix}", $"disposable-{suffix}", "UTC", ownerId, DateTimeOffset.UtcNow, Plan.Business);
+        await using (var db = PostgresFixture.CreateDbContext(ConnectionString))
+        {
+            db.Organizations.Add(organization);
+            await db.SaveChangesAsync(Ct);
+        }
+
+        await using var tenantDb = ContextAs(organization.Id, ownerId);
+        foreach (var member in members)
+        {
+            tenantDb.Memberships.Add(member.Role == Role.Owner
+                ? organization.AddOwner(member.UserId, DateTimeOffset.UtcNow)
+                : organization.AddMember(member.UserId, member.Role, DateTimeOffset.UtcNow, ownerId));
+        }
+
+        await tenantDb.SaveChangesAsync(Ct);
+        return organization.Id;
+    }
+
+    public async Task<string> OrganizationNameAsync(Guid organizationId)
+    {
+        await using var db = PostgresFixture.CreateDbContext(ConnectionString);
+        return await db.Organizations.Where(o => o.Id == organizationId).Select(o => o.Name).SingleOrDefaultAsync(Ct) ?? "Unknown organization";
     }
 
     /// <summary>A context working in the organization as its first active Owner.</summary>

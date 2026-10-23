@@ -6,7 +6,7 @@ namespace TenantHub.Domain.Organizations;
 /// The tenant (SPEC 8.2). Everything tenant-owned belongs to exactly one organization. The slug is fixed at
 /// creation; the name can change later (M08).
 /// </summary>
-public sealed class Organization
+public sealed class Organization : AggregateRoot
 {
     public const int NameMinLength = 2;
     public const int NameMaxLength = 80;
@@ -103,6 +103,79 @@ public sealed class Organization
         return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, zone), TimeSpan.Zero);
     }
 
+    /// <summary>
+    /// Renames and re-zones the organization (US-51), reporting both fields at once; returns false (and records
+    /// nothing) when nothing changed. The slug stays as it is (SPEC 5.1).
+    /// </summary>
+    public bool UpdateSettings(string? name, string? timeZone)
+    {
+        var errors = new Dictionary<string, string[]>();
+        string? normalizedName = null;
+        try
+        {
+            normalizedName = NormalizeName(name ?? "");
+        }
+        catch (DomainException error)
+        {
+            errors["name"] = [error.Message];
+        }
+
+        if (timeZone is null || !IsValidTimeZone(timeZone))
+        {
+            errors["timeZone"] = ["Choose a time zone from the list."];
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new DomainValidationException(errors);
+        }
+
+        var changes = new List<FieldChange>();
+        if (normalizedName != Name)
+        {
+            changes.Add(new FieldChange("name", Name, normalizedName));
+        }
+
+        if (timeZone != TimeZone)
+        {
+            changes.Add(new FieldChange("timeZone", TimeZone, timeZone));
+        }
+
+        if (changes.Count == 0)
+        {
+            return false;
+        }
+
+        Name = normalizedName!;
+        TimeZone = timeZone!;
+        var what = string.Join(" and ", changes.Select(c => c.Field == "name" ? $"renamed it to “{c.To}”" : $"set the time zone to {c.To}"));
+        Raise(new OrganizationEvent(this, "organization.updated", $"Updated the organization: {what}", changes));
+        return true;
+    }
+
+    /// <summary>
+    /// Switches plan ("demo billing", SPEC 4.1). Upgrades always fit; a downgrade is refused while the usage exceeds
+    /// the target plan, listing every limit in the way (US-50). The caller counts the usage under the organization lock.
+    /// </summary>
+    public bool ChangePlan(Plan target, PlanUsage usage)
+    {
+        if (target == Plan)
+        {
+            return false;
+        }
+
+        var blocking = PlanPolicy.BlockingLimits(target, usage);
+        if (blocking.Count > 0)
+        {
+            throw new PlanDowngradeBlockedException(target, blocking);
+        }
+
+        var change = new FieldChange("plan", Plan.ToString(), target.ToString());
+        Plan = target;
+        Raise(new OrganizationEvent(this, "organization.plan_changed", $"Changed the plan from {change.From} to {change.To}", [change]));
+        return true;
+    }
+
     public static string NormalizeName(string name)
     {
         // Collapse runs of whitespace so "Acme   Ltd " and "Acme Ltd" are the same name.
@@ -126,4 +199,13 @@ public sealed class Organization
         IsValidTimeZone(timeZone)
             ? timeZone
             : throw new DomainException("invalid-time-zone", "Choose a time zone from the list.", DomainErrorKind.Validation);
+}
+
+public sealed record OrganizationEvent(Organization Organization, string Action, string Summary, IReadOnlyList<FieldChange> Changes) : IAuditableEvent
+{
+    public Guid OrganizationId => Organization.Id;
+
+    public string EntityType => "organization";
+
+    public Guid EntityId => Organization.Id;
 }

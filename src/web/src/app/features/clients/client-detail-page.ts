@@ -12,6 +12,7 @@ import { Router, RouterLink } from '@angular/router';
 import { ApiProblem, toApiProblem } from '../../core/http/api-problem';
 import { SessionStore } from '../../core/session/session.store';
 import { Confirm } from '../../shared/ui/confirm-dialog';
+import { LimitReached } from '../../shared/ui/limit-reached';
 import { EmptyState, ErrorState } from '../../shared/ui/states';
 import { PagedList } from '../../shared/list/paged-list.store';
 import { JobStatusBadge } from '../jobs/job-badges';
@@ -22,7 +23,15 @@ import { Client, ClientsApi } from './clients.api';
 /** US-20: one client, with the actions the user's permissions allow. */
 @Component({
   selector: 'app-client-detail-page',
-  imports: [RouterLink, DatePipe, EmptyState, ErrorState, ClientStatusBadge, JobStatusBadge],
+  imports: [
+    RouterLink,
+    DatePipe,
+    EmptyState,
+    ErrorState,
+    ClientStatusBadge,
+    JobStatusBadge,
+    LimitReached,
+  ],
   template: `
     <a [routerLink]="listLink()" class="text-sm text-muted hover:text-fg">← Clients</a>
 
@@ -83,7 +92,9 @@ import { Client, ClientsApi } from './clients.api';
         }
       </div>
 
-      @if (actionError(); as message) {
+      @if (limit(); as problem) {
+        <div class="mt-4"><app-limit-reached [problem]="problem" [slug]="slug()" /></div>
+      } @else if (actionError(); as message) {
         <div class="th-alert-error mt-4" role="alert">{{ message }}</div>
       }
       @if (actionDone(); as message) {
@@ -194,6 +205,7 @@ export class ClientDetailPage {
   protected readonly loadError = signal<ApiProblem | null>(null);
   protected readonly busy = signal(false);
   protected readonly actionError = signal<string | null>(null);
+  protected readonly limit = signal<ApiProblem | null>(null);
   protected readonly actionDone = signal<string | null>(null);
 
   constructor() {
@@ -295,12 +307,19 @@ export class ClientDetailPage {
   private async run(action: () => Promise<Client>, done: string): Promise<void> {
     this.busy.set(true);
     this.actionError.set(null);
+    this.limit.set(null);
     this.actionDone.set(null);
     try {
       this.client.set(await action());
       this.actionDone.set(done);
     } catch (error) {
-      this.actionError.set(toApiProblem(error).title);
+      const problem = toApiProblem(error);
+      // Restoring counts toward the active-client limit (SPEC 5.5).
+      if (problem.code === 'plan-limit-reached') {
+        this.limit.set(problem);
+        return;
+      }
+      this.actionError.set(problem.title);
     } finally {
       this.busy.set(false);
     }

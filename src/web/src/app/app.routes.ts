@@ -114,7 +114,12 @@ export const routes: Routes = [
         title: 'Audit log',
         loadComponent: () => import('./features/audit/audit-page').then((m) => m.AuditLogPage),
       },
-      page('settings', 'Settings', 'Organization settings arrive in M08.'),
+      {
+        path: 'settings',
+        title: 'Settings',
+        loadComponent: () =>
+          import('./features/settings/settings-page').then((m) => m.SettingsPage),
+      },
     ],
   },
   {

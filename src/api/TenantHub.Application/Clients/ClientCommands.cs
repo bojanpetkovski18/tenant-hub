@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
+using TenantHub.Application.Organizations;
 using TenantHub.Domain.Clients;
+using TenantHub.Domain.Organizations;
 
 namespace TenantHub.Application.Clients;
 
@@ -14,15 +16,27 @@ public sealed record ClientInput(string? Name, string? ContactName, string? Emai
 /// "not found"), applies one domain method and saves once; the audit entry is written in the same save (D012).
 /// Unique-name and concurrency conflicts are read from the database's answer, which is race-free.
 /// </summary>
-public sealed class ClientCommands(IAppDbContext db, ITenantContext tenant, IDatabaseErrors errors, TimeProvider time)
+public sealed class ClientCommands(
+    IAppDbContext db,
+    ITenantContext tenant,
+    IDatabaseErrors errors,
+    IDatabaseLocks locks,
+    PlanLimitsCheck limits,
+    TimeProvider time)
 {
     public const string ActiveNameIndex = "ux_clients_active_name";
 
     public async Task<ClientView> CreateAsync(ClientInput input, CancellationToken cancellationToken)
     {
-        var client = Client.Create(tenant.OrganizationId!.Value, input.ToDetails(), time.GetUtcNow());
+        var details = input.ToDetails();
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await locks.LockOrganizationAsync(tenant.OrganizationId!.Value, cancellationToken);
+        await limits.EnsureRoomForAsync(LimitKind.ActiveClients, cancellationToken);
+
+        var client = Client.Create(tenant.OrganizationId!.Value, details, time.GetUtcNow());
         db.Clients.Add(client);
         await SaveAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return ToView(client);
     }
 
@@ -51,11 +65,20 @@ public sealed class ClientCommands(IAppDbContext db, ITenantContext tenant, IDat
         return ToView(client);
     }
 
+    /// <summary>Archived clients do not count toward the plan, so restoring one is limit-checked (SPEC 5.5).</summary>
     public async Task<ClientView> RestoreAsync(Guid id, CancellationToken cancellationToken)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await locks.LockOrganizationAsync(tenant.OrganizationId!.Value, cancellationToken);
         var client = await LoadAsync(id, cancellationToken);
+        if (client.Status == ClientStatus.Archived)
+        {
+            await limits.EnsureRoomForAsync(LimitKind.ActiveClients, cancellationToken);
+        }
+
         client.Restore(time.GetUtcNow());
         await SaveAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return ToView(client);
     }
 

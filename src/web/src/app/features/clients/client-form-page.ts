@@ -17,6 +17,7 @@ import { SessionStore } from '../../core/session/session.store';
 import { focusFirstInvalid } from '../../shared/forms/focus-first-invalid';
 import { applyProblem, controlError } from '../../shared/forms/server-errors';
 import { Confirm } from '../../shared/ui/confirm-dialog';
+import { LimitReached } from '../../shared/ui/limit-reached';
 import { EmptyState, ErrorState } from '../../shared/ui/states';
 import { Client, ClientsApi } from './clients.api';
 
@@ -53,7 +54,7 @@ const fields: readonly {
 /** US-20: create a client, or edit one with optimistic concurrency (a conflict offers to reload). */
 @Component({
   selector: 'app-client-form-page',
-  imports: [ReactiveFormsModule, RouterLink, EmptyState, ErrorState],
+  imports: [ReactiveFormsModule, RouterLink, EmptyState, ErrorState, LimitReached],
   template: `
     <a [routerLink]="backLink()" class="text-sm text-muted hover:text-fg">← Back</a>
     <h1 class="mt-3 text-2xl font-semibold tracking-tight">
@@ -79,7 +80,9 @@ const fields: readonly {
         (ngSubmit)="save()"
         novalidate
       >
-        @if (formError(); as message) {
+        @if (limit(); as problem) {
+          <app-limit-reached [problem]="problem" [slug]="slug()" />
+        } @else if (formError(); as message) {
           <div class="th-alert-error" role="alert">{{ message }}</div>
         }
         @for (field of fields; track field.name) {
@@ -158,6 +161,7 @@ export class ClientFormPage {
   protected readonly loadError = signal<ApiProblem | null>(null);
   protected readonly saving = signal(false);
   protected readonly formError = signal<string | null>(null);
+  protected readonly limit = signal<ApiProblem | null>(null);
 
   constructor() {
     effect(() => {
@@ -185,6 +189,7 @@ export class ClientFormPage {
 
   protected async save(): Promise<void> {
     this.formError.set(null);
+    this.limit.set(null);
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       this.focusInvalid();
@@ -204,6 +209,10 @@ export class ClientFormPage {
       const problem = toApiProblem(error);
       if (problem.code === 'concurrency-conflict') {
         await this.resolveConflict();
+        return;
+      }
+      if (problem.code === 'plan-limit-reached') {
+        this.limit.set(problem);
         return;
       }
       this.formError.set(applyProblem(this.form, problem, { 'client-name-taken': 'name' }));

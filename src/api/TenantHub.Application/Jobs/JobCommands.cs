@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
+using TenantHub.Application.Organizations;
 using TenantHub.Domain.Clients;
 using TenantHub.Domain.Jobs;
+using TenantHub.Domain.Organizations;
 
 namespace TenantHub.Application.Jobs;
 
@@ -31,6 +33,7 @@ public sealed class JobCommands(
     ITenantContext tenant,
     IDatabaseLocks locks,
     JobViews views,
+    PlanLimitsCheck limits,
     TimeProvider time)
 {
     public async Task<JobView> CreateAsync(JobInput input, CancellationToken cancellationToken)
@@ -43,7 +46,8 @@ public sealed class JobCommands(
         await locks.LockOrganizationAsync(tenant.OrganizationId!.Value, cancellationToken);
         var organization = await db.Organizations.SingleAsync(o => o.Id == tenant.OrganizationId, cancellationToken);
 
-        // Open-job plan limit (SPEC 5.5): checked here in M08, under the same organization lock.
+        // Open jobs (SPEC 5.5), under the same lock that serializes the numbering.
+        await limits.EnsureRoomForAsync(LimitKind.OpenJobs, cancellationToken);
         var job = Job.Create(organization.Id, organization.TakeJobNumber(), details, views.Actor(), names, time.GetUtcNow());
         db.Jobs.Add(job);
         await db.SaveChangesAsync(cancellationToken);
@@ -77,9 +81,19 @@ public sealed class JobCommands(
 
     public async Task<JobView> TransitionAsync(Guid id, JobStatus to, string? reason, CancellationToken cancellationToken)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var job = await LoadAsync(id, cancellationToken);
+
+        // Closed jobs do not count toward the plan, so reopening one is limit-checked (SPEC 5.5), under the lock.
+        if (!job.Status.IsOpen() && to.IsOpen())
+        {
+            await locks.LockOrganizationAsync(tenant.OrganizationId!.Value, cancellationToken);
+            await limits.EnsureRoomForAsync(LimitKind.OpenJobs, cancellationToken);
+        }
+
         job.TransitionTo(to, views.Actor(), reason, time.GetUtcNow());
         await SaveAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return await views.ForAsync(job, cancellationToken);
     }
 

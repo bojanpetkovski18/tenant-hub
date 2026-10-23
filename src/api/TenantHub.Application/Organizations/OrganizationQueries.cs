@@ -7,6 +7,25 @@ namespace TenantHub.Application.Organizations;
 
 public sealed record OrganizationDetails(Guid Id, string Name, string Slug, Plan Plan, string TimeZone, DateTimeOffset CreatedAt);
 
+/// <summary>A plan and its limits, for the plan cards (SPEC 6, Settings → Plan and usage).</summary>
+public sealed record PlanOption(Plan Plan, PlanLimits Limits);
+
+/// <summary>The organization with its usage against its plan (US-50: "Seats 3 of 3"), and every plan to compare.</summary>
+public sealed record OrganizationOverview(
+    Guid Id,
+    string Name,
+    string Slug,
+    Plan Plan,
+    string TimeZone,
+    DateTimeOffset CreatedAt,
+    PlanUsage Usage,
+    PlanLimits Limits,
+    IReadOnlyList<PlanOption> Plans)
+{
+    public static readonly IReadOnlyList<PlanOption> AllPlans =
+        [.. Enum.GetValues<Plan>().Select(plan => new PlanOption(plan, PlanLimits.For(plan)))];
+}
+
 /// <summary>
 /// A member, with what the caller may do to them under SPEC 5.2 (computed by <see cref="MembershipRules"/>, so the SPA
 /// disables exactly what the API would refuse and never re-implements the rules).
@@ -16,14 +35,18 @@ public sealed record MemberSummary(
     bool IsYou, bool CanChangeRole, bool CanRemove, bool CanLeave);
 
 /// <summary>The current organization (tenant-scoped; the organization comes from <see cref="ITenantContext"/>).</summary>
-public sealed class GetOrganizationQuery(IAppDbContext db, ITenantContext tenant)
+public sealed class GetOrganizationQuery(IAppDbContext db, ITenantContext tenant, PlanLimitsCheck limits)
 {
-    public Task<OrganizationDetails> HandleAsync(CancellationToken cancellationToken) =>
-        db.Organizations
+    public async Task<OrganizationOverview> HandleAsync(CancellationToken cancellationToken)
+    {
+        var o = await db.Organizations
             .AsNoTracking()
             .Where(o => o.Id == tenant.OrganizationId)
             .Select(o => new OrganizationDetails(o.Id, o.Name, o.Slug, o.Plan, o.TimeZone, o.CreatedAt))
             .SingleAsync(cancellationToken);
+        var usage = await limits.UsageAsync(cancellationToken);
+        return new OrganizationOverview(o.Id, o.Name, o.Slug, o.Plan, o.TimeZone, o.CreatedAt, usage, PlanLimits.For(o.Plan), OrganizationOverview.AllPlans);
+    }
 }
 
 /// <summary>Active members of the current organization (SPEC 7, <c>GET /members</c>).</summary>
