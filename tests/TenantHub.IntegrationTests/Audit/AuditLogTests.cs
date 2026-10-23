@@ -178,6 +178,11 @@ public sealed partial class AuditLogTests(PostgresFixture postgres)
         ];
         Assert.All(actions, action => Assert.Contains(all, e => e.Action == action));
 
+        // Only A's history: B's client, job, invitation and Owner never show up in A's log.
+        Guid[] ofB = [tenants.ClientB, tenants.JobB, tenants.InvitationB, tenants.MemberB];
+        Assert.DoesNotContain(all, e => ofB.Contains(e.EntityId));
+        Assert.DoesNotContain(all, e => e.Summary.Contains(tenants.ClientBName, StringComparison.Ordinal) || e.Summary.Contains(tenants.JobBTitle, StringComparison.Ordinal));
+
         // Readable: a sentence that starts with a capitalized verb (or with the person it is about), no ids, and
         // every changed value a name, label, date or amount.
         Assert.All(all, e =>
