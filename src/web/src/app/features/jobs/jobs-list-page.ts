@@ -171,15 +171,16 @@ const pageSize = 25;
               #assigneeSelect
               id="job-assignee"
               class="th-input"
-              [value]="query().assignee"
               (change)="change({ assignee: assigneeSelect.value, page: 1 })"
             >
-              <option value="">Anyone</option>
-              <option value="me">Me</option>
-              <option value="none">Unassigned</option>
+              <option value="" [selected]="!query().assignee">Anyone</option>
+              <option value="me" [selected]="query().assignee === 'me'">Me</option>
+              <option value="none" [selected]="query().assignee === 'none'">Unassigned</option>
               @for (member of members(); track member.userId) {
                 @if (!member.isYou) {
-                  <option [value]="member.userId">{{ member.displayName }}</option>
+                  <option [value]="member.userId" [selected]="member.userId === query().assignee">
+                    {{ member.displayName }}
+                  </option>
                 }
               }
             </select>
@@ -191,12 +192,13 @@ const pageSize = 25;
               #clientSelect
               id="job-client"
               class="th-input"
-              [value]="query().clientId"
               (change)="change({ clientId: clientSelect.value, page: 1 })"
             >
-              <option value="">All clients</option>
+              <option value="" [selected]="!query().clientId">All clients</option>
               @for (client of clients(); track client.id) {
-                <option [value]="client.id">{{ client.name }}</option>
+                <option [value]="client.id" [selected]="client.id === query().clientId">
+                  {{ client.name }}
+                </option>
               }
             </select>
           </div>

@@ -95,12 +95,13 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
               #actorSelect
               id="audit-actor"
               class="th-input"
-              [value]="query().actor"
               (change)="change({ actor: actorSelect.value })"
             >
-              <option value="">Anyone</option>
+              <option value="" [selected]="!query().actor">Anyone</option>
               @for (member of members(); track member.userId) {
-                <option [value]="member.userId">{{ member.displayName }}</option>
+                <option [value]="member.userId" [selected]="member.userId === query().actor">
+                  {{ member.displayName }}
+                </option>
               }
             </select>
           </div>
@@ -110,14 +111,15 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
               #actionSelect
               id="audit-action"
               class="th-input"
-              [value]="query().action"
               (change)="change({ action: actionSelect.value })"
             >
-              <option value="">Any action</option>
+              <option value="" [selected]="!query().action">Any action</option>
               @for (group of actions; track group.type) {
                 <optgroup [label]="entityTypeLabels[group.type] + 's'">
                   @for (action of group.actions; track action[0]) {
-                    <option [value]="action[0]">{{ action[1] }}</option>
+                    <option [value]="action[0]" [selected]="action[0] === query().action">
+                      {{ action[1] }}
+                    </option>
                   }
                 </optgroup>
               }
@@ -129,12 +131,13 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
               #typeSelect
               id="audit-type"
               class="th-input"
-              [value]="query().entityType"
               (change)="setType(typeSelect.value)"
             >
-              <option value="">Anything</option>
+              <option value="" [selected]="!query().entityType">Anything</option>
               @for (group of actions; track group.type) {
-                <option [value]="group.type">{{ entityTypeLabels[group.type] }}s</option>
+                <option [value]="group.type" [selected]="group.type === query().entityType">
+                  {{ entityTypeLabels[group.type] }}s
+                </option>
               }
             </select>
           </div>

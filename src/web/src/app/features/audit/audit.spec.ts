@@ -202,6 +202,18 @@ describe('audit log page', () => {
     expect(text(main(element))).toContain('No activity matches');
   });
 
+  it('shows the URL filters in the pickers after a load (regression: options render after the select)', async () => {
+    const element = await open(
+      '/o/brightline/audit?action=job.status_changed&entityType=job&actor=0199f0a0-0000-7000-8000-000000000003',
+    );
+    http.expectOne((r) => r.url === auditUrl).flush({ items: [entry()], nextCursor: null });
+    await settle(harness.fixture);
+
+    const value = (id: string) => (main(element).querySelector(id) as HTMLSelectElement).value;
+    expect(value('#audit-action')).toBe('job.status_changed');
+    expect(value('#audit-type')).toBe('job');
+  });
+
   it('tells a Member it is for Admins and Owners, without asking the API', async () => {
     const member: SessionUser = {
       ...olivia,
