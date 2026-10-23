@@ -39,7 +39,7 @@ public sealed class Membership : AggregateRoot, ITenantOwned
     }
 
     /// <summary>Soft removal by someone else; check <see cref="MembershipRules.EnsureCanRemove"/> first.</summary>
-    public void Remove(DateTimeOffset now, string memberName) => End(now, "member.removed", $"Removed {memberName}");
+    public void Remove(DateTimeOffset now, string memberName) => End(now, "member.removed", $"Removed {memberName} from the organization");
 
     /// <summary>Soft removal by the member; check <see cref="MembershipRules.EnsureCanLeave"/> first.</summary>
     public void Leave(DateTimeOffset now, string memberName) => End(now, "member.left", $"{memberName} left the organization");
