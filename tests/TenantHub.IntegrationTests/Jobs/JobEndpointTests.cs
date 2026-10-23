@@ -314,7 +314,7 @@ public sealed class JobEndpointTests(PostgresFixture postgres)
             await using var command = new NpgsqlCommand(
                 """
                 INSERT INTO jobs (id, organization_id, number, title, client_id, assignee_user_id, status, priority,
-                                  created_at, created_by_user_id, updated_at)
+                    created_at, created_by_user_id, updated_at)
                 VALUES (gen_random_uuid(), @org, 99999, 'Smuggled', @client, @assignee, 'New', 'Normal', now(), @creator, now())
                 """,
                 connection);
