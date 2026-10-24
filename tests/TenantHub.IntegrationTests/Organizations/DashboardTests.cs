@@ -54,7 +54,7 @@ public sealed class DashboardTests(PostgresFixture postgres)
         var week = await db.Database.SqlQuery<Guid>($"""
             SELECT id AS "Value" FROM jobs
             WHERE organization_id = {org.Id} AND assignee_user_id = {me} AND scheduled_on >= {today} AND scheduled_on < {today.AddDays(7)}
-              AND status NOT IN ('Completed', 'Cancelled')
+            AND status NOT IN ('Completed', 'Cancelled')
             ORDER BY scheduled_on, number LIMIT 10
             """).ToListAsync(Ct);
         Assert.Equal(week, dashboard.MyNextSevenDays.Select(j => j.Id));
