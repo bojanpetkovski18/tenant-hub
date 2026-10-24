@@ -243,6 +243,49 @@ describe('job pages', () => {
     });
   });
 
+  describe('form', () => {
+    const isOptions = (r: { url: string }) =>
+      r.url.endsWith('/members') || r.url.endsWith('/clients');
+
+    it('says when the clients and people could not be loaded, and retries', async () => {
+      const element = await open('/o/brightline/jobs/new');
+      http
+        .match(isOptions)
+        .forEach((r) => r.flush({ title: 'Server error' }, { status: 500, statusText: 'Error' }));
+      await settle(harness.fixture);
+
+      const alert = main(element).querySelector('[role="alert"]');
+      expect(text(alert)).toContain('could not be loaded');
+      alert!.querySelector('button')!.click();
+      await settle(harness.fixture);
+      http
+        .match(isOptions)
+        .forEach((r) =>
+          r.request.url.endsWith('/members')
+            ? r.flush([])
+            : r.flush({ items: [], page: 1, pageSize: 100, total: 0 }),
+        );
+      await settle(harness.fixture);
+
+      expect(main(element).querySelector('[role="alert"]')).toBeNull();
+    });
+
+    it('points to adding a client when the organization has none', async () => {
+      const element = await open('/o/brightline/jobs/new');
+      http
+        .match(isOptions)
+        .forEach((r) =>
+          r.request.url.endsWith('/members')
+            ? r.flush([])
+            : r.flush({ items: [], page: 1, pageSize: 100, total: 0 }),
+        );
+      await settle(harness.fixture);
+
+      expect(text(main(element))).toContain('No active clients yet');
+      expect(main(element).querySelector('a[href="/o/brightline/clients/new"]')).not.toBeNull();
+    });
+  });
+
   describe('detail', () => {
     const buttons = (element: HTMLElement) =>
       [...main(element).querySelectorAll('section[aria-labelledby="actions-heading"] button')].map(
