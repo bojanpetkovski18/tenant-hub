@@ -11,8 +11,15 @@ import {
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { toApiProblem } from '../../core/http/api-problem';
+import {
+  DemoAccount,
+  DemoStore,
+  demoRoleHints,
+  resetIntervalText,
+} from '../../core/demo/demo.store';
 import { landingPath } from '../../core/session/landing-path';
 import { readLastOrganization } from '../../core/session/last-organization';
+import { Role, roleLabels } from '../../core/session/session.models';
 import { SessionStore } from '../../core/session/session.store';
 import { focusFirstInvalid } from '../../shared/forms/focus-first-invalid';
 import { controlError } from '../../shared/forms/server-errors';
@@ -29,6 +36,42 @@ import { controlError } from '../../shared/forms/server-errors';
           >Create an account and an organization</a
         >.
       </p>
+
+      @if (demo.info(); as info) {
+        <section class="th-card mt-6" aria-labelledby="demo-heading">
+          <h2 id="demo-heading" class="font-semibold">Try the demo</h2>
+          <p class="mt-1 text-sm text-muted">
+            One click, no password: you join Brightline Cleaning Co., a fictional company. Data
+            resets {{ intervalText(info.resetIntervalHours) }}.
+          </p>
+          @if (demoError(); as message) {
+            <div class="th-alert-error mt-3" role="alert">{{ message }}</div>
+          }
+          <ul class="mt-4 space-y-3">
+            @for (account of info.accounts; track account.role) {
+              <li>
+                <button
+                  type="button"
+                  class="th-button-secondary w-full"
+                  [disabled]="demoPending() !== null"
+                  [attr.aria-describedby]="'demo-hint-' + account.role"
+                  (click)="tryAs(account)"
+                >
+                  {{
+                    demoPending() === account.role
+                      ? 'Signing in…'
+                      : 'Try as ' + roleLabels[account.role]
+                  }}
+                </button>
+                <p [id]="'demo-hint-' + account.role" class="mt-1 text-xs text-muted">
+                  {{ account.displayName }}. {{ hints[account.role] }}
+                </p>
+              </li>
+            }
+          </ul>
+        </section>
+        <p class="mt-6 text-sm text-muted">Or sign in with an account:</p>
+      }
 
       <form
         #formEl
@@ -107,6 +150,31 @@ export class SignInPage {
   protected readonly pending = signal(false);
   protected readonly formError = signal<string | null>(null);
   protected readonly showPassword = signal(false);
+
+  protected readonly demo = inject(DemoStore);
+  protected readonly demoPending = signal<Role | null>(null);
+  protected readonly demoError = signal<string | null>(null);
+  protected readonly hints = demoRoleHints;
+  protected readonly roleLabels = roleLabels;
+  protected readonly intervalText = resetIntervalText;
+
+  constructor() {
+    void this.demo.load();
+  }
+
+  /** Demo mode (US-61): signs in as the seeded account for this role. */
+  protected async tryAs(account: DemoAccount): Promise<void> {
+    this.demoError.set(null);
+    this.demoPending.set(account.role);
+    try {
+      const user = await this.session.signInAsDemo(account.role);
+      await this.router.navigateByUrl(landingPath(user, this.returnUrl(), readLastOrganization()));
+    } catch (error) {
+      this.demoError.set(toApiProblem(error).title);
+    } finally {
+      this.demoPending.set(null);
+    }
+  }
 
   protected emailError(): string | null {
     return controlError(this.form.controls.email, {

@@ -48,7 +48,7 @@ Fill this in only after a command has actually been run and verified. Format: co
 All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 24.20.0, Docker 29.8.2. Run from the repo root unless a directory is given.
 
 **One-time setup**
-- `cp .env.example .env`: local settings; `.env` is git-ignored. `App__PublicUrl` (required since M05) is where invitation links point; `Email__Mode=Smtp` sends through Mailpit, `Disabled` (or unset) returns the link to the inviter instead. With `Seed__Enabled=true` and `DEMO_PASSWORD` set, the API creates the demo organizations and users on start (M02): `olivia@brightline.example` (Owner), `adam@…` (Admin), `maya@…` (Member), `victor@…` (Viewer) at Brightline, `hana@harborpine.example` (Owner of Harbor & Pine) and `sam@tenanthub.example` (in both), all with `DEMO_PASSWORD`.
+- `cp .env.example .env`: local settings; `.env` is git-ignored. `App__PublicUrl` (required since M05) is where invitation links point; `Email__Mode=Smtp` sends through Mailpit, `Disabled` (or unset) returns the link to the inviter instead. With `Seed__Enabled=true` and `DEMO_PASSWORD` set, the API creates the demo organizations, users and four months of history on start (M02, rewritten in M09): `olivia@brightline.example` (Owner), `adam@…` (Admin), `maya@…` and `noah@…` (Members), `victor@…` (Viewer) at Brightline (Team), `hana@harborpine.example` (Owner) and `leo@…` (Member) at Harbor & Pine (Free, at 3 of 3 seats), and `sam@tenanthub.example` (Member at Brightline, Admin at Harbor & Pine), all with `DEMO_PASSWORD`. Verified 2026-10-24 (M09).
 - `dotnet tool restore`: installs the pinned `dotnet-ef` 10.0.13 (`dotnet-tools.json`). Verified 2026-10-21 (M02).
 - `cd src/web && npm ci`: installs the exact locked web dependencies. npm warns that `esbuild` and `@parcel/watcher` install scripts are not allowed; that is expected (D019).
 
@@ -59,19 +59,21 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
 
 **API**
 - `dotnet build TenantHub.slnx`: builds everything; warnings are errors.
-- `dotnet test --solution TenantHub.slnx`: unit, architecture and integration tests (Microsoft.Testing.Platform via `global.json`); 707 tests, about 20 s after M08. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-namespace "*Isolation*"` runs the isolation suite (288 tests). Integration tests start their own PostgreSQL through Testcontainers, so Docker must be running; the dev database is not used. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-method "*Concurrent*"` runs matching tests of one project; `--output Detailed` shows the API log of a failing test.
+- `dotnet test --solution TenantHub.slnx`: unit, architecture and integration tests (Microsoft.Testing.Platform via `global.json`); 729 tests, about 49 s after M09. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-namespace "*Isolation*"` runs the isolation suite (296 tests). Integration tests start their own PostgreSQL through Testcontainers, so Docker must be running; the dev database is not used. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-method "*Concurrent*"` runs matching tests of one project; `--output Detailed` shows the API log of a failing test.
 - `dotnet format TenantHub.slnx --verify-no-changes`: formatting and code-style check (exit 2 on a violation); drop `--verify-no-changes` to fix.
 - `dotnet restore TenantHub.slnx --locked-mode`: restore exactly what the `packages.lock.json` files record (CI does this). After changing a package version, run a plain `dotnet restore` and commit the updated lock files.
 - `dotnet run --project src/api/TenantHub.Api`: API on `http://localhost:5090` in Development. It reads the repo-root `.env`, needs the dev database running, applies migrations (`Database__MigrateOnStartup`) and seeds (`Seed__Enabled`). Readiness (includes the database) at `/health`, liveness at `/health/live`; OpenAPI at `/openapi/v1.json` and the Scalar UI at `/scalar` (Development only).
 - `dotnet ef migrations add <Name> --project src/api/TenantHub.Infrastructure --startup-project src/api/TenantHub.Infrastructure --output-dir Data/Migrations`: adds a migration (a design-time factory means the API need not start). Review it as SQL with `dotnet ef migrations script --project src/api/TenantHub.Infrastructure --startup-project src/api/TenantHub.Infrastructure` (it builds first; `--no-build` uses the last build). A forgotten migration fails `Model_matches_the_migrations`.
 - `dotnet list TenantHub.slnx package --vulnerable --include-transitive`: NuGet advisories.
+- Demo mode (verified 2026-10-24, M09): `DEMO_MODE=true DEMO_RESET_INTERVAL_HOURS=6 dotnet run --project src/api/TenantHub.Api` (Git Bash; environment variables override `.env`). It seeds even with `Seed__Enabled=false`, refuses to start without `DEMO_PASSWORD`, turns email off, lowers the auth and invitation limits to 5 a minute, and resets the seeded organizations on schedule (log line "Demo reset: …").
+- Browser suites that sign in many times need the API started with `RateLimiting__AuthPermitLimit=1000 RateLimiting__InvitationPermitLimit=1000` (verified 2026-10-24); the default allows 10 sign-ins a minute per address.
 - A fresh, fully seeded database without touching the dev data (verified 2026-10-22, M04): `docker compose -f docker-compose.dev.yml exec -T db psql -U tenant_hub -d tenant_hub -c "CREATE DATABASE tenant_hub_scratch"`, then run the API with `ConnectionStrings__Database="Host=localhost;Port=5434;Database=tenant_hub_scratch;Username=tenant_hub;Password=change-me"`; it migrates and seeds that database on start.
 
 **Web** (`src/web`)
 - `npm start`: dev server on `http://localhost:4200`, proxying `/api` and `/health` to the API on 5090.
 - `npm run lint`: ESLint, including Angular template accessibility rules.
 - `npm run format:check` / `npm run format`: Prettier check / fix.
-- `npm run test:ci`: Vitest component tests, single run (119 tests after M08). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
+- `npm run test:ci`: Vitest component tests, single run (131 tests after M09). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
 - `npm run build`: production build to `src/web/dist/web`.
 - `npm audit --audit-level=moderate`: npm advisories (CI gate).
 

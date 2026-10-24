@@ -5,6 +5,7 @@ using TenantHub.Api.Common;
 using TenantHub.Api.Common.Auth;
 using TenantHub.Api.Common.Tenancy;
 using TenantHub.Application.Accounts;
+using TenantHub.Application.Demo;
 using TenantHub.Infrastructure.Identity;
 
 namespace TenantHub.Api.Features.Auth;
@@ -18,10 +19,10 @@ public static class AuthEndpoints
         var auth = app.MapGroup("/api/auth").WithTags("Auth");
 
         // Also how the SPA gets its XSRF cookie on startup, so it is public.
-        auth.MapGet("/session", async (HttpContext context, XsrfCookie xsrf, GetSessionQuery session, CancellationToken ct) =>
+        auth.MapGet("/session", async (HttpContext context, XsrfCookie xsrf, GetSessionQuery session, DemoMode demo, CancellationToken ct) =>
             {
                 xsrf.Issue(context);
-                return TypedResults.Ok(await ReadSessionAsync(context.User, session, ct));
+                return TypedResults.Ok(await ReadSessionAsync(context.User, session, ct) with { DemoMode = demo.Enabled });
             })
             .Public();
 

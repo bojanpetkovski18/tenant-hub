@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
+using TenantHub.Application.Demo;
 using TenantHub.Domain.Organizations;
 
 namespace TenantHub.Application.Organizations;
@@ -17,7 +18,8 @@ public sealed class OrganizationCommands(
     ITenantContext tenant,
     IDatabaseLocks locks,
     PlanLimitsCheck limits,
-    GetOrganizationQuery overview)
+    GetOrganizationQuery overview,
+    DemoProtection demo)
 {
     public async Task<OrganizationOverview> UpdateSettingsAsync(string? name, string? timeZone, CancellationToken cancellationToken)
     {
@@ -56,6 +58,7 @@ public sealed class OrganizationCommands(
     public async Task<DeletedOrganization> DeleteAsync(string? confirmName, CancellationToken cancellationToken)
     {
         var organization = await LoadAsync(cancellationToken);
+        demo.EnsureCanDelete(organization.IsDemoSeed);
         var typed = string.Join(' ', (confirmName ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         if (!string.Equals(typed, organization.Name, StringComparison.Ordinal))
         {

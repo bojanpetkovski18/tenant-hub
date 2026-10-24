@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using TenantHub.Application.Abstractions;
+using TenantHub.Application.Demo;
 using TenantHub.Domain;
 using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
@@ -17,6 +18,7 @@ public sealed class MemberCommands(
     ITenantContext tenant,
     IIdentityService identity,
     IDatabaseLocks locks,
+    DemoProtection demo,
     TimeProvider time)
 {
     public async Task ChangeRoleAsync(Guid userId, Role? role, CancellationToken cancellationToken)
@@ -25,6 +27,8 @@ public sealed class MemberCommands(
         {
             throw new RequestValidationException(FieldErrors.For("role", "Choose a role."));
         }
+
+        await demo.EnsureCanChangeMembershipAsync(userId, cancellationToken);
 
         await using var transaction = await BeginAsync(cancellationToken);
         var target = await LoadActiveAsync(userId, cancellationToken);
@@ -38,6 +42,7 @@ public sealed class MemberCommands(
 
     public async Task RemoveAsync(Guid userId, CancellationToken cancellationToken)
     {
+        await demo.EnsureCanChangeMembershipAsync(userId, cancellationToken);
         await using var transaction = await BeginAsync(cancellationToken);
         var target = await LoadActiveAsync(userId, cancellationToken);
         MembershipRules.EnsureCanRemove(Actor(), target, await ActiveOwnersAsync(cancellationToken));
@@ -52,6 +57,7 @@ public sealed class MemberCommands(
 
     public async Task LeaveAsync(CancellationToken cancellationToken)
     {
+        await demo.EnsureCanChangeMembershipAsync(tenant.UserId!.Value, cancellationToken);
         await using var transaction = await BeginAsync(cancellationToken);
         var self = await LoadActiveAsync(tenant.UserId!.Value, cancellationToken);
         MembershipRules.EnsureCanLeave(self, await ActiveOwnersAsync(cancellationToken));

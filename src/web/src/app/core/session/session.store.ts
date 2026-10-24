@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import {
   Membership,
   Permission,
+  Role,
   SessionResponse,
   SessionUser,
   SignUpRequest,
@@ -14,6 +15,8 @@ interface SessionState {
   /** False until the first /api/auth/session answer; guards wait for it (app initializer). */
   readonly loaded: boolean;
   readonly user: SessionUser | null;
+  /** The public demo (SPEC 4.1): the demo buttons and banner ask for the demo accounts only then. */
+  readonly demoMode: boolean;
 }
 
 /**
@@ -22,7 +25,7 @@ interface SessionState {
  */
 export const SessionStore = signalStore(
   { providedIn: 'root' },
-  withState<SessionState>({ loaded: false, user: null }),
+  withState<SessionState>({ loaded: false, user: null, demoMode: false }),
   withComputed(({ user }) => ({
     isSignedIn: computed(() => user() !== null),
     memberships: computed(() => user()?.memberships ?? []),
@@ -33,7 +36,9 @@ export const SessionStore = signalStore(
     return {
       async load(): Promise<void> {
         try {
-          setUser((await firstValueFrom(http.get<SessionResponse>('/api/auth/session'))).user);
+          const session = await firstValueFrom(http.get<SessionResponse>('/api/auth/session'));
+          patchState(store, { demoMode: session.demoMode ?? false });
+          setUser(session.user);
         } catch {
           // The app still works as a guest; protected pages will ask the user to sign in.
           setUser(null);
@@ -43,6 +48,15 @@ export const SessionStore = signalStore(
       async signIn(email: string, password: string): Promise<SessionUser> {
         const session = await firstValueFrom(
           http.post<SessionResponse>('/api/auth/sign-in', { email, password }),
+        );
+        setUser(session.user);
+        return session.user!;
+      },
+
+      /** Demo mode only (US-61): signs in as the seeded account for this role, no password. */
+      async signInAsDemo(role: Role): Promise<SessionUser> {
+        const session = await firstValueFrom(
+          http.post<SessionResponse>('/api/demo/sign-in', { role }),
         );
         setUser(session.user);
         return session.user!;

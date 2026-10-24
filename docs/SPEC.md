@@ -117,7 +117,8 @@ Isolation is a product feature, so it has its own tests (section 10, criteria 1�
 
 **Demo mode** (`DEMO_MODE=true`)
 - Seeded fictional organizations and users (section 8.3), with "Try as Owner / Admin / Member / Viewer" buttons on the sign-in page.
-- Scheduled reset of the seeded data. Organizations created by visitors are deleted after 24 hours. Sign-up and invitations are rate-limited, and email sending is off.
+- Scheduled reset of the seeded data every `DEMO_RESET_INTERVAL_HOURS`, timed from when the seeded organizations were created, so restarts neither reset early nor skip one. Organizations created by visitors are deleted at the first reset after they are 24 hours old. Sign-up, sign-in and invitations have lower rate limits, and email sending is off.
+- The demo accounts keep their password and their roles in the seeded organizations, and the seeded organizations cannot be deleted (`403 demo-protected`).
 
 ### 4.2 Later (V2)
 Kanban board for jobs; comments and attachments on jobs; email verification and password reset by email; audit CSV export; custom roles; PostgreSQL row-level security; real billing with Stripe; a platform-admin console; per-organization API keys and webhooks; SSO.
@@ -203,13 +204,13 @@ All endpoints are under `/api` and return JSON. Errors are RFC 7807 problem deta
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/auth/session` | `{ user }` with profile and memberships, or `{ user: null }`; issues the XSRF cookie (D021) |
+| GET | `/api/auth/session` | `{ user, demoMode }`: profile and memberships, or `user: null`; `demoMode` says whether to show the demo buttons and banner (D032); issues the XSRF cookie (D021) |
 | POST | `/api/auth/sign-up` | user, organization and Owner membership; signs in |
 | POST | `/api/auth/sign-in` | rate-limited per IP and per account |
 | POST | `/api/invitations/preview` | body `{ token }`: organization name, inviter, role, masked email, state, whether an account exists, and for a signed-in caller whether the email matches and whether they already belong (D028) |
 | POST | `/api/invitations/sign-up` | body `{ token, displayName, password }`: new account and membership in one transaction; signs in |
-| GET | `/api/demo/accounts` | demo mode only |
-| POST | `/api/demo/sign-in` | demo mode only: `{ role }` |
+| GET | `/api/demo/accounts` | demo mode only (404 otherwise): the account for each role, the reset interval and the next reset |
+| POST | `/api/demo/sign-in` | demo mode only (404 otherwise): `{ role }`, no password; rate-limited |
 | GET | `/health`, `/health/live` | readiness (includes the database) and liveness |
 
 **User-scoped** (signed in, no organization)
@@ -245,7 +246,7 @@ All endpoints are under `/api` and return JSON. Errors are RFC 7807 problem deta
 | PUT | `/clients/{id}` | `clients.write`; body includes the `version` read earlier; a newer one → `409 concurrency-conflict` |
 | POST | `/clients/{id}/archive`, `/clients/{id}/restore` | `clients.write`; idempotent; restoring onto a taken active name → `409 client-name-taken` |
 | DELETE | `/clients/{id}` | `clients.delete`; `409` if the client has jobs |
-| GET | `/jobs` | `jobs.read`: `q`, `status[]`, `assignee` (id, `me`, `none`), `clientId`, `priority[]`, `overdue`, `dueFrom`, `dueTo`, `sort`, paging |
+| GET | `/jobs` | `jobs.read`: `q`, `status[]`, `assignee` (id, `me`, `none`), `clientId`, `priority[]`, `overdue`, `dueFrom`, `dueTo`, `completedFrom` (a day in the organization's zone, M09), `sort`, paging |
 | POST | `/jobs` | `jobs.create` |
 | GET | `/jobs/{id}` | `jobs.read`; includes the transitions allowed for the caller (each with what is still missing), and whether the caller may edit, assign and delete it (D029) |
 | GET | `/jobs/{id}/history` | `jobs.read`: the job's audit entries, newest first (US-40: everyone who can read the job sees its history) |

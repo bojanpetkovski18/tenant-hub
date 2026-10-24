@@ -1,22 +1,10 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { LimitName } from '../../core/http/api-problem';
+import { PlanLimits, PlanName, PlanUsage } from '../../shared/plan/plan';
 
-export type PlanName = 'free' | 'team' | 'business';
-
-/** A plan's limits; null is unlimited. */
-export interface PlanLimits {
-  readonly seats: number | null;
-  readonly activeClients: number | null;
-  readonly openJobs: number | null;
-}
-
-export interface PlanUsage {
-  readonly seats: number;
-  readonly activeClients: number;
-  readonly openJobs: number;
-}
+export type { PlanLimits, PlanName, PlanUsage } from '../../shared/plan/plan';
+export { limitLabels, limitNames, planLabels } from '../../shared/plan/plan';
 
 /** The organization with its usage against its plan, and every plan to compare (US-50). */
 export interface OrganizationOverview {
@@ -30,25 +18,6 @@ export interface OrganizationOverview {
   readonly limits: PlanLimits;
   readonly plans: readonly { readonly plan: PlanName; readonly limits: PlanLimits }[];
 }
-
-export const planLabels: Readonly<Record<PlanName, string>> = {
-  free: 'Free',
-  team: 'Team',
-  business: 'Business',
-};
-
-export const limitLabels: Readonly<
-  Record<LimitName, { readonly title: string; readonly unit: (n: number) => string }>
-> = {
-  seats: { title: 'Seats', unit: (n) => (n === 1 ? 'seat' : 'seats') },
-  activeClients: {
-    title: 'Active clients',
-    unit: (n) => (n === 1 ? 'active client' : 'active clients'),
-  },
-  openJobs: { title: 'Open jobs', unit: (n) => (n === 1 ? 'open job' : 'open jobs') },
-};
-
-export const limitNames: readonly LimitName[] = ['seats', 'activeClients', 'openJobs'];
 
 const orgUrl = (organizationId: string) => `/api/orgs/${encodeURIComponent(organizationId)}`;
 

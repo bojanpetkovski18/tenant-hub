@@ -52,6 +52,8 @@ export interface SessionUser {
 
 export interface SessionResponse {
   readonly user: SessionUser | null;
+  /** Only on GET /api/auth/session: whether this deployment is the public demo. */
+  readonly demoMode?: boolean;
 }
 
 export interface SignUpRequest {

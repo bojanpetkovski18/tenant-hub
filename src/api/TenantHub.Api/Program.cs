@@ -9,6 +9,7 @@ using TenantHub.Api.Features.Account;
 using TenantHub.Api.Features.Audit;
 using TenantHub.Api.Features.Auth;
 using TenantHub.Api.Features.Clients;
+using TenantHub.Api.Features.Demo;
 using TenantHub.Api.Features.Invitations;
 using TenantHub.Api.Features.Jobs;
 using TenantHub.Api.Features.Organizations;
@@ -42,6 +43,11 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
 builder.AddAppAuth();
 builder.Services.AddAppRateLimiting(builder.Configuration);
+if (builder.Configuration.GetValue("DEMO_MODE", false))
+{
+    builder.Services.AddHostedService<DemoResetService>();
+}
+
 builder.Services.AddHealthChecks().AddDbContextCheck<AppDbContext>("database", tags: ["ready"]);
 
 var app = builder.Build();
@@ -77,6 +83,8 @@ app.MapClientEndpoints();
 app.MapInvitationEndpoints();
 app.MapJobEndpoints();
 app.MapAuditEndpoints();
+app.MapDashboardEndpoints();
+app.MapDemoEndpoints();
 foreach (var mapper in app.Services.GetServices<IEndpointMapper>())
 {
     mapper.Map(app);

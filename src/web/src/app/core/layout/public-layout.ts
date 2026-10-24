@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { DemoBanner } from '../demo/demo-banner';
 import { SessionStore } from '../session/session.store';
 import { ThemeToggle } from '../theme/theme-toggle';
 import { SkipLink } from './skip-link';
@@ -9,10 +10,20 @@ import { Wordmark } from './wordmark';
 /** Layout for pages outside an organization: landing, sign-in, sign-up, invitations, picker, account. */
 @Component({
   selector: 'app-public-layout',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, ThemeToggle, SkipLink, UserMenu, Wordmark],
+  imports: [
+    RouterOutlet,
+    RouterLink,
+    RouterLinkActive,
+    ThemeToggle,
+    SkipLink,
+    UserMenu,
+    Wordmark,
+    DemoBanner,
+  ],
   template: `
     <app-skip-link />
     <div class="flex min-h-dvh flex-col">
+      <app-demo-banner />
       <header class="border-b border-border bg-surface">
         <div class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
           <a routerLink="/" class="rounded-md" aria-label="TenantHub home"><app-wordmark /></a>

@@ -2,6 +2,7 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { EnvironmentProviders, Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { DemoInfo } from '../core/demo/demo.store';
 import { authInterceptor } from '../core/session/auth.interceptor';
 import { Permission, Role, SessionUser } from '../core/session/session.models';
 
@@ -76,9 +77,9 @@ export function provideTestHttp(): (Provider | EnvironmentProviders)[] {
 }
 
 /** Loads the session as the app initializer would, with the given user (null = signed out). */
-export async function loadSession(user: SessionUser | null): Promise<void> {
+export async function loadSession(user: SessionUser | null, demoMode = false): Promise<void> {
   const loading = TestBed.inject(SessionStore).load();
-  TestBed.inject(HttpTestingController).expectOne('/api/auth/session').flush({ user });
+  TestBed.inject(HttpTestingController).expectOne('/api/auth/session').flush({ user, demoMode });
   await loading;
 }
 
@@ -86,4 +87,16 @@ export async function loadSession(user: SessionUser | null): Promise<void> {
 export async function settle(fixture: { whenStable(): Promise<unknown> }): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve));
   await fixture.whenStable();
+}
+
+/**
+ * The demo lookup: outside demo mode (the default) no request may be made; in demo mode (`loadSession(user, true)`)
+ * the pages ask once for the accounts.
+ */
+export function answerDemo(http: HttpTestingController, info: DemoInfo | null = null): void {
+  if (info) {
+    http.expectOne('/api/demo/accounts').flush(info);
+  } else {
+    http.expectNone('/api/demo/accounts');
+  }
 }
