@@ -15,6 +15,8 @@ export interface JobQuery {
   readonly overdue: boolean;
   readonly dueFrom: string;
   readonly dueTo: string;
+  /** Completed on or after this day (the organization's day): the dashboard's "completed this month". */
+  readonly completedFrom: string;
   readonly sort: string;
   readonly page: number;
 }
@@ -29,6 +31,7 @@ export interface RawJobQuery {
   readonly overdue?: string;
   readonly dueFrom?: string;
   readonly dueTo?: string;
+  readonly completedFrom?: string;
   readonly sort?: string;
   readonly page?: string;
 }
@@ -67,6 +70,7 @@ export function parseJobQuery(raw: RawJobQuery): JobQuery {
     overdue: raw.overdue === 'true',
     dueFrom: isoDate.test(raw.dueFrom ?? '') ? raw.dueFrom! : '',
     dueTo: isoDate.test(raw.dueTo ?? '') ? raw.dueTo! : '',
+    completedFrom: isoDate.test(raw.completedFrom ?? '') ? raw.completedFrom! : '',
     sort: jobSorts.includes(raw.sort ?? '') ? raw.sort! : defaultJobSort,
     page: Math.max(1, Number.parseInt(raw.page ?? '1', 10) || 1),
   };
@@ -90,6 +94,7 @@ export function jobApiParams(
   if (query.overdue) params['overdue'] = 'true';
   if (query.dueFrom) params['dueFrom'] = query.dueFrom;
   if (query.dueTo) params['dueTo'] = query.dueTo;
+  if (query.completedFrom) params['completedFrom'] = query.completedFrom;
   return params;
 }
 
@@ -129,5 +134,6 @@ export function activeFilterCount(query: JobQuery): number {
     !!query.clientId,
     query.overdue,
     !!query.dueFrom || !!query.dueTo,
+    !!query.completedFrom,
   ].filter(Boolean).length;
 }

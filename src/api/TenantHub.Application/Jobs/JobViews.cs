@@ -51,14 +51,14 @@ public sealed class JobViews(IAppDbContext db, ITenantContext tenant, IIdentityS
 {
     public JobActor Actor() => JobActor.From(tenant.UserId!.Value, tenant.Permissions);
 
-    public async Task<DateOnly> TodayAsync(CancellationToken cancellationToken)
-    {
-        var zone = await db.Organizations
+    public async Task<DateOnly> TodayAsync(CancellationToken cancellationToken) =>
+        Organization.TodayIn(await TimeZoneAsync(cancellationToken), time.GetUtcNow());
+
+    public Task<string> TimeZoneAsync(CancellationToken cancellationToken) =>
+        db.Organizations
             .Where(o => o.Id == tenant.OrganizationId)
             .Select(o => o.TimeZone)
             .SingleAsync(cancellationToken);
-        return Organization.TodayIn(zone, time.GetUtcNow());
-    }
 
     /// <summary>Display names for audit text and the view: clients by id and people by user id.</summary>
     public async Task<IReadOnlyDictionary<Guid, string>> NamesAsync(

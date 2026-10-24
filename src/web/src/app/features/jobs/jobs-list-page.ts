@@ -241,6 +241,18 @@ const pageSize = 25;
             </div>
           </fieldset>
 
+          <div>
+            <label class="th-label" for="job-completed-from">Completed on or after</label>
+            <input
+              #completedFrom
+              id="job-completed-from"
+              type="date"
+              class="th-input"
+              [value]="query().completedFrom"
+              (change)="change({ completedFrom: completedFrom.value, page: 1 })"
+            />
+          </div>
+
           @if (filterCount() > 0 || query().q) {
             <button type="button" class="th-button-secondary w-full" (click)="clear()">
               Clear filters
@@ -396,6 +408,7 @@ export class JobsListPage {
   readonly overdue = input<string>();
   readonly dueFrom = input<string>();
   readonly dueTo = input<string>();
+  readonly completedFrom = input<string>();
   readonly sort = input<string>();
   readonly page = input<string>();
 
@@ -425,6 +438,7 @@ export class JobsListPage {
       overdue: this.overdue(),
       dueFrom: this.dueFrom(),
       dueTo: this.dueTo(),
+      completedFrom: this.completedFrom(),
       sort: this.sort(),
       page: this.page(),
     }),
@@ -503,6 +517,7 @@ export class JobsListPage {
       overdue: false,
       dueFrom: '',
       dueTo: '',
+      completedFrom: '',
       page: 1,
     });
   }

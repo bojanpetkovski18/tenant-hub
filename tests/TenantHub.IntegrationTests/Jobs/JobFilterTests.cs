@@ -33,6 +33,7 @@ public sealed class JobFilterTests(PostgresFixture postgres)
         "client",
         "overdue=true",
         "due-range",
+        "completed-from",
         "q=JOB-0042",
         "q=42",
         "q=window",
@@ -61,6 +62,9 @@ public sealed class JobFilterTests(PostgresFixture postgres)
             "due-range" => (
                 $"dueFrom={today.AddDays(-14):yyyy-MM-dd}&dueTo={today.AddDays(7):yyyy-MM-dd}",
                 (FormattableString)$"SELECT id AS \"Value\" FROM jobs WHERE organization_id = {org} AND due_on BETWEEN {today.AddDays(-14)} AND {today.AddDays(7)}"),
+            "completed-from" => (
+                $"completedFrom={today.AddDays(-30):yyyy-MM-dd}",
+                (FormattableString)$"SELECT id AS \"Value\" FROM jobs WHERE organization_id = {org} AND completed_at >= {Organization.StartOfDayIn("Europe/Amsterdam", today.AddDays(-30))}"),
             "q=JOB-0042" or "q=42" => (name, (FormattableString)$"SELECT id AS \"Value\" FROM jobs WHERE organization_id = {org} AND (number = 42 OR lower(title) LIKE {"%" + name[2..].ToLowerInvariant() + "%"})"),
             "q=window" => (name, (FormattableString)$"SELECT id AS \"Value\" FROM jobs WHERE organization_id = {org} AND lower(title) LIKE '%window%'"),
             "status=inProgress&assignee=maya&overdue=true" => (

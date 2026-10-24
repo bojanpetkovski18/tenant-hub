@@ -53,6 +53,7 @@ public static class JobEndpoints
                 bool? overdue,
                 DateOnly? dueFrom,
                 DateOnly? dueTo,
+                DateOnly? completedFrom,
                 string? sort,
                 int? page,
                 int? pageSize,
@@ -68,6 +69,7 @@ public static class JobEndpoints
                     overdue ?? false,
                     dueFrom,
                     dueTo,
+                    completedFrom,
                     sort,
                     PageRequest.From(page, pageSize)),
                 ct)))

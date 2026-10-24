@@ -4,6 +4,7 @@ using TenantHub.Application.Abstractions;
 using TenantHub.Application.Paging;
 using TenantHub.Domain;
 using TenantHub.Domain.Jobs;
+using TenantHub.Domain.Organizations;
 
 namespace TenantHub.Application.Jobs;
 
@@ -36,6 +37,7 @@ public sealed record ListJobsRequest(
     bool Overdue,
     DateOnly? DueFrom,
     DateOnly? DueTo,
+    DateOnly? CompletedFrom,
     string? Sort,
     PageRequest Paging);
 
@@ -99,6 +101,13 @@ public sealed partial class ListJobsQuery(IAppDbContext db, ITenantContext tenan
         if (request.DueTo is { } to)
         {
             jobs = jobs.Where(j => j.DueOn <= to);
+        }
+
+        if (request.CompletedFrom is { } completedFrom)
+        {
+            // From the start of that day in the organization's zone: the dashboard's "completed this month" link.
+            var since = Organization.StartOfDayIn(await views.TimeZoneAsync(cancellationToken), completedFrom);
+            jobs = jobs.Where(j => j.CompletedAt >= since);
         }
 
         if (request.Search?.Trim() is { Length: > 0 } search)

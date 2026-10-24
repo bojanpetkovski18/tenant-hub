@@ -11,6 +11,7 @@ describe('job query (URL ↔ API)', () => {
       overdue: 'true',
       dueFrom: '2026-10-01',
       dueTo: '2026-10-31',
+      completedFrom: '2026-10-01',
       sort: 'due',
       page: '3',
     });
@@ -24,10 +25,11 @@ describe('job query (URL ↔ API)', () => {
       overdue: true,
       dueFrom: '2026-10-01',
       dueTo: '2026-10-31',
+      completedFrom: '2026-10-01',
       sort: 'due',
       page: 3,
     });
-    expect(activeFilterCount(query)).toBe(6);
+    expect(activeFilterCount(query)).toBe(7);
   });
 
   it('falls back to the defaults for anything it does not recognize', () => {
@@ -49,6 +51,7 @@ describe('job query (URL ↔ API)', () => {
       overdue: false,
       dueFrom: '',
       dueTo: '',
+      completedFrom: '',
       sort: '-number',
       page: 1,
     });
