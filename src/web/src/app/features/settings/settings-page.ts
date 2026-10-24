@@ -20,6 +20,7 @@ import { applyProblem, controlError } from '../../shared/forms/server-errors';
 import { timeZoneOptions } from '../../shared/forms/time-zones';
 import { Confirm } from '../../shared/ui/confirm-dialog';
 import { EmptyState, ErrorState } from '../../shared/ui/states';
+import { UsageMeters } from '../../shared/ui/usage-meters';
 import {
   OrganizationOverview,
   PlanLimits,
@@ -39,13 +40,7 @@ const messages = {
   timeZone: { required: 'Choose a time zone.' },
 } as const;
 
-/** "3 of 3 seats", or "12 active clients, no limit". */
-export function usageText(limit: LimitName, used: number, allowed: number | null): string {
-  const unit = limitLabels[limit].unit;
-  return allowed === null
-    ? `${used} ${unit(used)}, no limit`
-    : `${used} of ${allowed} ${unit(allowed)}`;
-}
+export { usageText } from '../../shared/plan/plan';
 
 /** One line per limit that blocks a downgrade: "Seats: 4 in use, Free allows 3". */
 export function blockingText(detail: PlanLimitDetail, target: string): string {
@@ -59,7 +54,7 @@ export function blockingText(detail: PlanLimitDetail, target: string): string {
  */
 @Component({
   selector: 'app-settings-page',
-  imports: [ReactiveFormsModule, EmptyState, ErrorState],
+  imports: [ReactiveFormsModule, EmptyState, ErrorState, UsageMeters],
   template: `
     <div class="max-w-3xl space-y-6">
       <h1 class="text-2xl font-semibold tracking-tight">Settings</h1>
@@ -136,33 +131,7 @@ export function blockingText(detail: PlanLimitDetail, target: string): string {
             </p>
           </div>
 
-          <div class="mt-4 space-y-4">
-            @for (limit of limitNames; track limit) {
-              <div>
-                <div class="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-                  <span class="font-medium" [id]="'meter-' + limit">{{
-                    limitLabels[limit].title
-                  }}</span>
-                  <span class="text-muted">
-                    {{ usage(limit, org) }}
-                  </span>
-                </div>
-                @if (org.limits[limit] !== null) {
-                  <div
-                    role="meter"
-                    class="mt-1.5 h-2 overflow-hidden rounded-full bg-surface-2"
-                    aria-valuemin="0"
-                    [attr.aria-valuemax]="org.limits[limit]"
-                    [attr.aria-valuenow]="org.usage[limit]"
-                    [attr.aria-labelledby]="'meter-' + limit"
-                    [attr.aria-valuetext]="usage(limit, org)"
-                  >
-                    <div [class]="bar(limit, org)"></div>
-                  </div>
-                }
-              </div>
-            }
-          </div>
+          <app-usage-meters class="mt-4 block" [usage]="org.usage" [limits]="org.limits" />
 
           @if (planError(); as problem) {
             <div class="th-alert-error mt-5" role="alert">
@@ -314,28 +283,11 @@ export class SettingsPage {
     return controlError(this.form.controls[field], messages[field]);
   }
 
-  protected usage(limit: LimitName, org: OrganizationOverview): string {
-    return usageText(limit, org.usage[limit], org.limits[limit]);
-  }
-
   protected allowance(limit: LimitName, limits: PlanLimits): string {
     const allowed = limits[limit];
     return allowed === null
       ? `Unlimited ${limitLabels[limit].unit(2)}`
       : `${allowed.toLocaleString('en-US')} ${limitLabels[limit].unit(allowed)}`;
-  }
-
-  /** Percentage of the limit in use, for the meter's width and colour. */
-  protected fill(limit: LimitName, org: OrganizationOverview): number {
-    const allowed = org.limits[limit];
-    return allowed ? Math.min(100, Math.round((org.usage[limit] / allowed) * 100)) : 0;
-  }
-
-  /** The meter's fill: width in 5% steps (classes, not an inline style: CSP, D023) and colour near the limit. */
-  protected bar(limit: LimitName, org: OrganizationOverview): string {
-    const fill = this.fill(limit, org);
-    const colour = fill >= 100 ? 'bg-danger' : fill >= 80 ? 'bg-warning' : 'bg-accent';
-    return `h-full rounded-full ${colour} ${widths[Math.round(fill / 5)] ?? 'w-full'}`;
   }
 
   protected blocking(detail: PlanLimitDetail, target: string): string {
@@ -445,31 +397,6 @@ export class SettingsPage {
     }
   }
 }
-
-/** Literal class names, so Tailwind generates each width. */
-const widths = [
-  'w-0',
-  'w-[5%]',
-  'w-[10%]',
-  'w-[15%]',
-  'w-[20%]',
-  'w-[25%]',
-  'w-[30%]',
-  'w-[35%]',
-  'w-[40%]',
-  'w-[45%]',
-  'w-[50%]',
-  'w-[55%]',
-  'w-[60%]',
-  'w-[65%]',
-  'w-[70%]',
-  'w-[75%]',
-  'w-[80%]',
-  'w-[85%]',
-  'w-[90%]',
-  'w-[95%]',
-  'w-full',
-];
 
 function collapse(value: string): string {
   return value.split(/\s+/).filter(Boolean).join(' ');
