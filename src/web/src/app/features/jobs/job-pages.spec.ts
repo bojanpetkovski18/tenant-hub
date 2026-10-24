@@ -249,14 +249,28 @@ describe('job pages', () => {
         (b) => text(b),
       );
 
-    async function openJob(answer: Job, user: SessionUser = olivia): Promise<HTMLElement> {
-      const element = await open('/o/brightline/jobs/j1', user);
+    async function openJob(
+      answer: Job,
+      user: SessionUser = olivia,
+      query = '',
+    ): Promise<HTMLElement> {
+      const element = await open(`/o/brightline/jobs/j1${query}`, user);
       http.expectOne(`${jobsUrl}/j1`).flush(answer);
       await settle(harness.fixture);
       http.expectOne(`${jobsUrl}/j1/history`).flush([]);
       await settle(harness.fixture);
       return element;
     }
+
+    it('confirms the save that led here, and only then', async () => {
+      const created = await openJob(job(), olivia, '?notice=created');
+      expect(text(created.querySelector('[role="status"]'))).toContain('Job created.');
+    });
+
+    it('shows no notice when opened directly', async () => {
+      const element = await openJob(job());
+      expect(element.querySelector('[role="status"]')).toBeNull();
+    });
 
     it('shows exactly the moves the API allows, labelled for people', async () => {
       const element = await openJob(job());
