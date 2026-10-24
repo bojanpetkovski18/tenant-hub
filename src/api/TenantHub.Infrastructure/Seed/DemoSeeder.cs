@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using TenantHub.Application.Demo;
 using TenantHub.Application.Tenancy;
 using TenantHub.Domain.Clients;
 using TenantHub.Domain.Jobs;
@@ -83,7 +84,8 @@ public sealed partial class DemoSeeder(
 
     public static async Task SeedIfEnabledAsync(IServiceProvider services, IConfiguration configuration, CancellationToken cancellationToken = default)
     {
-        if (!configuration.GetValue("Seed:Enabled", false))
+        // The public demo always has its data; elsewhere the seed is opt-in.
+        if (!configuration.GetValue("Seed:Enabled", false) && !services.GetRequiredService<DemoMode>().Enabled)
         {
             return;
         }

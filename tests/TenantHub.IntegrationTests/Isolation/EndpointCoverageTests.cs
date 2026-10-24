@@ -21,6 +21,8 @@ public sealed class EndpointCoverageTests(OfflineApiFactory factory) : IClassFix
         "GET /api/auth/session",
         "POST /api/auth/sign-up",
         "POST /api/auth/sign-in",
+        "GET /api/demo/accounts", // 404 outside demo mode
+        "POST /api/demo/sign-in",
         "POST /api/invitations/preview", // the token in the body is the credential (D028)
         "POST /api/invitations/sign-up",
         "* /health", // MapHealthChecks answers any method; read-only

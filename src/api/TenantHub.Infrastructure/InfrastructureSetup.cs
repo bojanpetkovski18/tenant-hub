@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TenantHub.Application.Abstractions;
+using TenantHub.Application.Demo;
 using TenantHub.Infrastructure.Data;
 using TenantHub.Infrastructure.Email;
 using TenantHub.Infrastructure.Identity;
@@ -13,16 +14,37 @@ public static class InfrastructureSetup
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        var demo = DemoModeFrom(configuration);
+        services.AddSingleton(demo);
         services.AddAppDatabase(configuration);
         services.AddScoped<IIdentityService, IdentityService>();
         services.AddScoped<IDatabaseLocks, DatabaseLocks>();
         services.AddSingleton<IDatabaseErrors, DatabaseErrors>();
         services.AddScoped<DemoSeeder>();
-        services.AddAppEmail(configuration);
+        services.AddScoped<DemoReset>();
+        services.AddScoped<IDemoAccounts, DemoAccounts>();
+        services.AddAppEmail(configuration, demo);
         return services;
     }
 
-    private static void AddAppEmail(this IServiceCollection services, IConfiguration configuration)
+    /// <summary><c>DEMO_MODE</c> and <c>DEMO_RESET_INTERVAL_HOURS</c>; demo mode cannot start without the demo password.</summary>
+    private static DemoMode DemoModeFrom(IConfiguration configuration)
+    {
+        var demo = new DemoMode(configuration.GetValue("DEMO_MODE", false), configuration.GetValue("DEMO_RESET_INTERVAL_HOURS", DemoMode.Off.ResetIntervalHours));
+        if (demo.ResetIntervalHours is < 1 or > 168)
+        {
+            throw new InvalidOperationException("Set DEMO_RESET_INTERVAL_HOURS to a whole number of hours from 1 to 168.");
+        }
+
+        if (demo.Enabled && string.IsNullOrWhiteSpace(configuration[DemoSeeder.PasswordSetting]))
+        {
+            throw new InvalidOperationException($"DEMO_MODE needs {DemoSeeder.PasswordSetting}: the demo accounts are seeded with it.");
+        }
+
+        return demo;
+    }
+
+    private static void AddAppEmail(this IServiceCollection services, IConfiguration configuration, DemoMode demo)
     {
         var email = configuration.GetSection(EmailOptions.Section).Get<EmailOptions>() ?? new EmailOptions();
         var app = configuration.GetSection(AppOptions.Section).Get<AppOptions>() ?? new AppOptions();
@@ -34,7 +56,8 @@ public static class InfrastructureSetup
 
         services.AddSingleton(app);
         services.AddSingleton<IAppLinks, AppLinks>();
-        if (email.Mode == EmailMode.Smtp)
+        // The public demo never sends email, whatever the Email settings say (SPEC 4.1): visitors type any address.
+        if (email.Mode == EmailMode.Smtp && !demo.Enabled)
         {
             services.AddSingleton<IEmailSender, SmtpEmailSender>();
         }

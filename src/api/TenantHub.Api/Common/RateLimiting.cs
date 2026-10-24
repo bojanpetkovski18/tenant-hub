@@ -18,6 +18,11 @@ public sealed class RateLimitOptions
     public int InvitationPermitLimit { get; init; } = 20;
 
     public int InvitationWindowSeconds { get; init; } = 60;
+
+    /// <summary>The public demo's lower limits (SPEC 4.1), used instead of the two above when <c>DEMO_MODE</c> is on.</summary>
+    public int DemoAuthPermitLimit { get; init; } = 5;
+
+    public int DemoInvitationPermitLimit { get; init; } = 5;
 }
 
 public static class RateLimiting
@@ -28,6 +33,16 @@ public static class RateLimiting
     public static IServiceCollection AddAppRateLimiting(this IServiceCollection services, IConfiguration configuration)
     {
         var options = configuration.GetSection(RateLimitOptions.Section).Get<RateLimitOptions>() ?? new RateLimitOptions();
+        if (configuration.GetValue("DEMO_MODE", false))
+        {
+            options = new RateLimitOptions
+            {
+                AuthPermitLimit = options.DemoAuthPermitLimit,
+                AuthWindowSeconds = options.AuthWindowSeconds,
+                InvitationPermitLimit = options.DemoInvitationPermitLimit,
+                InvitationWindowSeconds = options.InvitationWindowSeconds,
+            };
+        }
 
         services.AddRateLimiter(limiter =>
         {

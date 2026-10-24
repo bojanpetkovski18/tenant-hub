@@ -4,6 +4,7 @@ using TenantHub.Application.Accounts;
 using TenantHub.Application.Audit;
 using TenantHub.Application.Clients;
 using TenantHub.Application.Dashboard;
+using TenantHub.Application.Demo;
 using TenantHub.Application.Invitations;
 using TenantHub.Application.Jobs;
 using TenantHub.Application.Organizations;
@@ -40,5 +41,6 @@ public static class ApplicationSetup
         .AddScoped<JobHistoryQuery>()
         .AddScoped<JobCommands>()
         .AddScoped<ListAuditEntriesQuery>()
-        .AddScoped<DashboardQuery>();
+        .AddScoped<DashboardQuery>()
+        .AddScoped<DemoProtection>();
 }

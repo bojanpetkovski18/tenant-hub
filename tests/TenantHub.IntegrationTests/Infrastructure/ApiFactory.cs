@@ -48,6 +48,8 @@ public class ApiFactory(
         // Raised so only the test that targets the limit can hit it.
         builder.UseSetting("RateLimiting:AuthPermitLimit", "1000");
         builder.UseSetting("RateLimiting:InvitationPermitLimit", "1000");
+        builder.UseSetting("RateLimiting:DemoAuthPermitLimit", "1000");
+        builder.UseSetting("RateLimiting:DemoInvitationPermitLimit", "1000");
         foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
         {
             builder.UseSetting(key, value);
