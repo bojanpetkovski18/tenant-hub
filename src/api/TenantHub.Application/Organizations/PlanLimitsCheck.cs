@@ -16,13 +16,19 @@ public sealed class PlanLimitsCheck(IAppDbContext db, ITenantContext tenant, Tim
     /// <summary>Seats are active members plus pending (not accepted, revoked or expired) invitations.</summary>
     public async Task<PlanUsage> UsageAsync(CancellationToken cancellationToken)
     {
+        var seats = await SeatsAsync(cancellationToken);
+        var clients = await db.Clients.CountAsync(c => c.Status == ClientStatus.Active, cancellationToken);
+        var jobs = await db.Jobs.CountAsync(j => j.Status != JobStatus.Completed && j.Status != JobStatus.Cancelled, cancellationToken);
+        return new PlanUsage(seats, clients, jobs);
+    }
+
+    public async Task<int> SeatsAsync(CancellationToken cancellationToken)
+    {
         var now = time.GetUtcNow();
         var members = await db.Memberships.CountAsync(m => m.RemovedAt == null, cancellationToken);
         var pending = await db.Invitations.CountAsync(
             i => i.AcceptedAt == null && i.RevokedAt == null && i.ExpiresAt > now, cancellationToken);
-        var clients = await db.Clients.CountAsync(c => c.Status == ClientStatus.Active, cancellationToken);
-        var jobs = await db.Jobs.CountAsync(j => j.Status != JobStatus.Completed && j.Status != JobStatus.Cancelled, cancellationToken);
-        return new PlanUsage(members + pending, clients, jobs);
+        return members + pending;
     }
 
     public async Task<Plan> PlanAsync(CancellationToken cancellationToken) =>

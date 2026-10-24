@@ -77,6 +77,7 @@ app.MapClientEndpoints();
 app.MapInvitationEndpoints();
 app.MapJobEndpoints();
 app.MapAuditEndpoints();
+app.MapDashboardEndpoints();
 foreach (var mapper in app.Services.GetServices<IEndpointMapper>())
 {
     mapper.Map(app);

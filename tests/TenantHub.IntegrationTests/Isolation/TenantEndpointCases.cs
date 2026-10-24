@@ -236,6 +236,7 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         },
 
         new("GET", "/audit/", Permissions.AuditRead),
+        new("GET", "/dashboard", Permissions.OrgRead),
 
         // Test-only endpoints (ApiFactory): the 403 path, and the guard stopping a deliberate bug (500).
         new("GET", ApiFactory.OwnerOnlyPattern, Permissions.BillingManage),
