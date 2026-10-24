@@ -204,7 +204,10 @@ export class ClientFormPage {
       const saved = id
         ? await this.api.update(organizationId, id, input, this.version)
         : await this.api.create(organizationId, input);
-      await this.router.navigate(['/o', this.slug(), 'clients', saved.id]);
+      // The detail page confirms the save (the success state; a screen reader hears it as a status).
+      await this.router.navigate(['/o', this.slug(), 'clients', saved.id], {
+        queryParams: { notice: id ? 'saved' : 'created' },
+      });
     } catch (error) {
       const problem = toApiProblem(error);
       if (problem.code === 'concurrency-conflict') {

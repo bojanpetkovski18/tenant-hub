@@ -71,6 +71,11 @@ const fieldLabels: Readonly<Record<string, string>> = {
     } @else if (loadError(); as error) {
       <div class="mt-4"><app-error-state [message]="error.title" (retry)="load()" /></div>
     } @else if (job(); as job) {
+      @if (notice() === 'created' || notice() === 'saved') {
+        <div class="th-alert-success mt-3" role="status">
+          {{ notice() === 'created' ? 'Job created.' : 'Changes saved.' }}
+        </div>
+      }
       <div class="mt-3 flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
           <p class="font-mono text-sm text-muted">{{ job.label }}</p>
@@ -240,6 +245,8 @@ const fieldLabels: Readonly<Record<string, string>> = {
 export class JobDetailPage {
   readonly slug = input.required<string>();
   readonly id = input.required<string>();
+  /** Query parameter set by the form after a save. */
+  readonly notice = input<string | null>(null);
 
   private readonly api = inject(JobsApi);
   private readonly session = inject(SessionStore);

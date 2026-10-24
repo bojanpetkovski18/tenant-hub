@@ -109,7 +109,9 @@ type Field = keyof typeof messages;
             [attr.aria-invalid]="!!error('clientId')"
             [attr.aria-describedby]="error('clientId') ? 'clientId-error' : null"
           >
-            <option value="">Choose a client</option>
+            <option value="">
+              {{ options() === 'loading' ? 'Loading clients…' : 'Choose a client' }}
+            </option>
             @for (client of clientOptions(); track client.id) {
               <option [value]="client.id">
                 {{ client.name }}{{ client.status === 'archived' ? ' (archived)' : '' }}
@@ -118,6 +120,27 @@ type Field = keyof typeof messages;
           </select>
           @if (error('clientId'); as message) {
             <p id="clientId-error" class="th-field-error">{{ message }}</p>
+          }
+          @if (options() === 'error') {
+            <div
+              class="th-alert-error mt-2 flex flex-wrap items-center justify-between gap-3"
+              role="alert"
+            >
+              <span>The clients and people could not be loaded.</span>
+              <button type="button" class="th-button-secondary" (click)="loadOptions()">
+                Try again
+              </button>
+            </div>
+          } @else if (options() === 'ready' && clientOptions().length === 0) {
+            <p class="th-hint">
+              No active clients yet.
+              <a
+                [routerLink]="['/o', slug(), 'clients', 'new']"
+                class="font-medium text-accent underline-offset-2 hover:underline"
+                >Add a client</a
+              >
+              first, then plan the job.
+            </p>
           }
         </div>
 
@@ -320,6 +343,25 @@ export class JobFormPage {
   protected readonly saving = signal(false);
   protected readonly formError = signal<string | null>(null);
   protected readonly limit = signal<ApiProblem | null>(null);
+  /** The client and assignee pickers' own state: the form is usable only once they have arrived. */
+  protected readonly options = signal<'loading' | 'ready' | 'error'>('loading');
+
+  /** Clients and members for the pickers; a failure is shown with a retry instead of empty pickers. */
+  protected async loadOptions(): Promise<void> {
+    const organizationId = this.membership()!.organizationId;
+    this.options.set('loading');
+    try {
+      const [members, clients] = await Promise.all([
+        this.membersApi.members(organizationId),
+        this.clientsApi.options(organizationId),
+      ]);
+      this.members.set(members);
+      this.clients.set(clients);
+      this.options.set('ready');
+    } catch {
+      this.options.set('error');
+    }
+  }
 
   constructor() {
     effect(() => {
@@ -327,14 +369,7 @@ export class JobFormPage {
       if (!membership) {
         return;
       }
-      void this.membersApi.members(membership.organizationId).then(
-        (members) => this.members.set(members),
-        () => this.members.set([]),
-      );
-      void this.clientsApi.options(membership.organizationId).then(
-        (clients) => this.clients.set(clients),
-        () => this.clients.set([]),
-      );
+      void this.loadOptions();
       if (this.id()) {
         void this.load();
       } else if (this.clientId()) {
@@ -397,7 +432,10 @@ export class JobFormPage {
       const saved = id
         ? await this.api.update(organizationId, id, input, this.version)
         : await this.api.create(organizationId, input);
-      await this.router.navigate(['/o', this.slug(), 'jobs', saved.id]);
+      // The detail page confirms the save (the success state; a screen reader hears it as a status).
+      await this.router.navigate(['/o', this.slug(), 'jobs', saved.id], {
+        queryParams: { notice: id ? 'saved' : 'created' },
+      });
     } catch (error) {
       const problem = toApiProblem(error);
       if (problem.code === 'concurrency-conflict') {

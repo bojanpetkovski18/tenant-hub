@@ -41,11 +41,9 @@ export class DemoStore {
   private pending: Promise<void> | null = null;
 
   readonly info = signal<DemoInfo | null>(null);
-  readonly loaded = signal(false);
 
   load(): Promise<void> {
     if (!this.session.demoMode()) {
-      this.loaded.set(true);
       return Promise.resolve();
     }
     this.pending ??= this.fetch();
@@ -57,8 +55,6 @@ export class DemoStore {
       this.info.set(await firstValueFrom(this.http.get<DemoInfo>('/api/demo/accounts')));
     } catch {
       this.info.set(null);
-    } finally {
-      this.loaded.set(true);
     }
   }
 }

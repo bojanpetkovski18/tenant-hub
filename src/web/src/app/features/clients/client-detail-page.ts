@@ -49,6 +49,11 @@ import { Client, ClientsApi } from './clients.api';
     } @else if (loadError(); as error) {
       <div class="mt-4"><app-error-state [message]="error.title" (retry)="load()" /></div>
     } @else if (client(); as client) {
+      @if (notice() === 'created' || notice() === 'saved') {
+        <div class="th-alert-success mt-3" role="status">
+          {{ notice() === 'created' ? 'Client created.' : 'Changes saved.' }}
+        </div>
+      }
       <div class="mt-3 flex flex-wrap items-start justify-between gap-3">
         <div class="flex flex-wrap items-center gap-3">
           <h1 class="text-2xl font-semibold tracking-tight">{{ client.name }}</h1>
@@ -180,6 +185,8 @@ import { Client, ClientsApi } from './clients.api';
 export class ClientDetailPage {
   readonly slug = input.required<string>();
   readonly id = input.required<string>();
+  /** Query parameter set by the form after a save. */
+  readonly notice = input<string | null>(null);
 
   private readonly api = inject(ClientsApi);
   private readonly jobsApi = inject(JobsApi);

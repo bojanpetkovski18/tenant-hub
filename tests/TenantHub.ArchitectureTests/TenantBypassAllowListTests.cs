@@ -16,6 +16,7 @@ public sealed partial class TenantBypassAllowListTests
         ["src/api/TenantHub.Application/Organizations/CreateOrganizationHandler.cs"] = "the five-owned limit counts the user's organizations everywhere",
         ["src/api/TenantHub.Application/Invitations/InvitationAcceptance.cs"] = "the invitee is not a member yet; the invitation is found by its token hash (approved in the M05 brief)",
         ["src/api/TenantHub.Application/Tenancy/ResolveTenantQuery.cs"] = "tenant resolution reads the caller's membership before a tenant is entered",
+        ["src/api/TenantHub.Infrastructure/Seed/DemoReset.cs"] = "the demo reset deletes visitor accounts only when no membership or invitation anywhere refers to them (approved in SPEC 3.3 and the M09 brief; K2)",
     };
 
     private const string Definition = "src/api/TenantHub.Application/Tenancy/TenantQueries.cs";

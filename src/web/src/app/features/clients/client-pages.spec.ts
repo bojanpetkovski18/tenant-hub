@@ -172,14 +172,36 @@ describe('client pages', () => {
       expect(element.querySelector<HTMLInputElement>('#name')!.value).toBe('Acme Holdings');
     });
 
-    it('opens the new client after creating it', async () => {
+    it('opens the new client after creating it and says it was created', async () => {
       const element = await open('/o/brightline/clients/new');
 
       await fillAndSave(element, 'Birch Dental');
       http.expectOne((r) => r.method === 'POST').flush({ ...acme, id: 'c9', name: 'Birch Dental' });
       await settle(harness.fixture);
+      expect(TestBed.inject(Router).url).toBe('/o/brightline/clients/c9?notice=created');
+      http
+        .expectOne(`/api/orgs/${orgId}/clients/c9`)
+        .flush({ ...acme, id: 'c9', name: 'Birch Dental' });
+      await settle(harness.fixture);
 
-      expect(TestBed.inject(Router).url).toBe('/o/brightline/clients/c9');
+      const page = harness.routeNativeElement as HTMLElement;
+      expect(page.querySelector('[role="status"]')?.textContent).toContain('Client created.');
+    });
+
+    it('says the changes were saved after an edit', async () => {
+      const element = await open('/o/brightline/clients/c1/edit');
+      http.expectOne(clientUrl).flush(acme);
+      await settle(harness.fixture);
+
+      await fillAndSave(element, 'Acme Group');
+      http.expectOne((r) => r.method === 'PUT').flush({ ...acme, name: 'Acme Group', version: 42 });
+      await settle(harness.fixture);
+      expect(TestBed.inject(Router).url).toBe('/o/brightline/clients/c1?notice=saved');
+      http.expectOne(clientUrl).flush({ ...acme, name: 'Acme Group', version: 42 });
+      await settle(harness.fixture);
+
+      const page = harness.routeNativeElement as HTMLElement;
+      expect(page.querySelector('[role="status"]')?.textContent).toContain('Changes saved.');
     });
   });
 });

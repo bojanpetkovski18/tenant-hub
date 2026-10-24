@@ -168,6 +168,52 @@ public sealed class DemoModeTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task The_reset_deletes_old_visitor_accounts_that_nothing_refers_to_any_more()
+    {
+        var (factory, clock, connectionString) = await DemoAsync();
+        var gone = BrowserClient.NewEmail();
+        var keeper = BrowserClient.NewEmail();
+        var late = BrowserClient.NewEmail();
+        using (var visitor = new BrowserClient(factory))
+        {
+            (await visitor.SignUpAsync(gone, "Gone Visitor Co")).EnsureSuccessStatusCode();
+        }
+
+        using (var visitor = new BrowserClient(factory))
+        {
+            // Old account, but it also owns an organization from just before the reset, which stays.
+            (await visitor.SignUpAsync(keeper, "Keeper Old Co")).EnsureSuccessStatusCode();
+            clock.Now = Start.AddHours(23);
+            (await visitor.CreateOrganizationAsync("Keeper New Co")).EnsureSuccessStatusCode();
+        }
+
+        using (var visitor = new BrowserClient(factory))
+        {
+            (await visitor.SignUpAsync(late, "Late Visitor Co")).EnsureSuccessStatusCode();
+        }
+
+        await factory.DisposeAsync();
+        Dictionary<string, Guid> demoIds;
+        await using (var db = PostgresFixture.CreateDbContext(connectionString))
+        {
+            demoIds = await db.Users.Where(u => DemoSeeder.Emails.Contains(u.Email!)).ToDictionaryAsync(u => u.Email!, u => u.Id, Ct);
+        }
+
+        clock.Now = Start.AddHours(25);
+        await ResetIfDueAsync(connectionString, clock);
+
+        await using (var db = PostgresFixture.CreateDbContext(connectionString))
+        {
+            var emails = await db.Users.Select(u => u.Email!).ToListAsync(Ct);
+            Assert.DoesNotContain(gone, emails);
+            Assert.Contains(keeper, emails);
+            Assert.Contains(late, emails);
+            // The demo accounts have no memberships for a moment during the reset; they stay, with the same ids.
+            Assert.Equal(demoIds, await db.Users.Where(u => DemoSeeder.Emails.Contains(u.Email!)).ToDictionaryAsync(u => u.Email!, u => u.Id, Ct));
+        }
+    }
+
+    [Fact]
     public async Task Demo_mode_lowers_the_sign_in_limit_and_never_sends_email()
     {
         var (factory, _, _) = await DemoAsync(null, null, ("RateLimiting:DemoAuthPermitLimit", "2"), ("Email:Mode", "Smtp"));

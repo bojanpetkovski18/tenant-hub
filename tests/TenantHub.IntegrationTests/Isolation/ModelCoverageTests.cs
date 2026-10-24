@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using TenantHub.Application.Tenancy;
 using TenantHub.Domain;
@@ -22,6 +24,7 @@ public sealed class ModelCoverageTests
         [typeof(IdentityUserLogin<Guid>)] = "Identity data of an account",
         [typeof(IdentityUserToken<Guid>)] = "Identity data of an account",
         [typeof(Organization)] = "the tenant itself; access is checked through the membership (SPEC 3.2)",
+        [typeof(DataProtectionKey)] = "the app's cookie-signing keys, shared by every instance (K1; the owner chose a database table in M10)",
     };
 
     private static IModel Model()
@@ -66,5 +69,20 @@ public sealed class ModelCoverageTests
 
         // Every tenant-scoped query filters on organization_id first; without such an index each one scans.
         Assert.Contains(keys, properties => properties[0].Name == nameof(ITenantOwned.OrganizationId));
+    }
+
+    [Theory]
+    [MemberData(nameof(TenantOwnedEntities))]
+    public void Tenant_owned_entities_reference_their_organization_and_go_with_it(string entity)
+    {
+        var type = Model().GetEntityTypes().Single(t => t.ClrType.Name == entity);
+
+        // The organization must exist, and deleting it removes the row (SPEC 6). Found missing-able by the M10
+        // mutation check: without this rule only the deletion test noticed a dropped foreign key.
+        var key = type.GetForeignKeys().SingleOrDefault(k =>
+            k.PrincipalEntityType.ClrType == typeof(Organization)
+            && k.Properties is [{ Name: nameof(ITenantOwned.OrganizationId) }]);
+        Assert.NotNull(key);
+        Assert.Equal(DeleteBehavior.Cascade, key.DeleteBehavior);
     }
 }
