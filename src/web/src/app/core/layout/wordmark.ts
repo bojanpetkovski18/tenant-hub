@@ -13,7 +13,8 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
           stroke-linecap="round"
         />
       </svg>
-      TenantHub
+      <!-- Below 360 px the public header has no room for the name; the links around it carry it as their label. -->
+      <span class="max-[359px]:sr-only">TenantHub</span>
     </span>
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -104,7 +104,9 @@
       sans-serif;
   }
 
-  :focus-visible {
+  :focus-visible,
+  /* Chrome focuses a date field's inner parts, so the field itself never matches :focus-visible (M10 audit). */
+  input:is([type='date'], [type='time'], [type='datetime-local']):focus-within {
     outline: 3px solid var(--th-focus);
     outline-offset: 2px;
   }
@@ -114,6 +116,8 @@
     *::before,
     *::after {
       animation-duration: 0.01ms !important;
+      /* Without this an infinite animation (the loading pulse) still repeats every frame: a flicker (M10 audit). */
+      animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
