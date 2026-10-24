@@ -37,7 +37,12 @@ import { Wordmark } from './wordmark';
                 >Organizations</a
               >
               <app-theme-toggle />
-              <app-user-menu />
+              <!-- Deferred: the menu brings the CDK overlay (about 80 kB), which no visitor to the landing page needs. -->
+              @defer (on idle) {
+                <app-user-menu />
+              } @placeholder {
+                <span class="inline-block size-10" aria-hidden="true"></span>
+              }
             } @else {
               <a
                 routerLink="/sign-in"
