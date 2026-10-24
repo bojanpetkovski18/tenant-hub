@@ -4,9 +4,8 @@ using TenantHub.Domain.Clients;
 namespace TenantHub.Infrastructure.Seed;
 
 /// <summary>
-/// Forty fictional clients of a cleaning company (SPEC 8.3): offices, clinics, schools and homes in invented
-/// places, with reserved <c>.example</c> emails and obviously fake phone numbers. Deterministic, so every seed
-/// looks the same; every eighth one is archived.
+/// Fictional clients (SPEC 8.3): offices, clinics, schools and homes in invented places, with reserved
+/// <c>.example</c> emails and obviously fake phone numbers. Deterministic, so every seed looks the same.
 /// </summary>
 internal static class DemoClients
 {
@@ -16,43 +15,41 @@ internal static class DemoClients
         "Elmstead", "Kingsbridge",
     ];
 
-    private static readonly (string Kind, string Domain)[] Kinds =
-    [
-        ("Offices", "offices"), ("Dental Clinic", "dental"), ("Primary School", "school"), ("Fitness Studio", "fitness"),
-    ];
-
     private static readonly string[] Contacts =
     [
         "Dana Reyes", "Tomas Varga", "Aisha Bello", "Mikkel Strand", "Priya Natarajan", "Lena Hoffmann", "Jonah Pike",
         "Rosa Delgado", "Kofi Mensah", "Elin Berg", "Marco Conti", "Hana Sato", "Ines Duarte",
     ];
 
-    public static IEnumerable<Client> Create(Guid organizationId, DateTimeOffset now)
+    /// <summary>Forty clients of a cleaning company: every place has offices, a clinic, a school and a studio.</summary>
+    public static IReadOnlyList<ClientDetails> CleaningCompany() =>
+        Build(Places, [("Offices", "offices"), ("Dental Clinic", "dental"), ("Primary School", "school"), ("Fitness Studio", "fitness")], 100);
+
+    /// <summary>Twenty-four clients of a landscaper: homes, parks and a few businesses.</summary>
+    public static IReadOnlyList<ClientDetails> Landscaper() =>
+        Build(Places[..8], [("Gardens", "gardens"), ("Community Park", "park"), ("Business Centre", "centre")], 300);
+
+    private static List<ClientDetails> Build(string[] places, (string Kind, string Domain)[] kinds, int phoneBase)
     {
+        var clients = new List<ClientDetails>();
         var n = 0;
-        foreach (var place in Places)
+        foreach (var place in places)
         {
-            foreach (var (kind, domain) in Kinds)
+            foreach (var (kind, domain) in kinds)
             {
                 var slug = $"{place.Replace(" ", "", StringComparison.Ordinal).ToLowerInvariant()}-{domain}";
                 var contact = Contacts[n % Contacts.Length];
-                var details = ClientDetails.Validate(
+                clients.Add(ClientDetails.Validate(
                     $"{place} {kind}",
                     contact,
                     $"{contact.Split(' ')[0].ToLowerInvariant()}@{slug}.example",
-                    $"+00 {(100 + n).ToString(CultureInfo.InvariantCulture)} 000 000",
+                    $"+00 {(phoneBase + n).ToString(CultureInfo.InvariantCulture)} 000 000",
                     $"{(n % 90) + 1} {place} Road",
-                    n % 5 == 0 ? "Key safe by the side entrance; alarm code from the office manager." : null);
-
-                var client = Client.Create(organizationId, details, now);
-                if (n % 8 == 7)
-                {
-                    client.Archive(now);
-                }
-
+                    n % 5 == 0 ? "Key safe by the side entrance; alarm code from the office manager." : null));
                 n++;
-                yield return client;
             }
         }
+
+        return clients;
     }
 }
