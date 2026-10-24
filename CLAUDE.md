@@ -59,7 +59,7 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
 
 **API**
 - `dotnet build TenantHub.slnx`: builds everything; warnings are errors.
-- `dotnet test --solution TenantHub.slnx`: unit, architecture and integration tests (Microsoft.Testing.Platform via `global.json`); 729 tests, about 49 s after M09. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-namespace "*Isolation*"` runs the isolation suite (296 tests). Integration tests start their own PostgreSQL through Testcontainers, so Docker must be running; the dev database is not used. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-method "*Concurrent*"` runs matching tests of one project; `--output Detailed` shows the API log of a failing test.
+- `dotnet test --solution TenantHub.slnx`: unit, architecture and integration tests (Microsoft.Testing.Platform via `global.json`); 739 tests, about 83 s after M10. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-namespace "*Isolation*"` runs the isolation suite (301 tests). Integration tests start their own PostgreSQL through Testcontainers, so Docker must be running; the dev database is not used. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-method "*Concurrent*"` runs matching tests of one project; repeated `--filter-class` options add up, but a class filter combined with `--filter-method` selects only tests matching both (verified 2026-10-24); `--output Detailed` shows the API log of a failing test.
 - `dotnet format TenantHub.slnx --verify-no-changes`: formatting and code-style check (exit 2 on a violation); drop `--verify-no-changes` to fix.
 - `dotnet restore TenantHub.slnx --locked-mode`: restore exactly what the `packages.lock.json` files record (CI does this). After changing a package version, run a plain `dotnet restore` and commit the updated lock files.
 - `dotnet run --project src/api/TenantHub.Api`: API on `http://localhost:5090` in Development. It reads the repo-root `.env`, needs the dev database running, applies migrations (`Database__MigrateOnStartup`) and seeds (`Seed__Enabled`). Readiness (includes the database) at `/health`, liveness at `/health/live`; OpenAPI at `/openapi/v1.json` and the Scalar UI at `/scalar` (Development only).
@@ -67,15 +67,20 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
 - `dotnet list TenantHub.slnx package --vulnerable --include-transitive`: NuGet advisories.
 - Demo mode (verified 2026-10-24, M09): `DEMO_MODE=true DEMO_RESET_INTERVAL_HOURS=6 dotnet run --project src/api/TenantHub.Api` (Git Bash; environment variables override `.env`). It seeds even with `Seed__Enabled=false`, refuses to start without `DEMO_PASSWORD`, turns email off, lowers the auth and invitation limits to 5 a minute, and resets the seeded organizations on schedule (log line "Demo reset: …").
 - Browser suites that sign in many times need the API started with `RateLimiting__AuthPermitLimit=1000 RateLimiting__InvitationPermitLimit=1000` (verified 2026-10-24); the default allows 10 sign-ins a minute per address.
+- `Logging__LogLevel__Default=Warning dotnet run -c Release --project src/api/TenantHub.Api`: the API for measurements (Release, request and SQL logging quiet). Verified 2026-10-24 (M10).
 - A fresh, fully seeded database without touching the dev data (verified 2026-10-22, M04): `docker compose -f docker-compose.dev.yml exec -T db psql -U tenant_hub -d tenant_hub -c "CREATE DATABASE tenant_hub_scratch"`, then run the API with `ConnectionStrings__Database="Host=localhost;Port=5434;Database=tenant_hub_scratch;Username=tenant_hub;Password=change-me"`; it migrates and seeds that database on start.
 
 **Web** (`src/web`)
 - `npm start`: dev server on `http://localhost:4200`, proxying `/api` and `/health` to the API on 5090.
 - `npm run lint`: ESLint, including Angular template accessibility rules.
 - `npm run format:check` / `npm run format`: Prettier check / fix.
-- `npm run test:ci`: Vitest component tests, single run (131 tests after M09). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
+- `npm run test:ci`: Vitest component tests, single run (136 tests after M10). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
 - `npm run build`: production build to `src/web/dist/web`.
 - `npm audit --audit-level=moderate`: npm advisories (CI gate).
+
+**Tools** (`tools/`, plain Node, no dependencies)
+- `node tools/contrast.mjs`: WCAG contrast of the design tokens in both themes; exit 1 if a pair fails. Verified 2026-10-24 (M10).
+- `node tools/load-jobs.mjs [--base http://localhost:5090] [--orgs 20] [--jobs 500] [--requests 2000] [--concurrency 10]`: seeds 10,000 jobs across 20 organizations through the API, then prints p50/p95/p99 of the jobs list per query shape; exit 1 if p95 ≥ 200 ms. Needs a scratch database and the measurement API above; about 2.5 minutes. Verified 2026-10-24 (M10).
 
 **CI**
 - `.github/workflows/ci.yml` runs all of the above as the merge gate; `docs/CI.md` lists the jobs and the branch-protection settings. The workflow lint and `.editorconfig` check run locally with checksum-verified actionlint 1.7.12 and editorconfig-checker 4.0.2 (Windows builds from their GitHub releases). Note that `dotnet restore` writes lock files with CRLF on Windows; Git normalizes them, so run editorconfig-checker on a clean checkout rather than on the working tree.

@@ -392,3 +392,20 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
   - the plan types, labels and usage meters moved to `shared/` (Settings and the dashboard both use them);
   - the landing page replaces its placeholder;
   - the demo banner sits at the top of both layouts.
+
+## D033: Polish, known issues and the lock mode (M10)
+- **Date:** 2026-10-24
+- **Data-protection keys (K1, the owner chose to fix it in M10):**
+  - the keys that sign session and antiforgery cookies live in PostgreSQL (`data_protection_keys`, via `PersistKeysToDbContext`), under the fixed application name "TenantHub", so a restarted container or a second instance accepts existing cookies;
+  - the keys are stored unencrypted, like ASP.NET Core's default file store on Linux. Whoever can read the database can already read all data; encrypting them with a certificate can come with hosting (M12) if needed;
+  - the table is not tenant-owned and is listed in `NotTenantOwned` (the owner chose a database table);
+  - package `Microsoft.AspNetCore.DataProtection.EntityFrameworkCore` 10.0.13: an owner-approved exception to the two-week rule (11 days old). 10.0.12 brings `System.Security.Cryptography.Xml` and `Pkcs` 10.0.12 with high-severity advisories (GHSA-846f-f764-76mx, GHSA-7hqp-7c5m-4vq6, GHSA-c399-9853-6jmj, GHSA-r955-8q5j-3h83) that the 10.0.13 servicing release fixes; seven of our packages were already on 10.0.13.
+- **Visitor accounts (K2, owner's choice):** each demo reset deletes accounts that are over a day old, are not demo accounts, and that no membership, invitation or organization refers to any more. The query is a tenant bypass in `DemoReset.cs`, added to the allow-list under the approval in SPEC 3.3 and the M09 brief.
+- **Lock mode:** `LockOrganizationAsync` and `LockUserAsync` take `FOR NO KEY UPDATE`, not `FOR UPDATE`.
+  - The locks exist to serialize the commands that take them (limits, membership rules, numbering). `FOR NO KEY UPDATE` still conflicts with itself and with deletes, but not with the `FOR KEY SHARE` that every foreign-key check takes.
+  - With `FOR UPDATE`, every insert in the organization waited for the lock, and a job transition writing its audit entries deadlocked with a job creation queued for it. Found by the load test, at about 1,000 operations with 20-way concurrency; the plan-limit and numbering races still pass.
+- **Save confirmation:** client and job forms navigate to the detail page with `notice=created|saved`, shown as a status message, like the organization picker's notices. The parameter stays in the URL until the user moves on.
+- **Performance:**
+  - Lighthouse ≥ 90 on mobile needs compressed assets; the SPA will be served by the API with `MapStaticAssets` (pre-compressed) in M11 (K3);
+  - the public layout defers the account menu so the CDK overlay leaves the landing page's critical path.
+- **Tools:** `tools/contrast.mjs` (token contrast) and `tools/load-jobs.mjs` (jobs list under load, through the API) are plain Node scripts with no dependencies. The browser audit script stays out of the repository until M11 adds Playwright.

@@ -70,7 +70,7 @@ on narrow screens (M04, M06). Screenshots at 375, 768 and 1280 px were reviewed 
 | A saved client or job opened its page with no confirmation | the form passes `notice=created` or `notice=saved`; the detail page shows it as a status message | Vitest, shown failing first |
 | The job form's pickers failed silently, and an organization without clients could not start a job with no hint why | loading text, an error with retry, and "No active clients yet" with a link | Vitest, shown failing first |
 | With reduced motion the loading pulse kept repeating every 0.01 ms (a flicker) | `animation-iteration-count: 1` in the reduced-motion rule | browser audit: opacity varied between frames before, constant after |
-| Date fields showed no focus ring: Chrome focuses their inner parts | `:focus-within` ring for date and time inputs | browser audit: 7 stops without a ring before, none after |
+| Date fields showed no focus ring: Chrome focuses their inner parts | `:focus-within` ring for date and time inputs | browser audit: 9 stops without a ring (date fields on 4 screens) before, none after |
 | The signed-in public header overflowed at 320 px by 24 px | below 360 px the wordmark shows its logo only; the link keeps its label | browser audit: overflow before, none after |
 
 ## Known limits
