@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,6 +18,9 @@ public static class InfrastructureSetup
         var demo = DemoModeFrom(configuration);
         services.AddSingleton(demo);
         services.AddAppDatabase(configuration);
+        // Cookie-signing keys in PostgreSQL, not the machine's profile: a restarted container or a second instance
+        // still accepts existing sessions (K1). The fixed name keeps keys valid whatever the content root is.
+        services.AddDataProtection().SetApplicationName("TenantHub").PersistKeysToDbContext<AppDbContext>();
         services.AddScoped<IIdentityService, IdentityService>();
         services.AddScoped<IDatabaseLocks, DatabaseLocks>();
         services.AddSingleton<IDatabaseErrors, DatabaseErrors>();

@@ -18,6 +18,9 @@
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
     <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.13" />
+    <!-- 10.0.13 although only 11 days old when added (M10): 10.0.12 brings System.Security.Cryptography.Xml and Pkcs
+         with high-severity advisories that this servicing release fixes. Owner-approved exception (D033). -->
+    <PackageVersion Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.13" />
   </ItemGroup>
 
   <ItemGroup Label="Tests">

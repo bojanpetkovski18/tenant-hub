@@ -1,4 +1,5 @@
 using System.Reflection;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -24,8 +25,11 @@ namespace TenantHub.Infrastructure.Data;
 /// <see cref="TenantQueries.FilterName"/>, and every save goes through <see cref="TenantGuard"/>.
 /// </summary>
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext? tenant = null, TimeProvider? time = null)
-    : IdentityUserContext<AppUser, Guid>(options), IAppDbContext
+    : IdentityUserContext<AppUser, Guid>(options), IAppDbContext, IDataProtectionKeyContext
 {
+    /// <summary>The keys that sign session and antiforgery cookies, shared by every instance (K1).</summary>
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
+
     // No tenant (design time, migrations, tests that only inspect the model): tenant-owned queries return nothing.
     private readonly ITenantContext _tenant = tenant ?? new TenantContext();
     private AuditWriter? _audit;

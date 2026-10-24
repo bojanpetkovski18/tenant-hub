@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore.Metadata;
 using TenantHub.Application.Tenancy;
@@ -22,6 +23,7 @@ public sealed class ModelCoverageTests
         [typeof(IdentityUserLogin<Guid>)] = "Identity data of an account",
         [typeof(IdentityUserToken<Guid>)] = "Identity data of an account",
         [typeof(Organization)] = "the tenant itself; access is checked through the membership (SPEC 3.2)",
+        [typeof(DataProtectionKey)] = "the app's cookie-signing keys, shared by every instance (K1; the owner chose a database table in M10)",
     };
 
     private static IModel Model()
