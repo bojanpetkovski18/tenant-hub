@@ -101,7 +101,7 @@ interface Tile {
           }
         </ul>
 
-        <div class="grid gap-6 lg:grid-cols-2">
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <section class="th-card">
             <app-status-chart [counts]="d.jobsByStatus" [jobsPath]="base() + '/jobs'" />
           </section>
