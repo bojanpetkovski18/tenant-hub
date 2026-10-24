@@ -37,5 +37,9 @@ public sealed record UserResponse(Guid Id, string Email, string DisplayName, IRe
         new(user.Id, user.Email, user.DisplayName, [.. user.Memberships.Select(MembershipResponse.From)]);
 }
 
-/// <summary><c>User</c> is null when nobody is signed in; the endpoint answers 200 either way, so guests see no errors.</summary>
-public sealed record SessionResponse(UserResponse? User);
+/// <summary>
+/// <c>User</c> is null when nobody is signed in; the endpoint answers 200 either way, so guests see no errors.
+/// <c>DemoMode</c> tells the SPA whether to ask for the demo accounts at all, so other deployments never call the
+/// demo endpoints (which answer 404 there, and a browser logs every 404 as an error).
+/// </summary>
+public sealed record SessionResponse(UserResponse? User, bool DemoMode = false);

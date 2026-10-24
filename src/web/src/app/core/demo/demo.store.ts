@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Role } from '../session/session.models';
+import { SessionStore } from '../session/session.store';
 
 export interface DemoAccount {
   readonly role: Role;
@@ -30,18 +31,23 @@ export function resetIntervalText(hours: number): string {
 }
 
 /**
- * Whether this deployment is the public demo. Asked once: the endpoint answers 404 outside demo mode, which simply
- * means no demo buttons and no banner.
+ * The demo's accounts and schedule, asked once and only when the session says this is the public demo: elsewhere
+ * the endpoint answers 404, and the browser would log that on every page.
  */
 @Injectable({ providedIn: 'root' })
 export class DemoStore {
   private readonly http = inject(HttpClient);
+  private readonly session = inject(SessionStore);
   private pending: Promise<void> | null = null;
 
   readonly info = signal<DemoInfo | null>(null);
   readonly loaded = signal(false);
 
   load(): Promise<void> {
+    if (!this.session.demoMode()) {
+      this.loaded.set(true);
+      return Promise.resolve();
+    }
     this.pending ??= this.fetch();
     return this.pending;
   }

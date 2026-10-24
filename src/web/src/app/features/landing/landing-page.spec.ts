@@ -13,7 +13,7 @@ describe('LandingPage', () => {
       providers: [provideTestHttp(), provideRouter(routes, withComponentInputBinding())],
     });
     http = TestBed.inject(HttpTestingController);
-    await loadSession(signedIn ? olivia : null);
+    await loadSession(signedIn ? olivia : null, demo);
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/');
     answerDemo(http, demo ? { resetIntervalHours: 1, nextResetAt: null, accounts: [] } : null);

@@ -106,7 +106,7 @@ describe('SignInPage in demo mode', () => {
       providers: [provideTestHttp(), provideRouter(routes, withComponentInputBinding())],
     });
     http = TestBed.inject(HttpTestingController);
-    await loadSession(null);
+    await loadSession(null, true);
     harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/sign-in');
     answerDemo(http, demo);

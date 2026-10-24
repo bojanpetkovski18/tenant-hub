@@ -77,9 +77,9 @@ export function provideTestHttp(): (Provider | EnvironmentProviders)[] {
 }
 
 /** Loads the session as the app initializer would, with the given user (null = signed out). */
-export async function loadSession(user: SessionUser | null): Promise<void> {
+export async function loadSession(user: SessionUser | null, demoMode = false): Promise<void> {
   const loading = TestBed.inject(SessionStore).load();
-  TestBed.inject(HttpTestingController).expectOne('/api/auth/session').flush({ user });
+  TestBed.inject(HttpTestingController).expectOne('/api/auth/session').flush({ user, demoMode });
   await loading;
 }
 
@@ -89,12 +89,14 @@ export async function settle(fixture: { whenStable(): Promise<unknown> }): Promi
   await fixture.whenStable();
 }
 
-/** The demo lookup the public pages make: 404 as outside demo mode (the default), or the demo's accounts. */
+/**
+ * The demo lookup: outside demo mode (the default) no request may be made; in demo mode (`loadSession(user, true)`)
+ * the pages ask once for the accounts.
+ */
 export function answerDemo(http: HttpTestingController, info: DemoInfo | null = null): void {
-  const request = http.expectOne('/api/demo/accounts');
   if (info) {
-    request.flush(info);
+    http.expectOne('/api/demo/accounts').flush(info);
   } else {
-    request.flush({ title: 'Not Found' }, { status: 404, statusText: 'Not Found' });
+    http.expectNone('/api/demo/accounts');
   }
 }

@@ -54,7 +54,8 @@ public sealed class DemoModeTests(PostgresFixture postgres)
 
         await ProblemAssert.IsProblemAsync(await browser.Http.GetAsync("/api/demo/accounts", Ct), HttpStatusCode.NotFound);
         await ProblemAssert.IsProblemAsync(await DemoSignInAsync(browser, "owner"), HttpStatusCode.NotFound);
-        Assert.Null((await browser.SessionAsync()).User);
+        var session = await browser.SessionAsync();
+        Assert.Equal((null, false), (session.User, session.DemoMode));
     }
 
     [Fact]
@@ -65,6 +66,7 @@ public sealed class DemoModeTests(PostgresFixture postgres)
         using var anonymous = new BrowserClient(factory);
 
         var info = await anonymous.Http.GetFromJsonAsync<DemoInfoResponse>("/api/demo/accounts", BrowserClient.Json, Ct);
+        Assert.True((await anonymous.SessionAsync()).DemoMode);
 
         Assert.Equal((6, Start.AddHours(6)), (info!.ResetIntervalHours, info.NextResetAt));
         Assert.Equal([Role.Owner, Role.Admin, Role.Member, Role.Viewer], info.Accounts.Select(a => a.Role));
