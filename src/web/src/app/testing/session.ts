@@ -2,6 +2,7 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { EnvironmentProviders, Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { DemoInfo } from '../core/demo/demo.store';
 import { authInterceptor } from '../core/session/auth.interceptor';
 import { Permission, Role, SessionUser } from '../core/session/session.models';
 
@@ -86,4 +87,14 @@ export async function loadSession(user: SessionUser | null): Promise<void> {
 export async function settle(fixture: { whenStable(): Promise<unknown> }): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve));
   await fixture.whenStable();
+}
+
+/** The demo lookup the public pages make: 404 as outside demo mode (the default), or the demo's accounts. */
+export function answerDemo(http: HttpTestingController, info: DemoInfo | null = null): void {
+  const request = http.expectOne('/api/demo/accounts');
+  if (info) {
+    request.flush(info);
+  } else {
+    request.flush({ title: 'Not Found' }, { status: 404, statusText: 'Not Found' });
+  }
 }

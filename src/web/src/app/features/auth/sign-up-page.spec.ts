@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../../app.routes';
-import { loadSession, olivia, provideTestHttp, settle } from '../../testing/session';
+import { answerDemo, loadSession, olivia, provideTestHttp, settle } from '../../testing/session';
 
 describe('SignUpPage', () => {
   let harness: RouterTestingHarness;
@@ -18,6 +18,8 @@ describe('SignUpPage', () => {
     await loadSession(null);
     harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/sign-up');
+    answerDemo(http);
+    await settle(harness.fixture);
     page = harness.routeNativeElement as HTMLElement;
   });
 
@@ -98,5 +100,6 @@ describe('SignUpPage', () => {
 
     expect(TestBed.inject(Router).url).toBe('/o/brightline/dashboard');
     http.expectOne(`/api/orgs/${olivia.memberships[0]!.organizationId}`);
+    http.expectOne(`/api/orgs/${olivia.memberships[0]!.organizationId}/dashboard`);
   });
 });

@@ -1,23 +1,17 @@
 import { Routes } from '@angular/router';
 import { authGuard, guestGuard } from './core/session/auth.guards';
 
-// Pages not built yet are placeholders until the milestone named in their description (SPEC 6, prompts/).
-const placeholder = () =>
-  import('./shared/placeholder-page/placeholder-page').then((m) => m.PlaceholderPage);
-
-const page = (path: string, title: string, description: string) => ({
-  path,
-  title,
-  loadComponent: placeholder,
-  data: { heading: title, description },
-});
-
 export const routes: Routes = [
   {
     path: '',
     loadComponent: () => import('./core/layout/public-layout').then((m) => m.PublicLayout),
     children: [
-      page('', 'TenantHub', 'The landing page arrives in M09.'),
+      {
+        path: '',
+        pathMatch: 'full',
+        title: 'TenantHub',
+        loadComponent: () => import('./features/landing/landing-page').then((m) => m.LandingPage),
+      },
       {
         path: 'sign-in',
         title: 'Sign in',
@@ -59,7 +53,12 @@ export const routes: Routes = [
     loadComponent: () => import('./core/layout/app-shell').then((m) => m.AppShell),
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
-      page('dashboard', 'Dashboard', 'The dashboard arrives in M09.'),
+      {
+        path: 'dashboard',
+        title: 'Dashboard',
+        loadComponent: () =>
+          import('./features/dashboard/dashboard-page').then((m) => m.DashboardPage),
+      },
       {
         path: 'jobs',
         title: 'Jobs',

@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import {
   Membership,
   Permission,
+  Role,
   SessionResponse,
   SessionUser,
   SignUpRequest,
@@ -43,6 +44,15 @@ export const SessionStore = signalStore(
       async signIn(email: string, password: string): Promise<SessionUser> {
         const session = await firstValueFrom(
           http.post<SessionResponse>('/api/auth/sign-in', { email, password }),
+        );
+        setUser(session.user);
+        return session.user!;
+      },
+
+      /** Demo mode only (US-61): signs in as the seeded account for this role, no password. */
+      async signInAsDemo(role: Role): Promise<SessionUser> {
+        const session = await firstValueFrom(
+          http.post<SessionResponse>('/api/demo/sign-in', { role }),
         );
         setUser(session.user);
         return session.user!;

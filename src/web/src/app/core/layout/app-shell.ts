@@ -25,6 +25,7 @@ import {
   RouterOutlet,
 } from '@angular/router';
 import { filter } from 'rxjs';
+import { DemoBanner } from '../demo/demo-banner';
 import { CurrentOrganizationStore } from '../session/current-organization.store';
 import { rememberLastOrganization } from '../session/last-organization';
 import { Permission } from '../session/session.models';
@@ -67,6 +68,7 @@ export const desktopQuery = '(min-width: 1024px)';
     OrgSwitcher,
     UserMenu,
     OrgNotFound,
+    DemoBanner,
   ],
   templateUrl: './app-shell.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
