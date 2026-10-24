@@ -354,3 +354,41 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
   - a refused downgrade lists the blocking limits;
   - the shell closes open dialogs on every router navigation (bug found in the browser pass).
 
+
+## D032: Dashboard, demo seed and demo mode (M09)
+- **Date:** 2026-10-24
+- **Dashboard (US-60):** one endpoint, `GET /api/orgs/{orgId}/dashboard` (`org.read`).
+  - The job counts are one grouped statement with filtered counts; active clients, my next 7 days and seats are small separate queries; recent activity reuses the audit list query (8 entries, only with `audit.read`).
+  - The response carries the organization's `today` and `monthStart`, so the SPA links each tile to a list that counts the same rows.
+  - "Completed this month" needed a list filter that did not exist: the jobs list gained `completedFrom`, a day in the organization's zone. Every number is checked against hand-written SQL on the seed, and the month boundary in Pacific/Auckland with a moving clock.
+- **The chart:** the repository has no dataviz guidance, so the chart follows accessible-chart practice:
+  - horizontal bars on one scale from zero, each labelled with its status and count in text;
+  - colour is never the only cue, and the bars are decoration (`aria-hidden`);
+  - each row links to the filtered list;
+  - a "Show as table" toggle (`aria-pressed`) gives a real table with a total.
+- **Seed (SPEC 8.3):** replayed through the domain in time order with a fixed random seed per organization:
+  - each step is saved at its own moment by the person who would do it, so job numbers, dates and the audit log agree;
+  - dates are relative to the day of seeding;
+  - the same day gives the same data (a fingerprint test).
+- **Demo mode (`DEMO_MODE`):**
+  - **Endpoints:**
+    - `GET /api/demo/accounts` and `POST /api/demo/sign-in { role }` are always mapped (so the coverage tests classify them) and answer 404 outside demo mode;
+    - sign-in needs no password and shares the auth rate limit;
+    - the session response carries `demoMode`, and the SPA asks for the accounts only then: elsewhere every page load logged the 404 as a console error.
+  - **Reset:** a hosted service (Api project, because Infrastructure has no hosting dependency) runs `DemoReset` when due.
+    - Due means one interval after the seeded organizations were created. The schedule lives in the data, so a restart neither resets early nor skips a reset; the service re-reads it at least every 15 minutes.
+    - A reset deletes the seeded organizations (the database cascades their data and audit entries), deletes visitor organizations older than 24 hours, and seeds again. Deleting comes before seeding, so for a few seconds the demo organizations are missing.
+    - Running more than one API instance is not supported in demo mode (no cross-instance lock); the demo runs one instance (M12).
+  - **Protections:** in demo mode, `DemoProtection` refuses with `403 demo-protected`:
+    - a demo account (one of the seeded emails) changing its password;
+    - a demo account's role change, removal or leaving in a seeded organization;
+    - deleting a seeded organization.
+
+    Visitors can still rename, change plans or invite in the seeded organizations; the next reset restores them.
+  - **Email and limits:** email is always off in demo mode, whatever `Email:Mode` says. The auth and invitation limits drop to `RateLimiting:DemoAuthPermitLimit` and `DemoInvitationPermitLimit` (5 a minute by default).
+  - **Startup:** demo mode refuses to start without `DEMO_PASSWORD`, and `DEMO_RESET_INTERVAL_HOURS` must be 1 to 168.
+  - **Bypasses:** no new tenant bypass was needed. Organizations are not tenant-filtered, and the seeder works through ordinary tenant contexts, one per actor and step. So the allow-list (`TenantBypassAllowListTests`) is unchanged, although SPEC 3.3 had pre-approved the seed and reset.
+- **UI:**
+  - the plan types, labels and usage meters moved to `shared/` (Settings and the dashboard both use them);
+  - the landing page replaces its placeholder;
+  - the demo banner sits at the top of both layouts.
