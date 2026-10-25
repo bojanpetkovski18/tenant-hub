@@ -1,0 +1,13 @@
+{
+  "name": "tenant-hub-e2e",
+  "private": true,
+  "description": "The Playwright journey against the composed production image (M11).",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.64.0"
+  }
+}

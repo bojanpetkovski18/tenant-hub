@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- EF Core abstractions only (DbSet, LINQ, transactions); the database provider stays in Infrastructure (D003). -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TenantHub.Domain\TenantHub.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TenantHub.Application.Tests" />
+  </ItemGroup>
+
+</Project>

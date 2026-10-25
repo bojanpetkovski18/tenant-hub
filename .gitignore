@@ -1,0 +1,49 @@
+# Secrets and local config
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+*.pfx
+*.pem
+*.key
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+coverage*/
+*.coverage
+*.trx
+
+# Node / Angular
+node_modules/
+dist/
+.angular/
+.nx/
+npm-debug.log*
+yarn-error.log*
+
+# Playwright
+tests/e2e/test-results/
+tests/e2e/playwright-report/
+tests/e2e/blob-report/
+tests/e2e/.auth/
+
+# Editors and OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local agent settings
+.claude/settings.local.json
+
+# Playwright output (tests/e2e)
+test-results/
+playwright-report/

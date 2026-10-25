@@ -1,0 +1,183 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
+import { Dialog } from '@angular/cdk/dialog';
+import { NgTemplateOutlet } from '@angular/common';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DOCUMENT,
+  DestroyRef,
+  ElementRef,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+  viewChild,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  NavigationEnd,
+  NavigationStart,
+  Router,
+  RouterLink,
+  RouterLinkActive,
+  RouterOutlet,
+} from '@angular/router';
+import { filter } from 'rxjs';
+import { DemoBanner } from '../demo/demo-banner';
+import { CurrentOrganizationStore } from '../session/current-organization.store';
+import { rememberLastOrganization } from '../session/last-organization';
+import { Permission } from '../session/session.models';
+import { SessionStore } from '../session/session.store';
+import { ThemeToggle } from '../theme/theme-toggle';
+import { OrgNotFound } from './org-not-found';
+import { OrgSwitcher } from './org-switcher';
+import { SkipLink } from './skip-link';
+import { UserMenu } from './user-menu';
+import { Wordmark } from './wordmark';
+
+interface NavItem {
+  readonly path: string;
+  readonly label: string;
+  /** Shown when the membership has any of these; the server enforces the real check (D008). */
+  readonly anyOf: readonly Permission[];
+  /** SVG path data, 24×24 viewBox, stroked. */
+  readonly icon: string;
+}
+
+/** The desktop sidebar is always shown from this width; below it the navigation is a drawer. */
+export const desktopQuery = '(min-width: 1024px)';
+
+/**
+ * Layout inside an organization (SPEC 6). The organization comes from the URL and must be one of the user's
+ * memberships; otherwise the page shows "not found" in place. Navigation shows only what the membership's
+ * permissions allow.
+ */
+@Component({
+  selector: 'app-shell',
+  imports: [
+    NgTemplateOutlet,
+    RouterOutlet,
+    RouterLink,
+    RouterLinkActive,
+    CdkTrapFocus,
+    ThemeToggle,
+    Wordmark,
+    SkipLink,
+    OrgSwitcher,
+    UserMenu,
+    OrgNotFound,
+    DemoBanner,
+  ],
+  templateUrl: './app-shell.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class AppShell {
+  /** Route parameter `:slug`. */
+  readonly slug = input.required<string>();
+
+  private readonly session = inject(SessionStore);
+  protected readonly membership = computed(() => this.session.membershipBySlug(this.slug()));
+  protected readonly visibleNavItems = computed(() => {
+    const granted = this.membership()?.permissions ?? [];
+    return this.navItems.filter((item) => item.anyOf.some((p) => granted.includes(p)));
+  });
+  private readonly currentOrganization = inject(CurrentOrganizationStore);
+  protected readonly drawerOpen = signal(false);
+  protected readonly navItems: readonly NavItem[] = [
+    {
+      path: 'dashboard',
+      anyOf: ['org.read'],
+      label: 'Dashboard',
+      icon: 'M4 13h6V4H4zM14 20h6v-9h-6zM14 4v3h6V4zM4 20h6v-3H4z',
+    },
+    {
+      path: 'jobs',
+      anyOf: ['jobs.read'],
+      label: 'Jobs',
+      icon: 'M9 5h11M9 12h11M9 19h11M4 5h.01M4 12h.01M4 19h.01',
+    },
+    {
+      path: 'clients',
+      anyOf: ['clients.read'],
+      label: 'Clients',
+      icon: 'M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M16 9h2a2 2 0 0 1 2 2v10M8 7h4M8 11h4M8 15h4M2 21h20',
+    },
+    {
+      path: 'members',
+      anyOf: ['org.read'],
+      label: 'Members',
+      icon: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
+    },
+    {
+      path: 'audit',
+      anyOf: ['audit.read'],
+      label: 'Audit log',
+      icon: 'M12 8v4l3 2M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5',
+    },
+    {
+      path: 'settings',
+      anyOf: ['org.manage', 'billing.manage'],
+      label: 'Settings',
+      icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z',
+    },
+  ];
+
+  private readonly menuButton = viewChild<ElementRef<HTMLButtonElement>>('menuButton');
+
+  constructor() {
+    effect(() => {
+      const membership = this.membership();
+      if (membership) {
+        rememberLastOrganization(membership.slug);
+        // Also the server-side membership check on entry; a lost membership is handled by the interceptor.
+        void this.currentOrganization.load(membership.organizationId);
+      }
+    });
+
+    const destroyRef = inject(DestroyRef);
+
+    inject(Router)
+      .events.pipe(
+        filter((event) => event instanceof NavigationEnd),
+        takeUntilDestroyed(),
+      )
+      .subscribe(() => this.drawerOpen.set(false));
+
+    // A link inside a dialog (the plan link in a limit message) leaves the page; the CDK closes dialogs only on
+    // history navigation, so close them on every router navigation too, or the new page stays behind a modal.
+    const dialogs = inject(Dialog);
+    inject(Router)
+      .events.pipe(
+        filter((event) => event instanceof NavigationStart),
+        takeUntilDestroyed(),
+      )
+      .subscribe(() => dialogs.closeAll());
+
+    // Growing past the breakpoint shows the static sidebar, so a drawer left open would be a duplicate.
+    const view = inject(DOCUMENT).defaultView;
+    afterNextRender(() => {
+      const query = view?.matchMedia?.(desktopQuery);
+      if (!query) {
+        return;
+      }
+      const onChange = (event: MediaQueryListEvent) => {
+        if (event.matches) {
+          this.drawerOpen.set(false);
+        }
+      };
+      query.addEventListener('change', onChange);
+      destroyRef.onDestroy(() => query.removeEventListener('change', onChange));
+    });
+  }
+
+  protected openDrawer(): void {
+    this.drawerOpen.set(true);
+  }
+
+  protected closeDrawer(): void {
+    this.drawerOpen.set(false);
+    this.menuButton()?.nativeElement.focus();
+  }
+}

@@ -1,0 +1,120 @@
+@if (membership(); as membership) {
+  <app-skip-link />
+
+  <ng-template #navigation>
+    <div class="flex h-16 shrink-0 items-center px-4">
+      <app-wordmark />
+    </div>
+    <div class="mx-3 mb-4">
+      <app-org-switcher [current]="membership" />
+    </div>
+    <nav aria-label="Main" class="flex-1 overflow-y-auto px-3">
+      <ul class="space-y-1">
+        @for (item of visibleNavItems(); track item.path) {
+          <li>
+            <a
+              class="th-nav-link"
+              [routerLink]="item.path"
+              routerLinkActive
+              ariaCurrentWhenActive="page"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                class="size-5 shrink-0"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path [attr.d]="item.icon" />
+              </svg>
+              {{ item.label }}
+            </a>
+          </li>
+        }
+      </ul>
+    </nav>
+  </ng-template>
+
+  <div class="flex min-h-dvh">
+    <aside
+      class="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-border bg-sidebar lg:flex"
+      aria-label="Sidebar"
+    >
+      <ng-container [ngTemplateOutlet]="navigation" />
+    </aside>
+
+    @if (drawerOpen()) {
+      <div class="fixed inset-0 z-40 lg:hidden">
+        <div class="absolute inset-0 bg-backdrop" (click)="closeDrawer()" aria-hidden="true"></div>
+        <div
+          id="nav-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigation"
+          class="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r border-border bg-sidebar shadow-xl"
+          cdkTrapFocus
+          [cdkTrapFocusAutoCapture]="true"
+          (keydown.escape)="closeDrawer()"
+        >
+          <button
+            type="button"
+            class="th-icon-button absolute right-2 top-3"
+            aria-label="Close navigation"
+            (click)="closeDrawer()"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              class="size-5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path d="M6 6l12 12M18 6 6 18" />
+            </svg>
+          </button>
+          <ng-container [ngTemplateOutlet]="navigation" />
+        </div>
+      </div>
+    }
+
+    <div class="flex min-w-0 flex-1 flex-col">
+      <app-demo-banner />
+      <header
+        class="sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-border bg-surface/90 px-4 backdrop-blur sm:px-6"
+      >
+        <button
+          #menuButton
+          type="button"
+          class="th-icon-button -ml-2 lg:hidden"
+          aria-label="Open navigation"
+          aria-controls="nav-drawer"
+          [attr.aria-expanded]="drawerOpen()"
+          (click)="openDrawer()"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            class="size-5"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <div class="flex-1"></div>
+        <app-theme-toggle />
+        <app-user-menu />
+      </header>
+      <main id="main" tabindex="-1" class="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <router-outlet />
+      </main>
+    </div>
+  </div>
+} @else {
+  <app-org-not-found [slug]="slug()" />
+}

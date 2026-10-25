@@ -1,0 +1,39 @@
+# Local development: PostgreSQL and Mailpit. The API and web app run on the host (see CLAUDE.md Commands).
+# Usage: cp .env.example .env, then docker compose -f docker-compose.dev.yml up -d --wait
+name: tenant-hub-dev
+
+services:
+  db:
+    image: postgres:18.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    ports:
+      # Bound to localhost only; 5434 avoids clashing with a local PostgreSQL or the owner's other projects.
+      - "127.0.0.1:${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      # PostgreSQL 18 images keep data under /var/lib/postgresql/18/docker.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Catches every email the API sends in development (invitations, M05); web UI on http://localhost:8025.
+  mail:
+    image: axllent/mailpit:v1.31.4
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
