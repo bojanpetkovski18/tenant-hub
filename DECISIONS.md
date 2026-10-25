@@ -449,3 +449,8 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
   - keep `Auth__RequireHttps` on (the default outside Development);
   - pin the base images by digest;
   - follow `docs/CHECKLISTS.md` → Deployment checklist.
+
+## D036: MIT licence (M12)
+- **Date:** 2026-10-25
+- **Decision (owner):** the repository is released under the MIT licence, copyright Bojan Petkovski.
+- **Why:** a portfolio project is meant to be read, run and reused; MIT is the familiar permissive choice. The data in it is fictional, so the licence covers code and documentation only.
