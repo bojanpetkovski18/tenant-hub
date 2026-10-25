@@ -129,7 +129,7 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
 - **Why:** Isolation and permissions are the claims this project makes, so they are tested systematically: enumerated from the model and the route table, not written by hand per endpoint.
 - **Architecture tests, M01 (2026-10-21):** plain xUnit with reflection and project-file parsing, no library. Each layer rule is checked against the `.csproj` (catches a reference before any type is used) and the compiled assembly (catches framework references); a third test fails when a new project under `src/api` has no rule. Shown failing for Domain and Application with an ASP.NET Core reference and for an unruled project; Infrastructure → Api is already refused by MSBuild as a circular reference (MSB4006). NetArchTest was not chosen (last release 2021); ArchUnitNET (TngTech, 0.13.4, 2026-08-20) is reconsidered at M03 if the `IgnoreQueryFilters` allow-list needs call-level analysis.
 
-## D016: Demo hosting (pending M12)
+## D016: Demo hosting (decided in M12: see D035)
 - **Date:** 2026-10-21
 - **Decision:** Chosen at M12. Until then the stack runs with Docker Compose locally.
 - **Options to compare then:** a free or low-cost container host with managed PostgreSQL; a GitHub Codespaces dev container (Fitness Merchant's choice); a small VPS. A public demo of a product with open sign-up needs the demo-mode protections in SPEC 4.1 (rate limits, no email, cleanup after 24 hours) whichever is chosen.
@@ -430,3 +430,22 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
   - `tests/e2e` is its own small npm project (@playwright/test 1.64.0, @axe-core/playwright 4.13.0) with a lock file, audited in CI;
   - every run uses new accounts and organizations, so runs are independent of each other and of the seed;
   - the CI job starts the stack from `.env.example` exactly as the README says, and uploads traces, the report and container logs when it fails. It is part of **CI result**.
+
+## D035: No public demo for now; the demo is a one-command run (M12)
+- **Date:** 2026-10-25
+- **Decision (owner):** no hosted demo at v1.0. A visitor tries TenantHub with `cp .env.example .env` and `docker compose up --build --wait` (the production image with demo data; M11 measured about 50 s from a fresh clone with base images present). Hosting can be added later without code changes: the image, forwarded headers, demo mode and the key store are ready.
+- **Findings (2026-10-25), for one container plus PostgreSQL:**
+  - **Render free web service:** sleeps after 15 minutes without traffic and takes about a minute to wake; 750 free instance hours a month; Render says not to use free instances in production. Its free PostgreSQL expires 30 days after creation, so it would be paired with Neon ([Render docs](https://render.com/docs/free)).
+  - **Neon Free:** 100 CU-hours a month per project, 1 GB of storage per project, suspends after 5 minutes idle ([Neon FAQ](https://neon.com/faqs/free-plan-limits-and-quotas)).
+  - **Google Cloud Run:** about 2 million requests, 180,000 vCPU-seconds and 360,000 GiB-seconds free a month; scales to zero; .NET cold starts estimated at a few seconds; needs a billing account. The official pricing page did not render, so these figures are from several consistent secondary sources ([agentdeals](https://agentdeals.dev/vendor/google-cloud-run), [freetiers](https://www.freetiers.com/directory/google-cloud-run)).
+  - **Azure Container Apps (Consumption):** the same monthly grant sizes; no charge while scaled to zero; needs a subscription. Secondary sources, including a Microsoft Q&A answer ([Microsoft Q&A](https://learn.microsoft.com/en-us/answers/questions/5560085/ongoing-costs-for-azure-container-app-environment)).
+  - **Fly.io:** no free allowance for new organizations; the smallest machine, shared-cpu-1x 256 MB, is about $2.19 a month; Managed Postgres starts at $38 a month ([Fly pricing](https://fly.io/docs/about/pricing/)).
+  - **Koyeb:** no free web service any more (entry plan $29 a month); a free Postgres with 5 active hours a month ([Koyeb pricing](https://www.koyeb.com/pricing)).
+  - **Hetzner Cloud:** shared plans from €5.99 (not available) and €6.49 a month excluding VAT; the stack would run with this repository's Compose file plus a TLS proxy ([Hetzner Cloud](https://www.hetzner.com/cloud)).
+  - **GitHub Codespaces:** 120 core-hours and 15 GB-month free for personal accounts. It runs in the visitor's own account, so it is not a public link ([GitHub docs](https://docs.github.com/billing/managing-billing-for-github-codespaces/about-billing-for-github-codespaces)).
+- **Why:** the owner preferred no running cost and no accounts to maintain at this stage. The free options either sleep for about a minute or need a payment method.
+- **If hosting is added:**
+  - run with `DEMO_MODE=true`, which turns email off and lowers rate limits, and with `ForwardedHeaders` set for the host's proxy;
+  - keep `Auth__RequireHttps` on (the default outside Development);
+  - pin the base images by digest;
+  - follow `docs/CHECKLISTS.md` → Deployment checklist.
