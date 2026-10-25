@@ -409,3 +409,24 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
   - Lighthouse ≥ 90 on mobile needs compressed assets; the SPA will be served by the API with `MapStaticAssets` (pre-compressed) in M11 (K3);
   - the public layout defers the account menu so the CDK overlay leaves the landing page's critical path.
 - **Tools:** `tools/contrast.mjs` (token contrast) and `tools/load-jobs.mjs` (jobs list under load, through the API) are plain Node scripts with no dependencies. The browser audit script stays out of the repository until M11 adds Playwright.
+
+## D034: Production image, Compose, end-to-end test (M11)
+- **Date:** 2026-10-25
+- **Serving the SPA:**
+  - the API serves it from `wwwroot` with `MapStaticAssets`, which fingerprints and pre-compresses (Brotli, gzip) at publish; this closed K3;
+  - static assets are mapped only when `wwwroot/index.html` exists (the image), so development and tests keep their endpoints. `MapStaticAssets` adds its own `{**path:file}` endpoint that conventions do not reach, and the coverage tests would rightly flag it as unclassified;
+  - the existing `{**path}` fallback now returns `index.html` (no-cache, with the CSP) for page requests: GET or HEAD, outside `/api`, no file extension. Everything else is still a 404 problem, so the public-endpoint list is unchanged.
+- **Image:**
+  - multi-stage: `node:24.20.0-alpine3.24` builds the SPA, `sdk:10.0.402` (the `global.json` SDK) restores in locked mode and publishes, and `aspnet:10.0.13-noble-chiseled-extra` runs it as the image's non-root `app` user;
+  - the `-extra` variant is required: plain chiseled has no tzdata, and organizations live in IANA zones (found when the container never became healthy);
+  - the 10.0.13 runtime matches our 10.0.13 packages, the release the owner approved for its security fixes (D033). The .NET tags float to patched rebuilds (the current ones were built 2026-10-21); pinning by digest would freeze them, and is the owner's call for M12;
+  - the health check is the app's own `--health-check` mode, which asks `/health` (database included), because chiseled images have no shell or curl.
+- **Compose:**
+  - `docker-compose.yml` is the whole product (PostgreSQL, Mailpit, the image), separate from `docker-compose.dev.yml`: its own project name and volume, and only the app (8080) and the Mailpit inbox (8026) on localhost;
+  - it composes the container's connection string and SMTP host itself and takes the rest from `.env`;
+  - it sets `Auth__RequireHttps=false`, for plain http on localhost only (documented in the file); a public deployment terminates TLS in front of the app and keeps it on.
+- **Forwarded headers:** off unless `ForwardedHeaders:Enabled`. Only the configured `KnownNetworks` and `KnownProxies` (and loopback) are trusted, with one hop. The M12 host decides the values.
+- **End-to-end:**
+  - `tests/e2e` is its own small npm project (@playwright/test 1.64.0, @axe-core/playwright 4.13.0) with a lock file, audited in CI;
+  - every run uses new accounts and organizations, so runs are independent of each other and of the seed;
+  - the CI job starts the stack from `.env.example` exactly as the README says, and uploads traces, the report and container logs when it fails. It is part of **CI result**.

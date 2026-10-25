@@ -59,7 +59,7 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
 
 **API**
 - `dotnet build TenantHub.slnx`: builds everything; warnings are errors.
-- `dotnet test --solution TenantHub.slnx`: unit, architecture and integration tests (Microsoft.Testing.Platform via `global.json`); 739 tests, about 83 s after M10. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-namespace "*Isolation*"` runs the isolation suite (301 tests). Integration tests start their own PostgreSQL through Testcontainers, so Docker must be running; the dev database is not used. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-method "*Concurrent*"` runs matching tests of one project; repeated `--filter-class` options add up, but a class filter combined with `--filter-method` selects only tests matching both (verified 2026-10-24); `--output Detailed` shows the API log of a failing test.
+- `dotnet test --solution TenantHub.slnx`: unit, architecture and integration tests (Microsoft.Testing.Platform via `global.json`); 748 tests, about 62 s after M11. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-namespace "*Isolation*"` runs the isolation suite (301 tests). Integration tests start their own PostgreSQL through Testcontainers, so Docker must be running; the dev database is not used. `dotnet test --project tests/TenantHub.IntegrationTests -- --filter-method "*Concurrent*"` runs matching tests of one project; repeated `--filter-class` options add up, but a class filter combined with `--filter-method` selects only tests matching both (verified 2026-10-24); `--output Detailed` shows the API log of a failing test.
 - `dotnet format TenantHub.slnx --verify-no-changes`: formatting and code-style check (exit 2 on a violation); drop `--verify-no-changes` to fix.
 - `dotnet restore TenantHub.slnx --locked-mode`: restore exactly what the `packages.lock.json` files record (CI does this). After changing a package version, run a plain `dotnet restore` and commit the updated lock files.
 - `dotnet run --project src/api/TenantHub.Api`: API on `http://localhost:5090` in Development. It reads the repo-root `.env`, needs the dev database running, applies migrations (`Database__MigrateOnStartup`) and seeds (`Seed__Enabled`). Readiness (includes the database) at `/health`, liveness at `/health/live`; OpenAPI at `/openapi/v1.json` and the Scalar UI at `/scalar` (Development only).
@@ -77,6 +77,11 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
 - `npm run test:ci`: Vitest component tests, single run (136 tests after M10). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
 - `npm run build`: production build to `src/web/dist/web`.
 - `npm audit --audit-level=moderate`: npm advisories (CI gate).
+
+**Full stack and end-to-end** (verified 2026-10-25, M11)
+- `docker compose up --build --wait`: the production image with PostgreSQL and Mailpit, migrated and seeded; app on `http://localhost:8080`, Mailpit inbox on `http://localhost:8026`. About 30 s to build without layer cache and 20 s to healthy. Separate from `docker-compose.dev.yml` (own project and volume); stop the dev compose's Mailpit first only if you changed its ports. `docker compose down` stops it; `--volumes` also deletes its data.
+- `docker build -t tenant-hub .`: the image alone (multi-stage; runs as the non-root `app` user; health check `dotnet TenantHub.Api.dll --health-check`).
+- `cd tests/e2e && npm ci && npx playwright install chromium && npx playwright test`: the journey against the running stack (`E2E_BASE_URL`, `E2E_MAILPIT_URL` override the defaults). Each run signs up 3 accounts; the sign-up limit is 10 a minute per address.
 
 **Tools** (`tools/`, plain Node, no dependencies)
 - `node tools/contrast.mjs`: WCAG contrast of the design tokens in both themes; exit 1 if a pair fails. Verified 2026-10-24 (M10).
