@@ -43,3 +43,7 @@ Thumbs.db
 
 # Local agent settings
 .claude/settings.local.json
+
+# Playwright output (tests/e2e)
+test-results/
+playwright-report/

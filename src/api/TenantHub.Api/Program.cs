@@ -18,6 +18,11 @@ using TenantHub.Infrastructure;
 using TenantHub.Infrastructure.Data;
 using TenantHub.Infrastructure.Seed;
 
+if (args.Contains(HealthProbe.Argument))
+{
+    return await HealthProbe.RunAsync();
+}
+
 var builder = WebApplication.CreateBuilder(args);
 builder.AddDevelopmentDotEnv();
 
@@ -42,6 +47,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
 builder.AddAppAuth();
+builder.Services.AddAppForwardedHeaders(builder.Configuration);
 builder.Services.AddAppRateLimiting(builder.Configuration);
 if (builder.Configuration.GetValue("DEMO_MODE", false))
 {
@@ -55,6 +61,7 @@ var app = builder.Build();
 await DatabaseSetup.MigrateIfEnabledAsync(app.Services);
 await DemoSeeder.SeedIfEnabledAsync(app.Services, app.Configuration);
 
+app.UseAppForwardedHeaders();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 if (!app.Environment.IsDevelopment())
@@ -90,14 +97,20 @@ foreach (var mapper in app.Services.GetServices<IEndpointMapper>())
     mapper.Map(app);
 }
 
-// Unmatched routes: 404 problem details. Without this endpoint the fallback authorization policy would answer
-// 401 for any unknown URL. Serving the SPA's own routes comes with the production image (M11).
-app.MapFallback("{**path}", () => TypedResults.Problem(statusCode: StatusCodes.Status404NotFound))
+// The SPA's files from wwwroot, pre-compressed (Brotli, gzip) at publish. Only the production image has the build
+// there (M11); in development the SPA has its own server. Public: scripts and styles load before anyone signs in.
+if (app.Environment.WebRootFileProvider.GetFileInfo("index.html").Exists)
+{
+    app.MapStaticAssets().Public();
+}
+
+app.MapFallback("{**path}", SpaFallback.Handle)
     .Public()
     .DisableAntiforgery()
     .ExcludeFromDescription();
 
 await app.RunAsync();
+return 0;
 
 /// <summary>Entry point, public so integration tests can use <c>WebApplicationFactory&lt;Program&gt;</c>.</summary>
 public partial class Program;

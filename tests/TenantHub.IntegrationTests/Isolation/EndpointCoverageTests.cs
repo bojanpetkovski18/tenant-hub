@@ -29,6 +29,7 @@ public sealed class EndpointCoverageTests(OfflineApiFactory factory) : IClassFix
         "* /health/live",
         "* {**path}",
         $"GET {ApiFactory.ThrowingPath}",
+        $"GET {ApiFactory.ConnectionPath}", // test-only, echoes what forwarded headers produce
     ];
 
     private List<(string Key, Endpoint Endpoint)> Endpoints()

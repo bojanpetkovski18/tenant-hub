@@ -30,6 +30,9 @@ public class ApiFactory(
     public const string ThrowingPath = "/api/test/throw";
     public const string UnannotatedPath = "/api/test/unannotated";
 
+    /// <summary>Public, echoes the client address and scheme the app sees (forwarded headers, M11).</summary>
+    public const string ConnectionPath = "/api/test/connection";
+
     /// <summary>Tenant-scoped, needs <c>billing.manage</c> (Owner only): exercises the 403 path before real endpoints need it.</summary>
     public const string OwnerOnlyPattern = "/test/owner-only";
 
@@ -68,6 +71,9 @@ public class ApiFactory(
         public void Map(IEndpointRouteBuilder app)
         {
             app.MapGet(ThrowingPath, IResult () => throw new InvalidOperationException("Test failure with a secret detail."))
+                .Public();
+            app.MapGet(ConnectionPath, (HttpContext context) =>
+                    Results.Ok(new { ip = context.Connection.RemoteIpAddress?.ToString(), scheme = context.Request.Scheme }))
                 .Public();
             // Classified, but with no authorization metadata of its own: only the fallback policy protects it.
             app.MapGet(UnannotatedPath, () => Results.Ok("signed-in")).UserScoped();

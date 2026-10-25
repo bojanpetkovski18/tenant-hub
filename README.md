@@ -15,4 +15,17 @@ TenantHub lets a small service business (cleaning, landscaping, maintenance, a s
 - **Data:** entirely fictional. Organizations, people, clients and jobs are invented.
 - **AI assistance:** this is an independent portfolio project built with AI assistance (Claude Code) under my direction and review. I wrote the specification and made the decisions, and I review and merge every change.
 
+## Run it
+
+With Docker running, from a fresh clone:
+
+```
+cp .env.example .env
+docker compose up --build --wait
+```
+
+The app is on http://localhost:8080 with demo data: sign in as `olivia@brightline.example` (Owner) with the
+`DEMO_PASSWORD` from `.env`. Emails (invitations) land in Mailpit at http://localhost:8026.
+`docker compose down` stops it; add `--volumes` to delete the data.
+
 See [`docs/SPEC.md`](docs/SPEC.md) for the specification and [`PROGRESS.md`](PROGRESS.md) for the current status.

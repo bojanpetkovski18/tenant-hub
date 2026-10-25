@@ -1,0 +1,65 @@
+# The whole product (M11): PostgreSQL, Mailpit and the production image of the app, with demo data.
+# Usage from a fresh clone: cp .env.example .env, then docker compose up --build --wait
+# The app is on http://localhost:8080 and Mailpit's inbox on http://localhost:8026. Plain http on localhost only:
+# a public deployment terminates TLS in front of the app and keeps Auth__RequireHttps on (M12).
+# Separate from docker-compose.dev.yml (own project name and data volume, no clashing host ports).
+name: tenant-hub
+
+services:
+  db:
+    image: postgres:18.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      # PostgreSQL 18 images keep data under /var/lib/postgresql/18/docker.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mail:
+    image: axllent/mailpit:v1.31.4
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${STACK_MAILPIT_UI_PORT:-8026}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    image: tenant-hub:local
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      mail:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${STACK_APP_PORT:-8080}:8080"
+    environment:
+      ConnectionStrings__Database: "Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      Database__MigrateOnStartup: "true"
+      Seed__Enabled: "${Seed__Enabled:-true}"
+      DEMO_PASSWORD: "${DEMO_PASSWORD:?set DEMO_PASSWORD in .env}"
+      DEMO_MODE: "${DEMO_MODE:-false}"
+      DEMO_RESET_INTERVAL_HOURS: "${DEMO_RESET_INTERVAL_HOURS:-6}"
+      App__PublicUrl: "${STACK_PUBLIC_URL:-http://localhost:8080}"
+      Email__Mode: Smtp
+      Email__SmtpHost: mail
+      Email__SmtpPort: "1025"
+      Email__From: "${Email__From:-no-reply@tenanthub.example}"
+      # Local plain http only (see the header). Cookies stay HttpOnly and SameSite=Strict.
+      Auth__RequireHttps: "false"
+      ForwardedHeaders__Enabled: "false"
+    # The image's health check (dotnet TenantHub.Api.dll --health-check) asks /health, database included.
+
+volumes:
+  pgdata:
