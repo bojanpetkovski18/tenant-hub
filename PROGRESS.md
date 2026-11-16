@@ -16,9 +16,48 @@ Estimates are rough focused-work hours for agent and owner together, including r
 | M09 | Dashboard, seed data, demo mode | `#0009-dashboard-seed-data-and-demo-mode` | 8 h | done | 2026-10-24 | PR #10 merged; CI green on the PR. 729 API tests (296 in the isolation suite) + 131 web tests; dashboard numbers equal psql; demo reset seen in a running API; 64/64 M09 browser checks in demo mode and the M02, M04–M08 suites (96/96, 78/78, 71/71, 90/90, 52/52, 39/39) on the production build under the API CSP; three bugs found and fixed |
 | M10 | Polish | `#0010-polish-states-responsive-a11y-performance` | 8 h | done | 2026-10-24 | PR #11 merged; CI green on the PR. 739 API tests (301 in the isolation suite) + 136 web tests; UI audit of 20 screens on the production build and the dev server (0 axe violations, no gaps, `docs/AUDIT.md`); jobs list p95 17.2–17.9 ms; Lighthouse 97–98 / 92 with compressed assets; isolation mutations repeated; K1 and K2 fixed; a deadlock found by the load test and fixed |
 | M11 | E2E, Docker, Compose | `#0011-e2e-production-docker-and-compose` | 6 h | done | 2026-10-25 | PR #12 merged; CI green on the PR, including the first end-to-end run against the composed image (110 s, https://github.com/bojanpetkovski18/tenant-hub/actions/runs/40186724964). 748 API tests (301 in the isolation suite) + 136 web tests; fresh clone to a healthy stack with demo data; image 255 MB, non-root; journey 2/2 in four consecutive local runs (three on the working copy, one on the fresh clone); Lighthouse on the image 98 / 95; one image-only bug found and fixed (no tzdata in plain chiseled) |
-| M12 | Demo hosting, README, portfolio | `#0012-demo-hosting-readme-and-portfolio` | 6 h | in review | 2026-10-25 | Hosting researched; the owner chose no public demo for now (D035). README, ARCHITECTURE, media and portfolio kit written; the README followed from a fresh clone (all demo accounts and the inbox as documented); public-repo scan clean; MIT licence. `dev` → `main` and tag `v1.0.0` wait for the owner |
+| M12 | Demo hosting, README, portfolio | `#0012-demo-hosting-readme-and-portfolio` | 6 h | done | 2026-10-25 | PR #13 merged; `dev` → `main` as PR #14; tag and release `v1.0.0` published 2026-10-25; CI green on `dev` and on `main` after the merges (https://github.com/bojanpetkovski18/tenant-hub/actions/runs/40192586698). Hosting researched; the owner chose no public demo for now (D035). README, ARCHITECTURE, media and portfolio kit written; the README followed from a fresh clone; public-repo scan clean; MIT licence |
 
 Total estimate: about 89 hours. Fitness Merchant's 15 milestones were estimated at 92 hours and finished in 7 calendar days; that is a reference point, not a promise.
+
+## v2 milestones
+Specification: `docs/SPEC-V2.md`; scope and reasons: D037; briefs: `prompts/M14-*.md` to `prompts/M23-*.md`. Phases group the milestones; each milestone is one pull request into `dev`, as in v1.
+
+| # | Phase | Milestone | Branch | Estimate | Status | Verified on | Notes |
+|---|---|---|---|---|---|---|---|
+| M13 | Plan | v2 specification, decisions, stories and briefs | `#0013-v2-plan-specification-and-milestone-briefs` | 2 h | in review | 2026-11-16 | Documents only; the owner approves the v2 scope (D037) and the allow-list entries in SPEC-V2 8 by merging |
+| M14 | A. Foundations | Row-level security: the database enforces the tenant | `#0014-postgres-row-level-security-layer` | 8 h | todo | | |
+| M15 | A. Foundations | Outbox, scheduler, password reset, email verification | `#0015-outbox-scheduler-and-account-recovery` | 8 h | todo | | |
+| M16 | B. Run the work | Recurring service agreements | `#0016-recurring-service-agreements` | 10 h | todo | | |
+| M17 | B. Run the work | Dispatch board with keyboard moves | `#0017-dispatch-board-with-keyboard-moves` | 8 h | todo | | |
+| M18 | C. Face the client | Client portal, quotes, work requests, plan entitlements | `#0018-client-portal-quotes-and-requests` | 12 h | todo | | Security-sensitive: strongest model |
+| M19 | C. Face the client | Checklists, photos and client sign-off | `#0019-checklists-photos-and-client-sign-off` | 10 h | todo | | Image library chosen with the owner |
+| M20 | C. Face the client | Notifications in the app and by email | `#0020-in-app-and-email-notifications` | 6 h | todo | | |
+| M21 | D. Connect | API keys, signed webhooks and exports | `#0021-api-keys-webhooks-and-exports` | 10 h | todo | | Security-sensitive: strongest model |
+| M22 | E. Ship | v2 polish, audit and the second journey | `#0022-v2-polish-audit-and-second-journey` | 8 h | todo | | |
+| M23 | E. Ship | v2.0.0: documentation, portfolio, release | `#0023-v2-release-docs-and-portfolio` | 6 h | todo | | Hosting revisited with the owner |
+
+Total v2 estimate: about 88 hours including this plan, about the size of v1.
+
+### v2 risks
+- **Row-level security and pooled connections (M14).** A setting that outlives its transaction would leak a tenant, and the v1 app runs as a superuser, which bypasses every policy. Mitigation: transaction-local settings, a separate non-superuser runtime role used by the tests too, a leak test on one physical connection, and a startup refusal when the role can bypass.
+- **Policies slowing queries (M14).** Mitigation: `EXPLAIN` on the hot queries and the M10 load test repeated, with the overhead recorded.
+- **Background work that runs twice or never (M15, M16, M20).** Mitigation: `SKIP LOCKED` claims, leases, unique keys for generated rows, and tests with two workers and a moving clock.
+- **Drag and drop under the strict CSP (M17).** Mitigation: verify on the production build first, as D023 did for the CDK overlay; the keyboard path does not depend on dragging.
+- **A new identity and cookie scheme (M18).** Mitigation: the portal matrix, cross-scheme refusal tests, mutation checks, and the strongest model for the milestone.
+- **Native image libraries in the chiseled runtime image (M19).** Mitigation: choose the library with its dependencies checked in the real image before building on it; the owner decides if it is not clear-cut.
+- **Outbound requests to customer URLs (M21).** Mitigation: address checks at connection time, no redirects, tests with a fake resolver.
+- **Scope.** Ten milestones with new UI each. Mitigation: the v2 cut list, and the v1 list, form and dialog patterns reused.
+
+### v2 cut list
+If the schedule slips, these move to "later" in this order, with the owner's approval:
+1. Jobs CSV export (M21); the audit export stays.
+2. Daily overdue digest (US-101, M20); in-app notifications and the other emails stay.
+3. Monthly "nth weekday" recurrence (M16); weekly and monthly-by-day stay.
+4. Webhook delivery log UI and redeliver (M21); the log is still recorded and retries still happen.
+5. Problem reports from the portal (M19); confirmation stays.
+
+Row-level security, the portal and its isolation matrix, the outbox and scheduler, agreements, the board's keyboard path, upload safety, and webhook signing with the SSRF guard are not on the cut list: they are v2.
 
 ## Risks
 - **Isolation harness complexity (M03).** Enumerating endpoints and building the cross-tenant matrix generically is the hardest part. Mitigation: start with a plain table of cases and automate the enumeration only for the coverage checks.
@@ -151,6 +190,7 @@ Deferred by the owner. Re-check them when relevant, and in M10.
 | K1 | Data-protection keys (which sign session and antiforgery cookies) use ASP.NET Core's default store. Fine on a developer machine, but a container would lose them on restart and sign everyone out. | M02 | **Fixed in M10** (the owner chose to fix it now): keys in PostgreSQL (`data_protection_keys`), D033. |
 | K2 | The demo reset deletes visitor organizations but not visitor accounts: someone who signed up on the public demo keeps an account (email, name, password hash) with no organization. | M09 | **Fixed in M10** (owner's choice): the reset deletes visitor accounts over a day old that nothing refers to, D033. |
 | K3 | Lighthouse ≥ 90 on mobile holds only with compressed static assets (landing 97–98, dashboard median 92 with Brotli; 86 and 76 uncompressed). The SPA is served by the API from M11. | M10 | **Fixed in M11:** the API serves the SPA with `MapStaticAssets` (Brotli, gzip); on the production image landing 98, dashboard 95–96. |
+| K4 | Six integration tests (demo mode, the dashboard month, overdue by time zone) failed from about 2026-11-07 without any code change. They pin the server's clock to dates in October 2026; the persistent auth cookie's `expires` is the server's now plus 7 days, and the test client's `CookieContainer` judges expiry by the real clock, so it dropped the session cookie as soon as it arrived (401, empty sessions). | 2026-11-16, CI on the M13 PR | **Fixed in `#0013a`:** the test client's cookie jar moves each expiry from the server's clock to the client's (`ServerClockCookieHandler`). Regression tests pin the clock to 2000-01-01 and were shown failing first (session lost after sign-up; sign-out 401). Test code only; the product's cookies are unchanged. |
 
 ## Next step
-The owner reviews and merges the M12 PR once **CI result** is green, then decides on the release: merge `dev` into `main` (through a PR, which CI requires to come from `dev`) and tag `v1.0.0`. Before making the repository public, protect `dev` and `main` (`docs/CI.md`). A hosted demo can follow later (D035).
+v1.0.0 is released. The owner reviews the v2 plan in the M13 PR (`docs/SPEC-V2.md`, D037–D045, the briefs) and merges it to approve the scope, or asks for changes. M14 (row-level security) starts from a freshly pulled `dev` after that merge. Still open from v1: `dev` and `main` have no branch protection (`docs/CI.md`), so the **CI result** gate does not yet block merges.

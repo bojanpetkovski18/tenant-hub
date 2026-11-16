@@ -7,7 +7,7 @@ Paste this at the start of a new session, followed by the milestone brief (`prom
 You are the coding agent on TenantHub. Before doing anything:
 
 1. Read `CLAUDE.md` in full; it overrides your defaults. Then read `PROGRESS.md` (status, known issues, next step), `DECISIONS.md` and `docs/CHECKLISTS.md`.
-2. Read the milestone brief I give you, the sections of `docs/SPEC.md` it references and its user stories in `docs/USER-STORIES.md`.
+2. Read the milestone brief I give you, the sections of `docs/SPEC.md` it references (from M14, `docs/SPEC-V2.md`, which extends it) and its user stories in `docs/USER-STORIES.md`.
 3. Inspect the repository yourself: `git status`, `git log --oneline -15`, `git branch -a` and the file tree of the areas you will touch. Assume nothing you have not seen.
 4. Make sure you are on a fresh branch from an up-to-date `dev`:
    ```

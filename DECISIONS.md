@@ -153,6 +153,12 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
 - **Images:** `postgres:18.6-alpine`, `axllent/mailpit:v1.31.4` (2026-10-03; v1.31.5 and v1.31.6 are too new).
 - **npm install scripts:** npm 11 runs only allow-listed scripts. Allowed: `lmdb` and `msgpackr-extract` (native build cache), as in Fitness Merchant. `esbuild` and `@parcel/watcher` are not allowed; they work from their prebuilt platform packages (build, tests and dev server verified).
 - **Verified:** `npm audit`: 0 vulnerabilities after the changes (4 before: 3 high, 1 moderate); `dotnet list package --vulnerable --include-transitive`: none in any project.
+- **`minimatch` override (2026-11-16, `#0013a`):**
+  - **The advisory:** GHSA-g3hv-75wg-m249 (published 2026-10-30, medium) is a denial of service in `minimatch` below 11.0.1. Every copy in the web app (seven, all 10.2.6) comes from the lint tool chain (`eslint`, `@eslint/config-array`, `typescript-eslint`), so the shipped app was not affected; the dependency-audit gate failed all the same, as intended.
+  - **Why an override:** the upstream fixes, `eslint` 10.15.0 (2026-11-13) and `typescript-eslint` 8.73.0 (2026-11-16), are too new for the rule. `minimatch` 11.0.1, the first patched version, dates from 2026-10-27, so an `overrides` entry sets `minimatch` 11.0.3 (2026-10-28) without the security exception.
+  - **Its new dependency:** 11.x depends on `@isaacs/nonrecursive-glob-match`, whose latest release, 1.1.0 (2026-11-05), was too new, so a second override pins 1.0.3 (2026-10-28), which `^1.0.3` allows.
+  - **Compatibility:** 11.0 removed `makeRe()`, `Minimatch#regexp`, `matchOne()` and the `AST` class; the lint packages use only `new Minimatch(...)`, `match()`, `pattern` and `minimatch()`. 11.0 also changed partial matching with `**`, which eslint uses to decide which folders to walk, so the list of linted files was compared before and after: the same 163 files, 0 problems, and a planted `any` is still reported.
+  - **Remove both overrides** once `eslint` and `typescript-eslint` are upgraded to versions that depend on a fixed `minimatch`.
 
 ## D020: The merge gate: one required check over every CI job
 - **Date:** 2026-10-21
@@ -454,3 +460,79 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
 - **Date:** 2026-10-25
 - **Decision (owner):** the repository is released under the MIT licence, copyright Bojan Petkovski.
 - **Why:** a portfolio project is meant to be read, run and reused; MIT is the familiar permissive choice. The data in it is fictional, so the licence covers code and documentation only.
+
+## D037: v2 scope: bring the business's clients and repeating work into the product (M13)
+- **Date:** 2026-11-16
+- **Status:** proposed; the owner approves it by merging the M13 pull request.
+- **Decision:** v2 adds recurring service agreements, a dispatch board, a client portal (quotes, work requests, sign-off), completion proof (checklists, photos), notifications, API keys with signed webhooks, exports and plan entitlements, with PostgreSQL row-level security and a transactional outbox underneath (`docs/SPEC-V2.md`). Ten milestones, M14–M23, in five phases.
+- **Why:**
+  - Each feature removes a daily chore of the businesses in SPEC 1: typing repeat visits, planning the week from a list, answering client calls, proving work was done, copying data to other tools.
+  - Each one also demonstrates a part of SaaS engineering that clients ask freelancers for and that most portfolio starters skip: a second identity boundary inside the tenant, isolation enforced by the database, background work that is transactional and safe on several instances, time-zone-correct generation, safe uploads, outbound webhooks without SSRF, and plan entitlements.
+  - The portal is the headline: v1 shows that organizations are isolated; v2 shows a second boundary (organization → client) for people who are not staff, proven the same way.
+- **Alternatives considered from the v1 "later" list (SPEC 4.2):**
+  - **Real billing with Stripe:** valuable, but it needs the owner's Stripe account and inbound webhooks, and payment flows are already the subject of Fitness Merchant. Plan entitlements give the same "what you get depends on the plan" mechanic without a payment provider. Still later.
+  - **Custom roles:** the permission design (D008) makes them a data change, but a small business rarely notices them. Still later.
+  - **Kanban board:** generic; the dispatch board answers the same need (see the work, move it) in the shape this domain uses.
+  - **SSO, platform-admin console:** enterprise and operator features with little value in a demo of small businesses.
+  - **Comments on jobs:** replaced by more specific features (quote comments, problem reports, work requests).
+- **Trade-offs:** about 86 hours across ten pull requests, similar to v1. The cut list in `PROGRESS.md` says what goes first if time runs short; row-level security, the portal and its isolation matrix, the outbox, and the upload and webhook safety rules are not on it.
+
+## D038: Row-level security with a separate runtime role (pending M14)
+- **Date:** 2026-11-16
+- **Decision (proposed):** every tenant-owned table gets `ENABLE` and `FORCE ROW LEVEL SECURITY` and a policy on `organization_id = current_setting('app.organization_id')::uuid`, set per transaction with `set_config(..., true)`. The application runs as `tenant_hub_app`, which owns nothing and is not a superuser; migrations run as the owner. Supersedes the "deferred" part of D007.
+- **Why:**
+  - It is the layer that also catches raw SQL and any query that forgets the filter, which D007 left to code review.
+  - In v1 the application connects as the PostgreSQL image's `POSTGRES_USER`, which is a superuser. Superusers bypass row-level security, so policies alone would change nothing; the role split is the real work.
+  - A transaction-local setting cannot leak to the next request on a pooled connection, which was the risk that made D007 defer it.
+- **To decide at M14:**
+  - how the allow-listed bypasses get through: a second `BYPASSRLS` role used only by the allow-listed code, or `SECURITY DEFINER` functions for exactly those queries;
+  - how reads outside an explicit transaction get the setting (an interceptor that opens one, or a connection-level setting reset on return to the pool, proven by a test);
+  - query plans with the policy, by `EXPLAIN` on the jobs list and the audit timeline;
+  - how Testcontainers, Compose and `.env.example` create the second role.
+- **Alternatives:** schema or database per tenant (rejected in D005); policies with the app still connecting as owner (bypassed, so pointless); a view per tenant (impractical with EF Core).
+
+## D039: A transactional outbox and database-held schedules (pending M15)
+- **Date:** 2026-11-16
+- **Decision (proposed):** side effects (email, notifications, webhooks, file clean-up) are written to `outbox_messages` in the same `SaveChanges` as the change, and a hosted worker delivers them, claiming rows with `FOR UPDATE SKIP LOCKED`. Recurring work lives in `scheduled_tasks` with a due time and a lease. Invitation emails keep their synchronous v1 contract (D011).
+- **Why:** a change and its side effects cannot disagree (no email for a rolled-back change, no lost email for a committed one), several instances can run without double delivery, and a host that sleeps catches up. The demo reset (D032) already keeps its schedule in the data; this generalizes it.
+- **Alternatives:** sending after commit inside the request (v1; lost on a crash, slows the request); a message broker (another service to run for a one-container product); Hangfire or Quartz (a dependency with its own tables for what two small tables and one worker do).
+- **To decide at M15:** encryption of payloads that carry a secret (Data Protection, a purpose per message type); the retry schedule and when a message is dead; Identity's token providers or a table of hashed tokens for password reset and email verification.
+
+## D040: Client contacts are a separate identity with email-link sign-in (pending M18)
+- **Date:** 2026-11-16
+- **Decision (proposed):** client contacts are rows in `client_contacts`, not ASP.NET Core Identity users. They sign in with a one-time link (hashed token, 15 minutes, single use) and get their own cookie scheme. Portal endpoints are a fourth endpoint class with their own isolation matrix, and row-level security also checks `client_id` in portal sessions.
+- **Why:** a contact belongs to exactly one client of one organization. Making contacts users would mix them into the membership model, where one mistake could give a client staff access. A cleaning company's clients will not keep a password for it. A separate scheme means a staff cookie never authenticates a portal request, and the reverse.
+- **Alternatives:** Identity users with a "contact" role (shared tables and code paths with staff); public tokenized links per visit (no session, no list of visits, links forwarded around); passwords (friction, and a second password-reset flow).
+- **Trade-offs:** sign-in depends on email, so the demo needs Mailpit or a demo shortcut like the v1 demo buttons (decided at M18).
+
+## D041: Visits are jobs generated from agreements on a rolling horizon (pending M16)
+- **Date:** 2026-11-16
+- **Decision (proposed):** an agreement's occurrences become ordinary jobs, 60 days ahead, generated by the scheduler and idempotent on `(agreement_id, occurrence_on)`. Recurrence is a small value object in the domain (weekly, monthly by day, monthly by nth weekday) over dates in the organization's time zone, not RFC 5545.
+- **Why:** visits then get the v1 workflow, list, board, audit and limits for free. A materialized horizon keeps every read a plain query (no expansion in lists or on the board) and makes "edit this visit" ordinary. Dates rather than instants avoid daylight-saving problems; "today" already uses the organization's zone (SPEC 5.4, D030, D032).
+- **Alternatives:** expanding occurrences at read time (every list, count and limit would need it); generating everything up front (unbounded rows, and an edit rewrites the whole future); an RFC 5545 library (much more than the three patterns these businesses use, and a dependency to vet).
+- **Trade-offs:** generated visits count toward the open-jobs limit, so a Free organization with a weekly agreement uses some of its 50 open jobs; the agreement page says when generation stops at the limit.
+
+## D042: Plan entitlements next to numeric limits (pending M18)
+- **Date:** 2026-11-16
+- **Decision (proposed):** `PlanPolicy` gains features (portal; API and webhooks) and two limits (active agreements, file storage). A missing feature is `403 plan-feature-unavailable`. A downgrade that would turn features off needs a confirmation (`confirmFeatureLoss`) and keeps the data.
+- **Why:** real SaaS plans differ by feature as much as by quantity; checking both in one domain policy keeps the rules in one tested place (D013). Keeping data on downgrade makes an accidental downgrade reversible.
+- **Alternatives:** refusing the downgrade while a feature is in use (forces the Owner to delete contacts or webhooks first); feature flags outside the plan (a second system for the same question).
+
+## D043: Uploaded photos are re-encoded and stored outside the database (pending M19)
+- **Date:** 2026-11-16
+- **Decision (proposed):** photos are checked by magic bytes, decoded with size and dimension limits, re-encoded without metadata, and stored through an `IFileStore` port: a local directory (a Compose volume) by default, with an S3-compatible store as an option if hosting needs one. Rows in `attachments` hold the key and size; files are served only through authorized endpoints.
+- **Why:** re-encoding is what removes GPS data from phone photos and neutralizes malformed files; keeping the bytes out of PostgreSQL keeps the database and its backups small.
+- **To decide at M19:** the image library (licence, native dependencies in the chiseled runtime image, advisories), with current sources and dates recorded; whether a `storage_bytes_used` counter or a `SUM` under the lock enforces the limit.
+- **Alternatives:** `bytea` in PostgreSQL (simple, but bloats the database and its backups); storing files as uploaded (keeps location metadata and trusts the client's content type).
+
+## D044: API keys and HMAC-signed webhooks with an SSRF guard (pending M21)
+- **Date:** 2026-11-16
+- **Decision (proposed):** API keys are random, shown once, stored as SHA-256 hashes with a visible prefix, and map to a fixed permission set (read-only or read-write) that never includes administration. Webhooks are delivered from the outbox, signed as `t=<unix>,v1=<HMAC-SHA256(secret, "t.body")>`, retried for about a day, and sent only to public addresses checked at connection time, without redirects.
+- **Why:** receivers already know this signing pattern from widely used platforms (a timestamp against replays, a version prefix for rotation). The SSRF guard is the part most webhook implementations miss: a customer-supplied URL must not reach the server's own network.
+- **Alternatives:** OAuth client credentials (more than a small-business integration needs); signing without a timestamp (replayable); checking the URL only when it is saved (DNS can change afterwards).
+
+## D045: v2 numbering and documents (M13)
+- **Date:** 2026-11-16
+- **Decision:** v2 continues the milestone numbers (M13 is this plan, M14–M23 the work) and the branch rule `#00nn-…`, so the CI branch-name check and the history stay uniform. `docs/SPEC-V2.md` holds the v2 specification while it is being built; `SPEC.md` stays the v1 contract until M23 merges the two. Story ids continue in `docs/USER-STORIES.md`.
+- **Why:** a separate document keeps what is built apart from what is planned while the work is in progress, without rewriting `SPEC.md` up front.
+- **Trade-offs:** two specifications for about ten milestones; SPEC-V2 names the `SPEC.md` section wherever it changes a v1 rule.

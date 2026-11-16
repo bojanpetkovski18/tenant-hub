@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Mvc.Testing.Handlers;
+using Microsoft.Extensions.DependencyInjection;
 using TenantHub.Api.Features.Auth;
 
 namespace TenantHub.IntegrationTests.Infrastructure;
@@ -24,7 +24,8 @@ public sealed class BrowserClient : IDisposable
     {
         Cookies = new CookieContainer();
         _xsrf = new XsrfHeaderHandler(Cookies);
-        Http = factory.CreateDefaultClient(BaseAddress, new CookieContainerHandler(Cookies), _xsrf);
+        var serverClock = factory.Services.GetService<TimeProvider>() ?? TimeProvider.System;
+        Http = factory.CreateDefaultClient(BaseAddress, new ServerClockCookieHandler(Cookies, serverClock), _xsrf);
     }
 
     public HttpClient Http { get; }

@@ -103,3 +103,114 @@ As an Admin or Owner, I want an activity history.
 As a prospective client evaluating the developer, I want to try the product without signing up.
 - The sign-in page offers "Try as Owner / Admin / Member / Viewer" in demo mode; each opens a seeded organization with realistic data.
 - Demo data resets on a schedule; organizations created by visitors disappear after 24 hours.
+
+---
+
+# v2 stories
+
+Rules are in `docs/SPEC-V2.md` section 5. **P1** is required for v2.0.0; **P2** can move later with the owner's approval (`PROGRESS.md` → v2 cut list). Ids continue each area's numbering.
+
+## Accounts (v2)
+
+**US-05 Reset a forgotten password** (M15, P1)
+- From the sign-in page I can ask for a reset link; the answer is the same whether or not the email has an account.
+- The link works once and for 30 minutes; after I set a new password, every other session of my account is signed out.
+- An expired or used link explains itself and offers a new one.
+
+**US-06 Verify my email** (M15, P1)
+- After sign-up I get a verification link; until I use it, a banner reminds me and I cannot send invitations.
+- I can ask for the link again (rate-limited).
+
+## Recurring work
+
+**US-70 Set up a service agreement** (M16, P1)
+As an Admin or Owner, I want to describe repeating work once so that the visits appear by themselves.
+- I choose the client, the visit details and a recurrence (weekly on chosen days, monthly on a day, or monthly on the nth weekday), with a start and an optional end, and I see the next dates before saving.
+- Visits for the next 60 days appear in the jobs list, numbered like other jobs; more appear as days pass.
+- Members and Viewers can see agreements but not change them.
+
+**US-71 Change, pause and end an agreement** (M16, P1)
+- Editing the agreement updates future visits that nobody changed by hand; the visits changed by hand are listed so I can review them.
+- I can skip one visit, pause and resume the agreement, or end it; ending cancels the future visits that have not started.
+- When the plan's open-jobs limit stops generation, the agreement says so.
+
+## Planning
+
+**US-75 Plan the week on a board** (M17, P1)
+As an Admin or Owner, I want to see who does what each day and move work around.
+- The board shows a week with a row per person and a column per day, plus unassigned and unscheduled work; the week is in the URL.
+- I can drag a visit to another person or day, or do the same by keyboard with "Move to…"; the change is announced and saved.
+- Each cell shows planned hours against the daily capacity, and overloaded days are marked with an icon and text.
+- If someone else changed the visit first, the card returns and the board reloads with a message.
+- Members and Viewers see the board without move actions. On a phone it is a list per day.
+
+## Client portal
+
+**US-80 Give a client access** (M18, P1)
+As an Admin or Owner on the Team or Business plan, I want to invite a client's contacts to a portal.
+- On the client page I add a contact (name and email); they get an email explaining how to sign in.
+- I can remove a contact; they lose access on their next request.
+- On the Free plan the portal is shown as a Team feature, and Owners see how to upgrade.
+
+**US-81 Sign in as a client** (M18, P1)
+As a client contact, I want to sign in without a password.
+- I enter my email on the business's portal page and receive a link that works once within 15 minutes.
+- The page says the same thing whether or not my email is known.
+- I see only my own company's visits, quotes and requests.
+
+**US-82 See my visits** (M18, P1)
+- I see upcoming and past visits with their date, status and who is coming; a visit page shows its details.
+
+**US-83 Approve a quote** (M18, P1)
+As a client contact, I want to approve or decline a price before work starts.
+- A quote sent to my company appears in Quotes with the amount; I approve or decline it, optionally with a comment.
+- Staff see the decision on the job; work cannot start while the quote is pending or declined.
+- If staff change the amount after my approval, the quote comes back for a new decision.
+
+**US-84 Request work** (M18, P1)
+- I describe the work and an optional preferred date; I can follow the request's status.
+- Staff see new requests in an inbox with a count, and convert one into a prefilled job or decline it with a reason that I can read.
+
+## Completion proof
+
+**US-90 Prove the work was done** (M19, P1)
+As the person doing the visit, I want to tick off the checklist and add photos.
+- Visits from an agreement come with its checklist; I can tick items and add items by hand.
+- I cannot complete the job while a required item is open; the message lists the open items.
+- I can add up to 10 photos from my phone; location data is removed before they are stored.
+
+**US-91 Confirm a completed visit** (M19, P1)
+As a client contact, I want to see the proof and confirm or report a problem.
+- A completed visit shows its checklist and photos; I confirm it or describe a problem.
+- Staff see my feedback on the job and are notified of problems.
+
+## Notifications
+
+**US-100 Hear about what matters to me** (M20, P1)
+- A bell in the app shows how many unread notifications I have; I can open them, follow their links and mark them as read.
+- I get notified when I am assigned, and managers when a client approves or declines a quote, requests work or reports a problem.
+- In my account settings I choose which notifications also come by email.
+
+**US-101 Daily overdue digest** (M20, P2)
+- At 07:00 in my organization's time zone I get one email listing my overdue jobs (managers get the count); no email when there are none.
+
+## Integrations
+
+**US-110 Connect another tool with an API key** (M21, P1)
+As an Owner or Admin on the Business plan, I want to give another system access to clients and jobs.
+- I create a read-only or read-write key with a name and optional expiry; it is shown once.
+- I see when each key was last used and can revoke it immediately.
+
+**US-111 Receive webhooks** (M21, P1)
+- I add an HTTPS endpoint, choose events and get a signing secret, shown once, plus documentation of the signature.
+- I see each delivery's result and can redeliver one; an endpoint that keeps failing is disabled and I am told.
+- Private network addresses are refused.
+
+**US-112 Export data** (M21, P2)
+- Admins and Owners export the audit log for a date range as CSV; anyone who can read jobs exports the current jobs list view as CSV.
+
+## Plans (v2)
+
+**US-52 Features by plan** (M18, P1)
+- Settings → Plan shows which features each plan includes, as well as its limits.
+- Downgrading to a plan without a feature I use lists what will be turned off and asks me to confirm; my data is kept and comes back if I upgrade.
