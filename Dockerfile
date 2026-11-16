@@ -11,7 +11,7 @@ COPY src/web/ ./
 RUN npm run build
 
 # 2. The API. Restore first from the project and lock files only, so code changes reuse the restore layer.
-FROM mcr.microsoft.com/dotnet/sdk:10.0.402 AS api
+FROM mcr.microsoft.com/dotnet/sdk:10.0.404 AS api
 WORKDIR /src
 COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./
 COPY src/api/TenantHub.Domain/TenantHub.Domain.csproj src/api/TenantHub.Domain/packages.lock.json src/api/TenantHub.Domain/
@@ -26,7 +26,7 @@ RUN dotnet publish src/api/TenantHub.Api/TenantHub.Api.csproj --configuration Re
 
 # 3. Runtime: Ubuntu chiseled (no shell, no package manager), running as the image's non-root "app" user. The
 # "extra" variant adds tzdata and ICU: organizations work in IANA time zones, and plain chiseled has no zoneinfo.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.13-noble-chiseled-extra AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.15-noble-chiseled-extra AS runtime
 WORKDIR /app
 COPY --from=api /app ./
 ENV ASPNETCORE_ENVIRONMENT=Production \
