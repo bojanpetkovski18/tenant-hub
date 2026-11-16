@@ -153,6 +153,12 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
 - **Images:** `postgres:18.6-alpine`, `axllent/mailpit:v1.31.4` (2026-10-03; v1.31.5 and v1.31.6 are too new).
 - **npm install scripts:** npm 11 runs only allow-listed scripts. Allowed: `lmdb` and `msgpackr-extract` (native build cache), as in Fitness Merchant. `esbuild` and `@parcel/watcher` are not allowed; they work from their prebuilt platform packages (build, tests and dev server verified).
 - **Verified:** `npm audit`: 0 vulnerabilities after the changes (4 before: 3 high, 1 moderate); `dotnet list package --vulnerable --include-transitive`: none in any project.
+- **`minimatch` override (2026-11-16, `#0013a`):**
+  - **The advisory:** GHSA-g3hv-75wg-m249 (published 2026-10-30, medium) is a denial of service in `minimatch` below 11.0.1. Every copy in the web app (seven, all 10.2.6) comes from the lint tool chain (`eslint`, `@eslint/config-array`, `typescript-eslint`), so the shipped app was not affected; the dependency-audit gate failed all the same, as intended.
+  - **Why an override:** the upstream fixes, `eslint` 10.15.0 (2026-11-13) and `typescript-eslint` 8.73.0 (2026-11-16), are too new for the rule. `minimatch` 11.0.1, the first patched version, dates from 2026-10-27, so an `overrides` entry sets `minimatch` 11.0.3 (2026-10-28) without the security exception.
+  - **Its new dependency:** 11.x depends on `@isaacs/nonrecursive-glob-match`, whose latest release, 1.1.0 (2026-11-05), was too new, so a second override pins 1.0.3 (2026-10-28), which `^1.0.3` allows.
+  - **Compatibility:** 11.0 removed `makeRe()`, `Minimatch#regexp`, `matchOne()` and the `AST` class; the lint packages use only `new Minimatch(...)`, `match()`, `pattern` and `minimatch()`. 11.0 also changed partial matching with `**`, which eslint uses to decide which folders to walk, so the list of linted files was compared before and after: the same 163 files, 0 problems, and a planted `any` is still reported.
+  - **Remove both overrides** once `eslint` and `typescript-eslint` are upgraded to versions that depend on a fixed `minimatch`.
 
 ## D020: The merge gate: one required check over every CI job
 - **Date:** 2026-10-21
