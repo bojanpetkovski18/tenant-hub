@@ -123,6 +123,8 @@ Isolation is a product feature, so it has its own tests (section 10, criteria 1â
 ### 4.2 Later (V2)
 Kanban board for jobs; comments and attachments on jobs; email verification and password reset by email; audit CSV export; custom roles; PostgreSQL row-level security; real billing with Stripe; a platform-admin console; per-organization API keys and webhooks; SSO.
 
+v2 is specified in `docs/SPEC-V2.md` (D037, 2026-11-16). It takes email verification and password reset, photo attachments, audit export, row-level security, API keys and webhooks from this list, and adds recurring agreements, a dispatch board, a client portal and notifications. Custom roles, Stripe billing, the platform-admin console, SSO and the Kanban board stay later.
+
 ### 4.3 Out of scope
 Real payments; emails to real recipients from the public demo; invoicing and accounting; native mobile apps; schema-per-tenant and database-per-tenant (D005).
 

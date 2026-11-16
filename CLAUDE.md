@@ -1,7 +1,7 @@
 # CLAUDE.md: rules for AI agents working on this repository
 
 ## Project summary
-TenantHub is a multi-tenant back-office for small service businesses: organizations sign up, invite their team, manage clients and jobs, and every change is audited. Its real subject is the SaaS foundation: tenant isolation enforced in depth and proven by tests, server-enforced role permissions, invitations, plan limits and an append-only audit log. It is an independent portfolio project built with AI assistance. Specification: `docs/SPEC.md`. User stories: `docs/USER-STORIES.md`. Decisions: `DECISIONS.md`. Status: `PROGRESS.md`. Checklists and definition of done: `docs/CHECKLISTS.md`. Milestone briefs: `prompts/`.
+TenantHub is a multi-tenant back-office for small service businesses: organizations sign up, invite their team, manage clients and jobs, and every change is audited. Its real subject is the SaaS foundation: tenant isolation enforced in depth and proven by tests, server-enforced role permissions, invitations, plan limits and an append-only audit log. It is an independent portfolio project built with AI assistance. Specification: `docs/SPEC.md` (v1.0.0, as built) and `docs/SPEC-V2.md` (v2, M14–M23, merged into `SPEC.md` at M23). User stories: `docs/USER-STORIES.md`. Decisions: `DECISIONS.md`. Status: `PROGRESS.md`. Checklists and definition of done: `docs/CHECKLISTS.md`. Milestone briefs: `prompts/`.
 
 The human owner is a professional full-stack developer who supervises, reviews and merges every PR. Explain important decisions briefly; do not explain basics.
 
