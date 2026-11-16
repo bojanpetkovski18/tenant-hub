@@ -14,8 +14,8 @@ public static class DatabaseRoles
     // as parameters and never appear in SQL text (and so never in a statement log).
     private const string LoadSettingsSql = """
         SELECT pg_advisory_xact_lock(hashtext('tenant_hub.provision_runtime_role')),
-               set_config('tenant_hub.runtime_role', @role, true),
-               set_config('tenant_hub.runtime_password', @password, true)
+            set_config('tenant_hub.runtime_role', @role, true),
+            set_config('tenant_hub.runtime_password', @password, true)
         """;
 
     // Idempotent. It changes the role only when the role is missing, has an attribute it must not have, or its
@@ -36,7 +36,7 @@ public static class DatabaseRoles
             END IF;
 
             IF EXISTS (SELECT FROM pg_roles WHERE rolname = role_name
-                       AND (rolsuper OR rolbypassrls OR rolcreaterole OR rolcreatedb OR rolreplication OR NOT rolcanlogin)) THEN
+                    AND (rolsuper OR rolbypassrls OR rolcreaterole OR rolcreatedb OR rolreplication OR NOT rolcanlogin)) THEN
                 EXECUTE format('ALTER ROLE %I WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS', role_name);
             END IF;
 
@@ -64,7 +64,7 @@ public static class DatabaseRoles
 
     private const string RuntimeRoleSql = """
         SELECT r.rolsuper, r.rolbypassrls,
-               (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
                 WHERE n.nspname = 'public' AND c.relowner = r.oid AND c.relkind IN ('r', 'p'))
         FROM pg_roles r
         WHERE r.rolname = current_user

@@ -30,11 +30,11 @@ public sealed class RowSecurityTests(PostgresFixture postgres)
             await using var command = new NpgsqlCommand(
                 """
                 SELECT c.relrowsecurity
-                   AND EXISTS (SELECT 1 FROM pg_policies p
-                               WHERE p.schemaname = 'public' AND p.tablename = c.relname AND p.policyname = @policy
-                                 AND p.cmd = 'ALL' AND p.roles = '{public}'
-                                 AND p.qual LIKE '%organization_id%app.organization_id%'
-                                 AND p.with_check LIKE '%organization_id%app.organization_id%')
+                    AND EXISTS (SELECT 1 FROM pg_policies p
+                        WHERE p.schemaname = 'public' AND p.tablename = c.relname AND p.policyname = @policy
+                            AND p.cmd = 'ALL' AND p.roles = '{public}'
+                            AND p.qual LIKE '%organization_id%app.organization_id%'
+                            AND p.with_check LIKE '%organization_id%app.organization_id%')
                 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
                 WHERE n.nspname = 'public' AND c.relname = @table
                 """,
