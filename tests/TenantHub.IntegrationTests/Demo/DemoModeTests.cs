@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TenantHub.Api.Features.Demo;
@@ -211,6 +212,40 @@ public sealed class DemoModeTests(PostgresFixture postgres)
             // The demo accounts have no memberships for a moment during the reset; they stay, with the same ids.
             Assert.Equal(demoIds, await db.Users.Where(u => DemoSeeder.Emails.Contains(u.Email!)).ToDictionaryAsync(u => u.Email!, u => u.Id, Ct));
         }
+    }
+
+    [Fact]
+    public async Task The_reset_keeps_an_old_visitor_account_that_is_a_member_of_a_surviving_organization()
+    {
+        // Only a membership refers to this account after the reset, in an organization the API's database user cannot
+        // see without entering it: the SECURITY DEFINER function is what keeps the account (D038).
+        var (factory, clock, connectionString) = await DemoAsync();
+        var member = BrowserClient.NewEmail();
+        using var memberBrowser = new BrowserClient(factory);
+        (await memberBrowser.SignUpAsync(member, "Member Old Co")).EnsureSuccessStatusCode();
+
+        clock.Now = Start.AddHours(23);
+        using (var host = new BrowserClient(factory))
+        {
+            (await host.SignUpAsync(BrowserClient.NewEmail(), "Host New Co")).EnsureSuccessStatusCode();
+            var hostOrg = (await host.SessionAsync()).User!.Memberships.Single().OrganizationId;
+            var invited = await host.PostJsonAsync($"/api/orgs/{hostOrg}/invitations", new { email = member, role = "member" });
+            invited.EnsureSuccessStatusCode();
+            var link = (await invited.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("link").GetString()!;
+            var token = link[(link.IndexOf('#', StringComparison.Ordinal) + 1)..];
+            (await memberBrowser.PostJsonAsync("/api/invitations/accept", new { token })).EnsureSuccessStatusCode();
+        }
+
+        await factory.DisposeAsync();
+        clock.Now = Start.AddHours(25);
+        await ResetIfDueAsync(connectionString, clock);
+
+        await using var db = PostgresFixture.CreateDbContext(connectionString);
+        var account = await db.Users.Where(u => u.Email == member).Select(u => (Guid?)u.Id).SingleOrDefaultAsync(Ct);
+        Assert.NotNull(account);
+        Assert.False(await db.Organizations.AnyAsync(o => o.Name == "Member Old Co", Ct));
+        var membership = await db.Memberships.AcrossTenants().SingleAsync(m => m.UserId == account, Ct);
+        Assert.Equal("Host New Co", (await db.Organizations.SingleAsync(o => o.Id == membership.OrganizationId, Ct)).Name);
     }
 
     [Fact]

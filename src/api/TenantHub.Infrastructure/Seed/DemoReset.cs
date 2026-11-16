@@ -3,7 +3,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using TenantHub.Application.Abstractions;
 using TenantHub.Application.Demo;
-using TenantHub.Application.Tenancy;
 using TenantHub.Infrastructure.Data;
 
 namespace TenantHub.Infrastructure.Seed;
