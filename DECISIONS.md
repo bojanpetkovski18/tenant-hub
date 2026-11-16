@@ -484,9 +484,9 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
   - **Comments on jobs:** replaced by more specific features (quote comments, problem reports, work requests).
 - **Trade-offs:** about 86 hours across ten pull requests, similar to v1. The cut list in `PROGRESS.md` says what goes first if time runs short; row-level security, the portal and its isolation matrix, the outbox, and the upload and webhook safety rules are not on it.
 
-## D038: Row-level security with a separate runtime role (pending M14)
+## D038: Row-level security with a separate runtime role (decided at M14, below)
 - **Date:** 2026-11-16
-- **Decision (proposed):** every tenant-owned table gets `ENABLE` and `FORCE ROW LEVEL SECURITY` and a policy on `organization_id = current_setting('app.organization_id')::uuid`, set per transaction with `set_config(..., true)`. The application runs as `tenant_hub_app`, which owns nothing and is not a superuser; migrations run as the owner. Supersedes the "deferred" part of D007.
+- **Decision (as proposed; see "Decided at M14" for what changed):** every tenant-owned table gets `ENABLE` and `FORCE ROW LEVEL SECURITY` and a policy on `organization_id = current_setting('app.organization_id')::uuid`, set per transaction with `set_config(..., true)`. The application runs as `tenant_hub_app`, which owns nothing and is not a superuser; migrations run as the owner. Supersedes the "deferred" part of D007.
 - **Why:**
   - It is the layer that also catches raw SQL and any query that forgets the filter, which D007 left to code review.
   - In v1 the application connects as the PostgreSQL image's `POSTGRES_USER`, which is a superuser. Superusers bypass row-level security, so policies alone would change nothing; the role split is the real work.
@@ -497,6 +497,22 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
   - query plans with the policy, by `EXPLAIN` on the jobs list and the audit timeline;
   - how Testcontainers, Compose and `.env.example` create the second role.
 - **Alternatives:** schema or database per tenant (rejected in D005); policies with the app still connecting as owner (bypassed, so pointless); a view per tenant (impractical with EF Core).
+- **Decided at M14 (2026-11-17):**
+  - **Users and configuration.** `ConnectionStrings:Database` is now the API's own user, `ConnectionStrings:DatabaseAdmin` the owner. With `MigrateOnStartup`, the API migrates as the owner, then creates or repairs its own user from the runtime connection string: no superuser, no `BYPASSRLS`, no `CREATEROLE`/`CREATEDB`/replication; data rights on every table except the migration history; `EXECUTE` on the definer functions. The password is passed as a query parameter into transaction-local settings, never in SQL text. It is set only when signing in with it fails, so a normal start writes nothing to the role catalog. Startup refuses an API user that is a superuser, has `BYPASSRLS` or owns a table. If the database cannot be reached it logs a warning and starts, as before (readiness reports the database).
+  - **No `FORCE ROW LEVEL SECURITY`** (changed from the proposal). `FORCE` binds the table owner, which is the migration role (data fixes in migrations would see nothing) and the owner of the definer function (which would then see nothing either). The API's user never owns a table (startup check), so `FORCE` would protect nothing more.
+  - **Settings are session-level, set before commands, not per transaction** (changed from the proposal). EF Core reads outside transactions, and a scope enters its tenant part-way through (after resolution; after creating an organization). `RowSecurityInterceptor` sets `app.organization_id`, `app.user_id` and `app.invitation_token_hash` before any EF Core command whose scope differs from what the connection last received. Open, close and rollback make it set them again. Npgsql also resets session state when a connection returns to its pool: verified, the same backend showed `''` after the release. So there are two independent guards against a leak, and a test runs four scopes on one physical connection. Unset values are `''`, which the policies turn into null, matching no row.
+  - **Bypasses, as rules instead of switches.** No second role. The read-only bypasses become permissive `SELECT` policies that say what is allowed. `own_memberships`: a user's own memberships, for the session, tenant resolution, the five-owned count and "already a member". `presented_invitation`: the invitation whose token hash the request holds. The allow-listed files declare them (`RowSecurity.ReadAsUser`, `PresentInvitationToken`), and the architecture test keeps those calls to the allow-listed files. The demo reset (K2) needed a real cross-tenant question. It asks the `SECURITY DEFINER` function `user_has_tenant_references(uuid)`, owned by the owner, with `EXECUTE` revoked from `PUBLIC`, which returns one boolean; DemoReset left the `AcrossTenants()` list. A test pins the list of definer functions.
+  - **One connection per tenant request.** With a pooled connection per query, every query paid a pool reset and a separate `set_config` round trip. Jobs-list p50 rose from 12.5–13.0 ms to 19.0 ms in the first measurement. `TenantResolutionFilter` now opens the connection before resolving, and EF Core keeps it until the request ends. Measured results are in `PROGRESS.md`. The trade-off: a request holds its connection while it runs, including during an invitation's SMTP send.
+  - **Query plans** (`EXPLAIN ANALYZE`, 10,000 jobs, as the owner and as the API's user). The jobs page, an open-jobs count and the audit timeline keep their index scans, and the policy becomes a one-time filter, because the query already filters on `organization_id`. Execution is 0.12–0.40 ms either way. A query with no filter uses the policy expression as its index condition.
+  - **Tests.**
+    - `RowSecurityTests` (10, in the isolation suite) and `DatabaseRoleTests` (4).
+    - Tests that arrange or inspect with raw SQL now connect as the owner, so the database guarantees (append-only trigger, composite keys) are shown to hold even for it.
+  - **Mutation checks** (recorded in `PROGRESS.md`):
+    - no jobs policy: the coverage test names `jobs`;
+    - no query filter on `Job`: the matrices still pass (272/272);
+    - no filter and no policy: the matrix fails on 5 job endpoints;
+    - no settings: 415 of 485 integration tests fail. All 134 matrix failures are 500s from PostgreSQL refusing writes (`42501`, new row violates row-level security) while the fixture signs up its users: the layer fails closed;
+    - the definer function answering "no": the demo-reset regression test fails (an old visitor who is only a member of a surviving organization would be deleted).
 
 ## D039: A transactional outbox and database-held schedules (pending M15)
 - **Date:** 2026-11-16
