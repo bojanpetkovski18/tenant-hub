@@ -63,13 +63,14 @@ public sealed partial class DemoReset(
     /// <summary>
     /// After the seed, so the demo accounts have their memberships back; they are excluded by email anyway. The
     /// bypass is approved for the demo reset (SPEC 3.3, M09 brief): a visitor's memberships and invitations are in
-    /// other organizations, and only their absence everywhere makes the account safe to delete.
+    /// other organizations, and only their absence everywhere makes the account safe to delete. Row-level security
+    /// hides those rows from the API's user, so the question goes to a SECURITY DEFINER function that answers yes
+    /// or no per user (D038).
     /// </summary>
     private Task<int> DeleteStaleVisitorAccountsAsync(DateTimeOffset cutoff, CancellationToken cancellationToken) =>
         db.Users
             .Where(u => u.CreatedAt < cutoff && !DemoEmails.Contains(u.Email!))
-            .Where(u => !db.Memberships.AcrossTenants().Any(m => m.UserId == u.Id))
-            .Where(u => !db.Invitations.AcrossTenants().Any(i => i.CreatedByUserId == u.Id))
+            .Where(u => !DatabaseFunctions.UserHasTenantReferences(u.Id))
             .Where(u => !db.Organizations.Any(o => o.CreatedByUserId == u.Id))
             .ExecuteDeleteAsync(cancellationToken);
 

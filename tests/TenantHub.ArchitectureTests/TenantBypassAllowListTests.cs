@@ -16,10 +16,13 @@ public sealed partial class TenantBypassAllowListTests
         ["src/api/TenantHub.Application/Organizations/CreateOrganizationHandler.cs"] = "the five-owned limit counts the user's organizations everywhere",
         ["src/api/TenantHub.Application/Invitations/InvitationAcceptance.cs"] = "the invitee is not a member yet; the invitation is found by its token hash (approved in the M05 brief)",
         ["src/api/TenantHub.Application/Tenancy/ResolveTenantQuery.cs"] = "tenant resolution reads the caller's membership before a tenant is entered",
-        ["src/api/TenantHub.Infrastructure/Seed/DemoReset.cs"] = "the demo reset deletes visitor accounts only when no membership or invitation anywhere refers to them (approved in SPEC 3.3 and the M09 brief; K2)",
+        // The demo reset (SPEC 3.3, M09 brief, K2) no longer bypasses the query filter: it asks the SECURITY DEFINER
+        // function user_has_tenant_references, which RowSecurityTests pins (D038).
     };
 
     private const string Definition = "src/api/TenantHub.Application/Tenancy/TenantQueries.cs";
+
+    private const string RowSecurityDefinition = "src/api/TenantHub.Application/Tenancy/RowSecurity.cs";
 
     [Fact]
     public void IgnoreQueryFilters_is_called_only_by_the_named_bypass()
@@ -36,6 +39,20 @@ public sealed partial class TenantBypassAllowListTests
 
         var unexpected = users.Except(AllowedBypasses.Keys).ToList();
         Assert.True(unexpected.Count == 0, $"Tenant bypass outside the allow-list: {string.Join(", ", unexpected)}");
+    }
+
+    [Fact]
+    public void Row_security_is_widened_only_by_allow_listed_files()
+    {
+        // ReadAsUser and PresentInvitationToken are the database side of the same bypasses (D038).
+        var users = SourceFiles()
+            .Where(f => f.Path != RowSecurityDefinition && RowSecurityWidening().IsMatch(f.Text))
+            .Select(f => f.Path)
+            .ToList();
+
+        var unexpected = users.Except(AllowedBypasses.Keys).ToList();
+        Assert.True(users.Count > 0, "The scan found no caller; did the method names change?");
+        Assert.True(unexpected.Count == 0, $"Row-level security widened outside the allow-list: {string.Join(", ", unexpected)}");
     }
 
     [Fact]
@@ -74,4 +91,7 @@ public sealed partial class TenantBypassAllowListTests
 
     [GeneratedRegex(@"\.AcrossTenants\s*\(")]
     private static partial Regex AcrossTenants();
+
+    [GeneratedRegex(@"\.(ReadAsUser|PresentInvitationToken)\s*\(")]
+    private static partial Regex RowSecurityWidening();
 }

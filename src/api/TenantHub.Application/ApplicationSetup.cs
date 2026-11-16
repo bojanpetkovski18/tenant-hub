@@ -18,6 +18,7 @@ public static class ApplicationSetup
     public static IServiceCollection AddApplication(this IServiceCollection services) => services
         .AddScoped<TenantContext>()
         .AddScoped<ITenantContext>(provider => provider.GetRequiredService<TenantContext>())
+        .AddScoped<RowSecurity>()
         .AddScoped<ResolveTenantQuery>()
         .AddScoped<OrganizationCreator>()
         .AddScoped<PlanLimitsCheck>()
