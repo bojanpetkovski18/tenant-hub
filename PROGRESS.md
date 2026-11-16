@@ -25,8 +25,8 @@ Specification: `docs/SPEC-V2.md`; scope and reasons: D037; briefs: `prompts/M14-
 
 | # | Phase | Milestone | Branch | Estimate | Status | Verified on | Notes |
 |---|---|---|---|---|---|---|---|
-| M13 | Plan | v2 specification, decisions, stories and briefs | `#0013-v2-plan-specification-and-milestone-briefs` | 2 h | in review | 2026-11-16 | Documents only; the owner approves the v2 scope (D037) and the allow-list entries in SPEC-V2 8 by merging |
-| M14 | A. Foundations | Row-level security: the database enforces the tenant | `#0014-postgres-row-level-security-layer` | 8 h | todo | | |
+| M13 | Plan | v2 specification, decisions, stories and briefs | `#0013-v2-plan-specification-and-milestone-briefs` | 2 h | done | 2026-11-16 | PR #15 merged (v2 scope and the SPEC-V2 8 allow-list entries approved); CI green on the PR and on `dev`. It carried `#0013a` (test cookie clock K4, `minimatch` override). `#0013b` (.NET 10.0.15 security release) follows as its own PR |
+| M14 | A. Foundations | Row-level security: the database enforces the tenant | `#0014-postgres-row-level-security-layer` | 8 h | in progress | | |
 | M15 | A. Foundations | Outbox, scheduler, password reset, email verification | `#0015-outbox-scheduler-and-account-recovery` | 8 h | todo | | |
 | M16 | B. Run the work | Recurring service agreements | `#0016-recurring-service-agreements` | 10 h | todo | | |
 | M17 | B. Run the work | Dispatch board with keyboard moves | `#0017-dispatch-board-with-keyboard-moves` | 8 h | todo | | |

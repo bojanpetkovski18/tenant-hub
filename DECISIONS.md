@@ -470,7 +470,7 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
 
 ## D037: v2 scope: bring the business's clients and repeating work into the product (M13)
 - **Date:** 2026-11-16
-- **Status:** proposed; the owner approves it by merging the M13 pull request.
+- **Status:** approved by the owner on 2026-11-16 (PR #15 merged).
 - **Decision:** v2 adds recurring service agreements, a dispatch board, a client portal (quotes, work requests, sign-off), completion proof (checklists, photos), notifications, API keys with signed webhooks, exports and plan entitlements, with PostgreSQL row-level security and a transactional outbox underneath (`docs/SPEC-V2.md`). Ten milestones, M14–M23, in five phases.
 - **Why:**
   - Each feature removes a daily chore of the businesses in SPEC 1: typing repeat visits, planning the week from a list, answering client calls, proving work was done, copying data to other tools.
