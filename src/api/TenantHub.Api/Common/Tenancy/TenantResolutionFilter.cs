@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using TenantHub.Api.Common.Auth;
 using TenantHub.Application.Abstractions;
 using TenantHub.Application.Tenancy;
@@ -13,10 +14,17 @@ namespace TenantHub.Api.Common.Tenancy;
 /// <item>missing permission → 403 <c>permission-denied</c>.</item>
 /// </list>
 /// Logs from the handler carry the organization and user ids.
+/// <para>
+/// The request keeps one database connection from resolution to the end (EF Core closes an explicitly opened
+/// connection only when the context is disposed). Otherwise every query takes a connection from the pool, which
+/// resets it, and the row-level security settings go out again before each one (D038): measured at about 6 ms
+/// more per jobs list request, against about one extra round trip this way.
+/// </para>
 /// </summary>
 public sealed partial class TenantResolutionFilter(
     ResolveTenantQuery resolve,
     ITenantContext tenant,
+    IAppDbContext db,
     ILogger<TenantResolutionFilter> logger) : IEndpointFilter
 {
     public const string OrganizationNotFoundCode = "organization-not-found";
@@ -28,6 +36,7 @@ public sealed partial class TenantResolutionFilter(
         var permission = http.GetEndpoint()?.Metadata.GetMetadata<RequiredPermissionMetadata>()?.Permission
             ?? throw new InvalidOperationException($"Tenant-scoped endpoint {http.Request.Path} declares no permission.");
 
+        await db.Database.OpenConnectionAsync(http.RequestAborted);
         if (!Guid.TryParse(http.Request.RouteValues["orgId"] as string, out var organizationId)
             || !await resolve.TryEnterAsync(organizationId, http.User.GetUserId(), http.RequestAborted))
         {
