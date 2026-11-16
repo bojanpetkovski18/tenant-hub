@@ -45,7 +45,10 @@ services:
     ports:
       - "127.0.0.1:${STACK_APP_PORT:-8080}:8080"
     environment:
-      ConnectionStrings__Database: "Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      # The API runs as its own user, which row-level security applies to; the owner only migrates and creates
+      # that user at startup (D038).
+      ConnectionStrings__Database: "Host=db;Port=5432;Database=${POSTGRES_DB};Username=${APP_DB_USER:-tenant_hub_app};Password=${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}"
+      ConnectionStrings__DatabaseAdmin: "Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
       Database__MigrateOnStartup: "true"
       Seed__Enabled: "${Seed__Enabled:-true}"
       DEMO_PASSWORD: "${DEMO_PASSWORD:?set DEMO_PASSWORD in .env}"

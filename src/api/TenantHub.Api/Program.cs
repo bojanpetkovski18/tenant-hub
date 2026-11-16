@@ -58,7 +58,7 @@ builder.Services.AddHealthChecks().AddDbContextCheck<AppDbContext>("database", t
 
 var app = builder.Build();
 
-await DatabaseSetup.MigrateIfEnabledAsync(app.Services);
+await DatabaseSetup.PrepareAsync(app.Services);
 await DemoSeeder.SeedIfEnabledAsync(app.Services, app.Configuration);
 
 app.UseAppForwardedHeaders();

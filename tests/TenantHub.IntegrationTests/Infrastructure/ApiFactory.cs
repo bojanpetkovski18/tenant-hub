@@ -45,6 +45,12 @@ public class ApiFactory(
     {
         builder.UseEnvironment("Testing");
         builder.UseSetting($"ConnectionStrings:{DatabaseSetup.ConnectionStringName}", connectionString);
+        // The owner, as in production: used only when a test turns MigrateOnStartup on (D038).
+        if (!string.IsNullOrEmpty(connectionString) && connectionString != OfflineApiFactory.UnreachableDatabase)
+        {
+            builder.UseSetting($"ConnectionStrings:{DatabaseSetup.AdminConnectionStringName}", PostgresFixture.AdminConnectionStringFor(connectionString));
+        }
+
         builder.UseSetting("Database:MigrateOnStartup", "false");
         builder.UseSetting("Seed:Enabled", "false");
         builder.UseSetting("App:PublicUrl", "https://app.tenanthub.example/");
