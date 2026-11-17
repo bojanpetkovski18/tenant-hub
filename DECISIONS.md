@@ -159,6 +159,13 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
   - **Its new dependency:** 11.x depends on `@isaacs/nonrecursive-glob-match`, whose latest release, 1.1.0 (2026-11-05), was too new, so a second override pins 1.0.3 (2026-10-28), which `^1.0.3` allows.
   - **Compatibility:** 11.0 removed `makeRe()`, `Minimatch#regexp`, `matchOne()` and the `AST` class; the lint packages use only `new Minimatch(...)`, `match()`, `pattern` and `minimatch()`. 11.0 also changed partial matching with `**`, which eslint uses to decide which folders to walk, so the list of linted files was compared before and after: the same 163 files, 0 problems, and a planted `any` is still reported.
   - **Remove both overrides** once `eslint` and `typescript-eslint` are upgraded to versions that depend on a fixed `minimatch`.
+- **.NET 10.0.15 (2026-11-16, `#0013b`, under the exception above):**
+  - **Found** while re-checking versions at the start of M14, as the playbook asks (a package audit does not cover the runtime). The app ran on 10.0.13, two security releases behind:
+    - 10.0.14 (2026-10-25, out of band) fixes a Brotli decoder out-of-bounds write (CVE-2026-111497) and re-releases two October fixes that 10.0.13 did not complete (CVE-2026-70197, CVE-2026-102870) ([release notes](https://github.com/dotnet/core/blob/main/release-notes/10.0/10.0.14/10.0.14.md), [Microsoft support](https://support.microsoft.com/help/5133966));
+    - 10.0.15 (2026-11-10) fixes 17 CVEs, among them ASP.NET Core elevation of privilege, denial of service, information disclosure and a security feature bypass ([release notes](https://github.com/dotnet/core/blob/main/release-notes/10.0/10.0.15/10.0.15.md), [Microsoft support](https://support.microsoft.com/help/5135241)).
+  - **Changed:** SDK 10.0.404 (`global.json`, the image's build stage), runtime image `aspnet:10.0.15-noble-chiseled-extra`, every Microsoft 10.0.x package and `dotnet-ef` 10.0.15. 10.0.15 is 6 days old, so this uses the security exception. The only transitive change is `Microsoft.OpenApi` 2.12.2 → 2.13.0 (2026-10-19, meets the rule), from `Microsoft.AspNetCore.OpenApi` 10.0.15. `Npgsql.EntityFrameworkCore.PostgreSQL` 10.0.3 is still its latest release.
+  - **Owner's machine:** the owner chose to install SDK 10.0.404 with winget (installer hash verified by winget); the older SDKs stay side by side.
+  - **Verified:** the test host loads `Microsoft.NETCore.App` and `Microsoft.AspNetCore.App` 10.0.15 (host trace); 750/750 tests; NuGet reports no vulnerable package; the production image reports runtime 10.0.15 and passes the end-to-end journey.
 
 ## D020: The merge gate: one required check over every CI job
 - **Date:** 2026-10-21
