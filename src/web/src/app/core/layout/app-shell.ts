@@ -36,6 +36,7 @@ import { OrgSwitcher } from './org-switcher';
 import { SkipLink } from './skip-link';
 import { UserMenu } from './user-menu';
 import { Wordmark } from './wordmark';
+import { VerifyEmailBanner } from './verify-email-banner';
 
 interface NavItem {
   readonly path: string;
@@ -69,6 +70,7 @@ export const desktopQuery = '(min-width: 1024px)';
     UserMenu,
     OrgNotFound,
     DemoBanner,
+    VerifyEmailBanner,
   ],
   templateUrl: './app-shell.html',
   changeDetection: ChangeDetectionStrategy.OnPush,

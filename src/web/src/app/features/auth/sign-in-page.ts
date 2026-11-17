@@ -124,6 +124,13 @@ import { controlError } from '../../shared/forms/server-errors';
           @if (passwordError(); as message) {
             <p id="password-error" class="th-field-error">{{ message }}</p>
           }
+          <p class="mt-2 text-sm">
+            <a
+              routerLink="/forgot-password"
+              class="font-medium text-accent underline-offset-2 hover:underline"
+              >Forgot your password?</a
+            >
+          </p>
         </div>
 
         <button type="submit" class="th-button w-full" [disabled]="pending()">

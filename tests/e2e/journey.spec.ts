@@ -28,16 +28,16 @@ async function signUp(page: Page, name: string, email: string, organization: str
   return new URL(page.url()).pathname.split('/')[2]!;
 }
 
-/** The invitation link from the email Mailpit caught for this address. */
-async function invitationLink(request: APIRequestContext, email: string): Promise<string> {
-  const search = `${mailpit}/api/v1/search?query=${encodeURIComponent(`to:"${email}"`)}`;
+/** The link to the SPA page `page` (`/page#token`) in the email Mailpit caught for this address with this subject. */
+async function emailedLink(request: APIRequestContext, email: string, subject: string, page: string): Promise<string> {
+  const search = `${mailpit}/api/v1/search?query=${encodeURIComponent(`to:"${email}" subject:"${subject}"`)}`;
   await expect
     .poll(async () => (await (await request.get(search)).json()).messages_count, { timeout: 30_000 })
     .toBeGreaterThan(0);
   const { messages } = await (await request.get(search)).json();
   const message = await (await request.get(`${mailpit}/api/v1/message/${messages[0].ID}`)).json();
-  const link = (message.Text as string).match(/https?:\/\/\S+\/invite#[\w-]+/)?.[0];
-  expect(link, 'invitation link in the email').toBeTruthy();
+  const link = (message.Text as string).match(new RegExp(`https?://\\S+/${page}#[\\w-]+`))?.[0];
+  expect(link, `${page} link in the email`).toBeTruthy();
   return link!;
 }
 
@@ -49,6 +49,12 @@ test('a team runs a job from sign-up to the audit log', async ({ browser }) => {
   // 1. Sign up: a new account and its organization.
   const slug = await signUp(owner, 'Erin Owner', ownerEmail, `E2E Cleaning ${run}`);
   await expectAccessible(owner, 'dashboard');
+
+  // 1b. With email on, inviting needs a confirmed address (SPEC-V2 4.1): the banner asks, the emailed link confirms.
+  await expect(owner.getByRole('heading', { name: 'Confirm your email address' })).toBeVisible();
+  await owner.goto(await emailedLink(owner.request, ownerEmail, 'Confirm your email address', 'verify-email'));
+  await expect(owner.getByRole('heading', { name: 'Email address confirmed' })).toBeVisible();
+  await expectAccessible(owner, 'email confirmed');
 
   // 2. Invite a teammate as a Member.
   await owner.goto(`/o/${slug}/members`);
@@ -63,7 +69,7 @@ test('a team runs a job from sign-up to the audit log', async ({ browser }) => {
   await expect(owner.getByText(mateEmail)).toBeVisible();
 
   // 3. The teammate opens the emailed link in their own browser and joins.
-  const link = await invitationLink(owner.request, mateEmail);
+  const link = await emailedLink(owner.request, mateEmail, 'invited you', 'invite');
   const mate = await (await browser.newContext()).newPage();
   await mate.goto(link);
   await mate.getByLabel('Your name').fill('Mo Mate');

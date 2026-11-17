@@ -46,6 +46,7 @@ export const olivia: SessionUser = {
   id: '0199f0a0-0000-7000-8000-000000000001',
   email: 'olivia@brightline.example',
   displayName: 'Olivia Bennett',
+  emailVerified: true,
   memberships: [
     {
       organizationId: '0199f0a0-0000-7000-8000-0000000000a1',
