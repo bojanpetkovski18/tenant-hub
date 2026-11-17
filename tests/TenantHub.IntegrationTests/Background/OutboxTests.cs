@@ -174,6 +174,8 @@ public sealed class OutboxTests(PostgresFixture postgres)
         Assert.Equal(rounds * messages, deliveries.Count);
         Assert.All(deliveries, count => Assert.Equal(1, count));
         Assert.Equal(rounds * messages, claimedBy.Sum(c => c.First + c.Second));
+        // Both really took part: otherwise the test would prove nothing about two instances.
+        Assert.True(claimedBy.Sum(c => c.First) > 0 && claimedBy.Sum(c => c.Second) > 0, $"Claims per round: {string.Join(", ", claimedBy)}");
         await using var check = PostgresFixture.CreateDbContext(connectionString);
         Assert.Equal(0, await check.OutboxMessages.CountAsync(Ct)); // secret messages are deleted once sent
         TestContext.Current.TestOutputHelper?.WriteLine($"Claims per round (first, second): {string.Join(", ", claimedBy)}");
