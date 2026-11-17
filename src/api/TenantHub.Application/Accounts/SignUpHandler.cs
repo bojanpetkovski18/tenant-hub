@@ -9,9 +9,10 @@ public sealed record SignUpCommand(string DisplayName, string Email, string Pass
 
 /// <summary>
 /// Creates the account, the organization (Free plan) and the Owner membership in one transaction (US-01): a
-/// failure at any step leaves nothing behind.
+/// failure at any step leaves nothing behind, not even the verification email (it is an outbox message in the same
+/// transaction).
 /// </summary>
-public sealed class SignUpHandler(IAppDbContext db, IIdentityService identity, OrganizationCreator creator)
+public sealed class SignUpHandler(IAppDbContext db, IIdentityService identity, OrganizationCreator creator, EmailVerification verification)
 {
     public async Task<Guid> HandleAsync(SignUpCommand command, CancellationToken cancellationToken)
     {
@@ -25,7 +26,7 @@ public sealed class SignUpHandler(IAppDbContext db, IIdentityService identity, O
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
-        var user = await identity.CreateUserAsync(command.Email, command.DisplayName, command.Password, cancellationToken);
+        var user = await identity.CreateUserAsync(command.Email, command.DisplayName, command.Password, emailVerified: false, cancellationToken);
         errors.AddRange(user.Errors.Errors.SelectMany(e => e.Value.Select(message => (e.Key, message))));
         if (user.UserId is not { } userId || errors.Count > 0)
         {
@@ -33,6 +34,12 @@ public sealed class SignUpHandler(IAppDbContext db, IIdentityService identity, O
         }
 
         await creator.CreateAsync(command.OrganizationName, command.TimeZone, userId, cancellationToken);
+        if (verification.IsRequired)
+        {
+            await verification.QueueAsync(userId, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
         await transaction.CommitAsync(cancellationToken);
         return userId;
     }

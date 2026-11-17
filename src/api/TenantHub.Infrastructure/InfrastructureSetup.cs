@@ -3,7 +3,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TenantHub.Application.Abstractions;
+using TenantHub.Application.Accounts;
 using TenantHub.Application.Demo;
+using TenantHub.Infrastructure.Background;
 using TenantHub.Infrastructure.Data;
 using TenantHub.Infrastructure.Email;
 using TenantHub.Infrastructure.Identity;
@@ -28,7 +30,24 @@ public static class InfrastructureSetup
         services.AddScoped<DemoReset>();
         services.AddScoped<IDemoAccounts, DemoAccounts>();
         services.AddAppEmail(configuration, demo);
+        services.AddBackgroundWork(configuration, demo);
         return services;
+    }
+
+    /// <summary>The outbox and the scheduler (D039). The hosted services that drive them live in the Api project.</summary>
+    private static void AddBackgroundWork(this IServiceCollection services, IConfiguration configuration, DemoMode demo)
+    {
+        services.AddSingleton(configuration.GetSection(OutboxOptions.Section).Get<OutboxOptions>() ?? new OutboxOptions());
+        services.AddSingleton<OutboxSignal>();
+        services.AddScoped<IOutbox, Outbox>();
+        services.AddSingleton<OutboxDispatcher>();
+        services.AddSingleton<Scheduler>();
+        services.AddOutboxHandler<EmailOutboxHandler>(AccountEmails.PasswordReset, AccountEmails.Verification);
+        services.AddScheduledTask<OutboxRetentionTask>(OutboxRetentionTask.Name);
+        if (demo.Enabled)
+        {
+            services.AddScheduledTask<DemoResetTask>(DemoResetTask.Name);
+        }
     }
 
     /// <summary><c>DEMO_MODE</c> and <c>DEMO_RESET_INTERVAL_HOURS</c>; demo mode cannot start without the demo password.</summary>
@@ -85,6 +104,10 @@ public static class InfrastructureSetup
                 options.Lockout.MaxFailedAccessAttempts = 5;
                 options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
                 options.Lockout.AllowedForNewUsers = true;
+                // Reset and verification tokens read the injected clock and carry the user id (D039).
+                options.Tokens.PasswordResetTokenProvider = AccountTokenProvider.ProviderName;
+                options.Tokens.EmailConfirmationTokenProvider = AccountTokenProvider.ProviderName;
             })
-            .AddEntityFrameworkStores<AppDbContext>();
+            .AddEntityFrameworkStores<AppDbContext>()
+            .AddTokenProvider<AccountTokenProvider>(AccountTokenProvider.ProviderName);
 }

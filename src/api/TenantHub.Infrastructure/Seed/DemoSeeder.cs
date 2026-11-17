@@ -122,7 +122,8 @@ public sealed partial class DemoSeeder(
                 continue;
             }
 
-            var user = new AppUser { UserName = seed.Email, Email = seed.Email, DisplayName = seed.DisplayName, CreatedAt = now };
+            // Demo accounts count as verified (SPEC-V2 4.1): the addresses are fictional and the demo sends no email.
+            var user = new AppUser { UserName = seed.Email, Email = seed.Email, EmailConfirmed = true, DisplayName = seed.DisplayName, CreatedAt = now };
             var result = await users.CreateAsync(user, password);
             if (!result.Succeeded)
             {

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
+using TenantHub.Application.Accounts;
 using TenantHub.Application.Organizations;
 using TenantHub.Domain;
 using TenantHub.Domain.Invitations;
@@ -38,6 +39,7 @@ public sealed class InvitationCommands(
     IEmailSender email,
     IAppLinks links,
     PlanLimitsCheck limits,
+    EmailVerification verification,
     TimeProvider time)
 {
     public const string OpenEmailIndex = "ux_invitations_open_email";
@@ -60,6 +62,8 @@ public sealed class InvitationCommands(
             throw new RequestValidationException(FieldErrors.From([("role", "Choose a role.")]));
         }
 
+        // Sending invitations needs a proven address (SPEC-V2 4.1); checked before anything else is looked at.
+        await verification.EnsureVerifiedAsync(tenant.UserId!.Value, cancellationToken);
         var emailAddress = command.Email?.Trim() ?? "";
         var actor = Actor();
         var now = time.GetUtcNow();
@@ -107,6 +111,7 @@ public sealed class InvitationCommands(
 
     public async Task<InvitationSent> ResendAsync(Guid id, CancellationToken cancellationToken)
     {
+        await verification.EnsureVerifiedAsync(tenant.UserId!.Value, cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         await locks.LockOrganizationAsync(tenant.OrganizationId!.Value, cancellationToken);
         var invitation = await LoadAsync(id, cancellationToken);

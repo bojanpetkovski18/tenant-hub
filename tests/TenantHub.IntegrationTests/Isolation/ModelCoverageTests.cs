@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using TenantHub.Application.Tenancy;
 using TenantHub.Domain;
 using TenantHub.Domain.Organizations;
+using TenantHub.Infrastructure.Background;
 using TenantHub.Infrastructure.Identity;
 using TenantHub.IntegrationTests.Infrastructure;
 
@@ -25,6 +26,9 @@ public sealed class ModelCoverageTests
         [typeof(IdentityUserToken<Guid>)] = "Identity data of an account",
         [typeof(Organization)] = "the tenant itself; access is checked through the membership (SPEC 3.2)",
         [typeof(DataProtectionKey)] = "the app's cookie-signing keys, shared by every instance (K1; the owner chose a database table in M10)",
+        // Approved with SPEC-V2 section 8 (M15 brief): infrastructure that only the dispatcher and the scheduler read.
+        [typeof(OutboxMessage)] = "side effects waiting for the dispatcher; account emails have no organization (D039)",
+        [typeof(ScheduledTask)] = "recurring work for the scheduler, application-wide or per organization (D039)",
     };
 
     private static IModel Model()

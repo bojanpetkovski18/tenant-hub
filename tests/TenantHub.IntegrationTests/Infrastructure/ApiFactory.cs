@@ -11,6 +11,7 @@ using TenantHub.Api.Common;
 using TenantHub.Api.Common.Tenancy;
 using TenantHub.Application.Abstractions;
 using TenantHub.Domain.Memberships;
+using TenantHub.Infrastructure.Background;
 using TenantHub.Infrastructure.Data;
 
 namespace TenantHub.IntegrationTests.Infrastructure;
@@ -41,6 +42,19 @@ public class ApiFactory(
 
     public CapturedLogs Logs { get; } = new();
 
+    /// <summary>Delivers every outbox message that is due, as the background dispatcher would. Returns how many it claimed.</summary>
+    public async Task<int> DispatchOutboxAsync()
+    {
+        var dispatcher = Services.GetRequiredService<OutboxDispatcher>();
+        var total = 0;
+        while (await dispatcher.DispatchBatchAsync(TestContext.Current.CancellationToken) is var claimed and > 0)
+        {
+            total += claimed;
+        }
+
+        return total;
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -59,6 +73,9 @@ public class ApiFactory(
         builder.UseSetting("RateLimiting:InvitationPermitLimit", "1000");
         builder.UseSetting("RateLimiting:DemoAuthPermitLimit", "1000");
         builder.UseSetting("RateLimiting:DemoInvitationPermitLimit", "1000");
+        builder.UseSetting("RateLimiting:AccountEmailPermitLimit", "1000");
+        // The outbox dispatcher and the scheduler run only when a test drives them (DispatchOutboxAsync, Scheduler).
+        builder.UseSetting(BackgroundWork.EnabledSetting, "false");
         foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
         {
             builder.UseSetting(key, value);

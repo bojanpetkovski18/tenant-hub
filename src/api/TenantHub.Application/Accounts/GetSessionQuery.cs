@@ -16,10 +16,11 @@ public sealed record MembershipSummary(Guid OrganizationId, string Slug, string 
     public IReadOnlyList<Role> InvitableRoles => [.. MembershipRules.GrantableRoles(Role).Intersect(MembershipRules.InvitableRoles)];
 }
 
-public sealed record SessionUser(Guid Id, string Email, string DisplayName, IReadOnlyList<MembershipSummary> Memberships);
+/// <summary><c>EmailVerified</c> is false only while the account must still confirm its address (SPEC-V2 4.1).</summary>
+public sealed record SessionUser(Guid Id, string Email, string DisplayName, bool EmailVerified, IReadOnlyList<MembershipSummary> Memberships);
 
 /// <summary>The signed-in user and their active memberships (removed ones grant nothing, SPEC 5.2).</summary>
-public sealed class GetSessionQuery(IAppDbContext db, IIdentityService identity, RowSecurity rowSecurity)
+public sealed class GetSessionQuery(IAppDbContext db, IIdentityService identity, RowSecurity rowSecurity, EmailVerification verification)
 {
     public async Task<SessionUser?> HandleAsync(Guid userId, CancellationToken cancellationToken)
     {
@@ -41,6 +42,6 @@ public sealed class GetSessionQuery(IAppDbContext db, IIdentityService identity,
             .Select(m => new MembershipSummary(m.Id, m.Slug, m.Name, m.Role))
             .ToListAsync(cancellationToken);
 
-        return new SessionUser(profile.Id, profile.Email, profile.DisplayName, memberships);
+        return new SessionUser(profile.Id, profile.Email, profile.DisplayName, verification.IsSatisfiedBy(profile), memberships);
     }
 }

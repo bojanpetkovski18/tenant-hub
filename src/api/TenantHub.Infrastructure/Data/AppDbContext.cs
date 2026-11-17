@@ -13,6 +13,7 @@ using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
 using TenantHub.Domain.Organizations;
 using TenantHub.Infrastructure.Audit;
+using TenantHub.Infrastructure.Background;
 using TenantHub.Infrastructure.Identity;
 using TenantHub.Infrastructure.Tenancy;
 
@@ -28,9 +29,12 @@ public sealed class AppDbContext(
     DbContextOptions<AppDbContext> options,
     ITenantContext? tenant = null,
     TimeProvider? time = null,
-    RowSecurity? rowSecurity = null)
+    RowSecurity? rowSecurity = null,
+    OutboxSignal? outboxSignal = null)
     : IdentityUserContext<AppUser, Guid>(options), IAppDbContext, IDataProtectionKeyContext
 {
+    private bool _outboxAwaitsCommit;
+
     /// <summary>The keys that sign session and antiforgery cookies, shared by every instance (K1).</summary>
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
@@ -53,6 +57,11 @@ public sealed class AppDbContext(
 
     public DbSet<Job> Jobs => Set<Job>();
 
+    /// <summary>Side effects waiting for the dispatcher (D039); written through <see cref="IOutbox"/>.</summary>
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
+    public DbSet<ScheduledTask> ScheduledTasks => Set<ScheduledTask>();
+
     /// <summary>Read by the query filters; EF Core evaluates it per query for this context instance.</summary>
     internal Guid? CurrentOrganizationId => _tenant.OrganizationId;
 
@@ -66,18 +75,54 @@ public sealed class AppDbContext(
     internal string? AppliedRowSecurity { get; set; }
 
     // Audit entries first, so they pass the tenant guard like every other row, then one transaction for all.
+    // Outbox messages added through IOutbox are already tracked, so they are part of the same save.
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         Audit.AddEntries();
         TenantGuard.Check(ChangeTracker, _tenant);
-        return base.SaveChanges(acceptAllChangesOnSuccess);
+        var writesOutbox = WritesOutbox();
+        var saved = base.SaveChanges(acceptAllChangesOnSuccess);
+        AfterOutboxWrite(writesOutbox);
+        return saved;
     }
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         await Audit.AddEntriesAsync(cancellationToken);
         TenantGuard.Check(ChangeTracker, _tenant);
-        return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        var writesOutbox = WritesOutbox();
+        var saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        AfterOutboxWrite(writesOutbox);
+        return saved;
+    }
+
+    /// <summary>Called by <see cref="OutboxCommitInterceptor"/>: messages saved inside the transaction are now visible.</summary>
+    internal void OnTransactionCommitted()
+    {
+        if (_outboxAwaitsCommit)
+        {
+            _outboxAwaitsCommit = false;
+            outboxSignal?.Notify();
+        }
+    }
+
+    private bool WritesOutbox() => ChangeTracker.Entries<OutboxMessage>().Any(e => e.State == EntityState.Added);
+
+    private void AfterOutboxWrite(bool wroteOutbox)
+    {
+        if (!wroteOutbox)
+        {
+            return;
+        }
+
+        if (Database.CurrentTransaction is null)
+        {
+            outboxSignal?.Notify();
+        }
+        else
+        {
+            _outboxAwaitsCommit = true;
+        }
     }
 
     protected override void OnModelCreating(ModelBuilder builder)

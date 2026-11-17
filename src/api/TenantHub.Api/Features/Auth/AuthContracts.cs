@@ -18,6 +18,14 @@ public sealed record SignInRequest(
     [property: Required(AllowEmptyStrings = true), MaxLength(254)] string Email,
     [property: Required(AllowEmptyStrings = true), MaxLength(128)] string Password);
 
+public sealed record PasswordResetRequest([property: Required(AllowEmptyStrings = true), MaxLength(254)] string Email);
+
+public sealed record PasswordResetConfirmRequest(
+    [property: Required, MaxLength(1024)] string Token,
+    [property: Required(AllowEmptyStrings = true), MaxLength(128)] string Password);
+
+public sealed record VerifyEmailRequest([property: Required, MaxLength(1024)] string Token);
+
 public sealed record MembershipResponse(
     Guid OrganizationId,
     string Slug,
@@ -31,10 +39,10 @@ public sealed record MembershipResponse(
         new(m.OrganizationId, m.Slug, m.Name, m.Role, m.Permissions, m.GrantableRoles, m.InvitableRoles);
 }
 
-public sealed record UserResponse(Guid Id, string Email, string DisplayName, IReadOnlyList<MembershipResponse> Memberships)
+public sealed record UserResponse(Guid Id, string Email, string DisplayName, bool EmailVerified, IReadOnlyList<MembershipResponse> Memberships)
 {
     public static UserResponse From(SessionUser user) =>
-        new(user.Id, user.Email, user.DisplayName, [.. user.Memberships.Select(MembershipResponse.From)]);
+        new(user.Id, user.Email, user.DisplayName, user.EmailVerified, [.. user.Memberships.Select(MembershipResponse.From)]);
 }
 
 /// <summary>
