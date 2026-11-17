@@ -175,15 +175,17 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
                 return new { name, notes = $"Note {Guid.NewGuid():N}", version };
             },
         },
+        // Fresh clients: a refused restore would otherwise leave the standing client archived, and any later case that
+        // uses it (creating a job for it) would fail, depending on the order the matrix happens to run in.
         new("POST", "/clients/{id:guid}/archive", Permissions.ClientsWrite)
         {
-            Resource = CaseResource.Client,
+            Resource = CaseResource.FreshClient,
             Audited = true,
             Arrange = input => input.Tenants.SetArchivedAsync(input.ResourceId!.Value, archived: false),
         },
         new("POST", "/clients/{id:guid}/restore", Permissions.ClientsWrite)
         {
-            Resource = CaseResource.Client,
+            Resource = CaseResource.FreshClient,
             Audited = true,
             Arrange = input => input.Tenants.SetArchivedAsync(input.ResourceId!.Value, archived: true),
         },
