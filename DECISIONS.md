@@ -514,12 +514,73 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
     - no settings: 415 of 485 integration tests fail. All 134 matrix failures are 500s from PostgreSQL refusing writes (`42501`, new row violates row-level security) while the fixture signs up its users: the layer fails closed;
     - the definer function answering "no": the demo-reset regression test fails (an old visitor who is only a member of a surviving organization would be deleted).
 
-## D039: A transactional outbox and database-held schedules (pending M15)
+## D039: A transactional outbox and database-held schedules (decided at M15, below)
 - **Date:** 2026-11-16
-- **Decision (proposed):** side effects (email, notifications, webhooks, file clean-up) are written to `outbox_messages` in the same `SaveChanges` as the change, and a hosted worker delivers them, claiming rows with `FOR UPDATE SKIP LOCKED`. Recurring work lives in `scheduled_tasks` with a due time and a lease. Invitation emails keep their synchronous v1 contract (D011).
+- **Decision (as proposed):** side effects (email, notifications, webhooks, file clean-up) are written to `outbox_messages` in the same `SaveChanges` as the change, and a hosted worker delivers them, claiming rows with `FOR UPDATE SKIP LOCKED`. Recurring work lives in `scheduled_tasks` with a due time and a lease. Invitation emails keep their synchronous v1 contract (D011).
 - **Why:** a change and its side effects cannot disagree (no email for a rolled-back change, no lost email for a committed one), several instances can run without double delivery, and a host that sleeps catches up. The demo reset (D032) already keeps its schedule in the data; this generalizes it.
 - **Alternatives:** sending after commit inside the request (v1; lost on a crash, slows the request); a message broker (another service to run for a one-container product); Hangfire or Quartz (a dependency with its own tables for what two small tables and one worker do).
-- **To decide at M15:** encryption of payloads that carry a secret (Data Protection, a purpose per message type); the retry schedule and when a message is dead; Identity's token providers or a table of hashed tokens for password reset and email verification.
+- **Decided at M15 (2026-11-17):**
+  - **Writing.**
+    - `IOutbox.Add` puts a tracked row in the request's `AppDbContext`, so whichever `SaveChanges` writes the change and its audit entries writes the message too, in the same transaction.
+    - That already gives what the brief asked of "extending the audit step", so no separate step was added. The step will matter when domain events become messages (M20).
+    - A message type says whether it belongs to an organization (taken from the tenant context, never from the caller) or to a person (account emails have no organization).
+  - **Secrets.**
+    - A type that carries a secret is encrypted with Data Protection under the purpose `TenantHub.Outbox` plus the type name, so one type's payload cannot be read as another's.
+    - The keys are in PostgreSQL (K1), so every instance can decrypt. The row holds the ciphertext as a JSON string.
+    - A delivered secret message is deleted at once. A dead one keeps its row for the record, but its payload is replaced by `null`.
+  - **Dispatching.**
+    - A short transaction claims up to 20 due rows (`FOR UPDATE SKIP LOCKED`, oldest `available_at` first). It pushes each one's `available_at` 5 minutes ahead, which is the claim's lease, and counts the attempt.
+    - Delivery runs outside any transaction, in a scope of its own, with a 1-minute timeout (shorter than the lease).
+    - The outcome is written only if `attempts` still has the value this claim set. The attempt count is the fencing token: a dispatcher that outlived its lease cannot overwrite the next claim.
+    - A dispatcher that dies leaves its messages to come back when the lease ends.
+  - **Retries.**
+    - After failed attempts 1 to 5, the message waits 1 min, 5 min, 15 min, 1 h and 4 h. The sixth failure makes it dead (about 5.4 hours after the first try) and logs a warning.
+    - An unknown type, an unreadable payload and email switched off are permanent failures: dead at once.
+    - The row keeps the error's class (an exception type, or a delivery code such as `email-not-accepted`), never its message, which can quote an address.
+  - **Idempotency.**
+    - Handlers must tolerate a repeat after a crash between delivery and recording.
+    - SMTP cannot be made exactly-once, so the email handler gives every email the message id as its `Message-ID`, and mail systems see a repeat as the same message.
+  - **Waking.** An in-process signal wakes the dispatcher when a transaction that wrote messages commits (a transaction interceptor; without a transaction, after the save), so an email leaves within moments. Otherwise the dispatcher polls every 30 seconds.
+  - **Scheduler.**
+    - SPEC-V2 8 asked for the primary key `(name, organization_id)`, but a primary key cannot hold the null of an application-wide task. The table has a surrogate `id` and a unique index on `(name, organization_id)` with `NULLS NOT DISTINCT`.
+    - A short transaction claims a due task with `SKIP LOCKED` and gives it a 10-minute lease. The task runs outside that transaction and is completed only while the lease is still its own. The lease time is the fencing token; it is truncated to microseconds so it survives the round trip to PostgreSQL.
+    - The next due time is counted from the run, so a host that slept through ten intervals runs the task once on waking.
+    - A failed run is retried in 5 minutes, with its error class recorded.
+    - Rows of tasks this build does not know are left alone.
+    - Application-wide tasks get their row at start (`ON CONFLICT DO NOTHING`, so two instances make one row).
+  - **Retention** is the first task: every hour, it deletes delivered messages after 7 days and dead ones after 30.
+  - **The demo reset moved onto the scheduler,** as the brief allowed if the change was small.
+    - `DemoResetService` is gone. `DemoResetTask` (demo mode only) asks `DemoReset` whether a reset is due, and returns when the next one is.
+    - The schedule still lives in the seeded organizations' creation time (D032).
+    - The lease now keeps two instances from resetting at once, which D032 could not.
+  - **Hosting.**
+    - The dispatcher and the scheduler are plain classes in Infrastructure; two hosted services in the Api project drive them (Infrastructure has no hosting dependency, D032).
+    - `BackgroundWork:Enabled=false` turns both off. The integration tests do that and drive them one step at a time.
+  - **Tokens: Identity's token flow, not a table of hashed tokens.**
+    - `UserManager` makes and checks reset and verification tokens. The security stamp inside them makes a reset token single use and voids older ones.
+    - Identity's `DataProtectorTokenProvider` reads the system clock, so expiry could not be tested. `AccountTokenProvider` does the same with the injected `TimeProvider`, and carries the user id, so a link holds one opaque token.
+    - Reset tokens live 30 minutes, verification tokens 7 days.
+    - A table would also have been a new table that is not tenant-owned, which needs the owner's approval.
+    - Consequence: changing the password also voids open verification links. The banner sends a new one.
+  - **Password reset.**
+    - The request always answers `202` with no body, and does the same cheap work for any address: no password hashing, no SMTP. A test compares the median times of known and unknown addresses.
+    - It is limited per client address (`RateLimiting:AccountEmailPermitLimit`, 5 per 10 minutes) and per account (one email per 2 minutes). The time of the last email is kept in Identity's `user_tokens`, so there is no new table.
+    - With email off, nothing is written.
+    - A successful reset rotates the security stamp, so every session ends (this browser's too). It also ends a lockout: proving the mailbox is as good as the old password.
+  - **Email verification is required only while email is on.**
+    - Without email no link could be sent, and nothing the account does sends mail (invitations hand the link to the inviter). So the demo and deployments without SMTP ask nothing.
+    - These accounts count as verified: accounts from before M15 (the migration), demo accounts (the seed), and accounts made from an invitation link (the link went to that address, or the inviter vouched for it).
+    - The session's `emailVerified` means "verified, or not asked".
+    - Inviting, and sending an invitation again, refuse with `403 email-not-verified`.
+    - `POST /api/auth/verify-email` is public (the link may be opened in any browser) and idempotent.
+    - It is rate-limited like the other token links (the invitation policy), not like sign-in: it checks no password and sends nothing.
+  - **Links** carry the token in the fragment (`/reset-password#…`, `/verify-email#…`), as invitations do (D028). The token never reaches the server's or a proxy's logs, or a mail scanner that prefetches links.
+  - **Allow-lists.**
+    - `outbox_messages` and `scheduled_tasks` were added to the model's not-tenant-owned list, as SPEC-V2 8 approved.
+    - The dispatcher and the scheduler needed no tenant bypass: both tables are not tenant-owned, and no M15 handler touches tenant data. So none was added. M16 and M20 will add theirs when their handlers enter a tenant.
+  - **A pre-existing test-order bug** was fixed on the way.
+    - The archive and restore matrix cases changed the shared standing client. A refused restore left it archived, so "create a job" for it failed with 400 whenever xUnit's order ran it later.
+    - It failed on `dev` locally on 2026-11-17. Both cases now use a fresh client.
 
 ## D040: Client contacts are a separate identity with email-link sign-in (pending M18)
 - **Date:** 2026-11-16

@@ -85,7 +85,7 @@ Fixed, not role-based. A contact sees their own client's visits (upcoming, and t
 
 ### 4.1 Account recovery and verification (M15)
 - **Password reset by email.** The request always answers "if an account exists, we sent a link". The link is single use and valid for 30 minutes; a new password ends every session of the account.
-- **Email verification.** New accounts get a verification link. Until they verify, they see a banner and cannot send invitations or portal invitations, so that an unverified account cannot use the product to send mail. Existing accounts and demo accounts are treated as verified.
+- **Email verification.** New accounts get a verification link. Until they verify, they see a banner and cannot send invitations or portal invitations, so that an unverified account cannot use the product to send mail. Existing accounts and demo accounts are treated as verified. Verification is asked only while email is on: without email no link can be sent and the product sends no mail (D039). Accounts made from an invitation link start verified.
 - In demo mode email is off: the reset page explains that the demo has no email.
 
 ### 4.2 Recurring service agreements (M16)
@@ -324,7 +324,7 @@ Tenant-owned tables get a query filter, an index starting with `organization_id`
 - **webhook_endpoints** (tenant-owned): `id`, `organization_id`, `url`, `events` (`text[]`), `secret_encrypted`, `previous_secret_encrypted`, `previous_secret_expires_at`, `created_at`, `disabled_at`, `failing_since`, `xmin`.
 - **webhook_deliveries** (tenant-owned): `id`, `organization_id`, `endpoint_id`, `event_id`, `event_type`, `attempt`, `status_code`, `duration_ms`, `error`, `created_at`, `next_attempt_at`, `succeeded_at`.
 - **outbox_messages** (not tenant-owned, infrastructure): `id`, `organization_id` (nullable: account emails have none), `type`, `payload` (`jsonb`, encrypted when it carries a secret), `created_at`, `available_at`, `attempts`, `last_error`, `processed_at`, `dead_at`.
-- **scheduled_tasks** (not tenant-owned, infrastructure): `name`, `organization_id` (nullable), `due_at`, `lease_until`, `last_run_at`, `last_error`; primary key `(name, organization_id)`.
+- **scheduled_tasks** (not tenant-owned, infrastructure): `name`, `organization_id` (nullable), `due_at`, `lease_until`, `last_run_at`, `last_error`; unique `(name, organization_id)` with nulls not distinct (a primary key cannot hold the null of an application-wide task, so the key is a surrogate `id`; D039).
 - **audit_entries** gain `actor_kind` and `actor_ref` (5.9).
 
 **Allow-list entries this specification asks the owner to approve** (CLAUDE.md: never added without approval):
