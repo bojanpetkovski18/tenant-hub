@@ -52,14 +52,15 @@ public static class AuthEndpoints
             .Public()
             .RequireRateLimiting(RateLimiting.AuthPolicy);
 
-        // Public: the link may be opened in a browser where nobody, or somebody else, is signed in.
+        // Public: the link may be opened in a browser where nobody, or somebody else, is signed in. Limited like the
+        // other links that carry a token (invitations), not like sign-in: no password is checked and nothing is sent.
         auth.MapPost("/verify-email", async (VerifyEmailRequest request, EmailVerification verification, CancellationToken ct) =>
             {
                 await verification.VerifyAsync(request.Token, ct);
                 return TypedResults.NoContent();
             })
             .Public()
-            .RequireRateLimiting(RateLimiting.AuthPolicy);
+            .RequireRateLimiting(RateLimiting.InvitationPolicy);
 
         auth.MapPost("/sign-out", async (HttpContext context, SignInManager<AppUser> signIn, XsrfCookie xsrf) =>
         {

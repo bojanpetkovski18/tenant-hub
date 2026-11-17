@@ -14,7 +14,10 @@ public sealed class RateLimitOptions
 
     public int AuthWindowSeconds { get; init; } = 60;
 
-    /// <summary>Invitation sends (per user) and invitation look-ups and acceptances (per client IP) per window.</summary>
+    /// <summary>
+    /// Invitation sends (per user), and invitation look-ups and acceptances and email verifications (per client IP:
+    /// links that carry a token) per window.
+    /// </summary>
     public int InvitationPermitLimit { get; init; } = 20;
 
     public int InvitationWindowSeconds { get; init; } = 60;
