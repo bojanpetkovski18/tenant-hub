@@ -25,7 +25,7 @@ public sealed class AuditAppendOnlyTests(PostgresFixture postgres)
     {
         var tenants = await SharedApiTenants.GetAsync<AuditAppendOnlyTests>(postgres);
         var id = await AnEntryOfAAsync(tenants);
-        await using var connection = new NpgsqlConnection(tenants.ConnectionString);
+        await using var connection = new NpgsqlConnection(PostgresFixture.AdminConnectionStringFor(tenants.ConnectionString));
         await connection.OpenAsync(Ct);
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("id", id);
@@ -40,7 +40,7 @@ public sealed class AuditAppendOnlyTests(PostgresFixture postgres)
     public async Task Bulk_updates_are_refused_too_and_change_nothing()
     {
         var tenants = await SharedApiTenants.GetAsync<AuditAppendOnlyTests>(postgres);
-        await using var connection = new NpgsqlConnection(tenants.ConnectionString);
+        await using var connection = new NpgsqlConnection(PostgresFixture.AdminConnectionStringFor(tenants.ConnectionString));
         await connection.OpenAsync(Ct);
         await using var before = new NpgsqlCommand("SELECT md5(string_agg(summary, '|' ORDER BY id)) FROM audit_entries", connection);
         var hash = await before.ExecuteScalarAsync(Ct);
@@ -55,7 +55,7 @@ public sealed class AuditAppendOnlyTests(PostgresFixture postgres)
     public async Task Entries_can_still_be_deleted_for_organization_deletion_and_the_demo_reset()
     {
         var tenants = await SharedApiTenants.GetAsync<AuditAppendOnlyTests>(postgres);
-        await using var connection = new NpgsqlConnection(tenants.ConnectionString);
+        await using var connection = new NpgsqlConnection(PostgresFixture.AdminConnectionStringFor(tenants.ConnectionString));
         await connection.OpenAsync(Ct);
         await using var delete = new NpgsqlCommand("DELETE FROM audit_entries WHERE organization_id = @org", connection);
         delete.Parameters.AddWithValue("org", tenants.OrgB);

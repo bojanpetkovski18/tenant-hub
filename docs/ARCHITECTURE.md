@@ -62,14 +62,14 @@ sequenceDiagram
   participant DB as PostgreSQL
   B->>P: POST with session cookie + X-XSRF-TOKEN
   P->>F: authenticated user
-  F->>DB: caller's active membership in {orgId}
+  F->>DB: open one connection for the request; caller's own active membership in {orgId} (app.user_id)
   alt no active membership
     F-->>B: 404 organization-not-found (same as an unknown id)
   else membership lacks jobs.work / jobs.manage
     F-->>B: 403 permission-denied
   end
   F->>H: TenantContext (organization, user, role, permissions)
-  H->>DB: load job (query filter adds organization_id = current)
+  H->>DB: load job (query filter adds organization_id = current; the policy checks app.organization_id)
   H->>D: TransitionTo(completed, actor, …)
   D-->>H: rule checks (workflow table, assignee may work it), JobStatusChanged event
   H->>G: SaveChanges
@@ -143,7 +143,8 @@ erDiagram
 ```
 
 - **Users** are global (ASP.NET Core Identity): one person can belong to several organizations. `data_protection_keys`
-  (the cookie-signing keys, D033) is the only other global table.
+  (the cookie-signing keys, D033) is the only other global table. Global tables have no row-level security; every
+  tenant-owned one has (layer 6).
 - **Jobs** reference clients and assignees through **composite foreign keys** that include `organization_id`, so the
   database itself refuses a job pointing at another organization's client or member.
 - **Audit entries** are append-only: a trigger rejects `UPDATE` (D030). They go away only with their organization.
@@ -151,8 +152,9 @@ erDiagram
 
 ## Tenant isolation: layers and their proof
 
-Isolation is enforced in five layers. Each layer has tests that fail when it is weakened, and the coverage tests make
-new code join the suite automatically: an unclassified entity or endpoint fails the build.
+Isolation is enforced in six layers. Each layer has tests that fail when it is weakened, and the coverage tests make
+new code join the suite automatically: an unclassified entity or endpoint, or a tenant-owned table without its policy,
+fails the build.
 
 | Layer | What it does | Proven by |
 |---|---|---|
@@ -161,7 +163,8 @@ new code join the suite automatically: an unclassified entity or endpoint fails 
 | 3. Query filters | a named filter `organization_id = current` on every `ITenantOwned` entity | `ModelCoverageTests`: every tenant-owned entity has the filter, an index starting with `organization_id`, and a cascading key to its organization; every other entity is on a reviewed list |
 | 4. Save guard | `TenantGuard` stamps new rows and refuses any write to another organization's row, or a change of `organization_id`; logged as a security event | `TenantGuardTests` |
 | 5. Database | composite foreign keys including `organization_id` | `JobEndpointTests.The_database_refuses_a_job_that_points_at_another_organizations_client_or_member` (raw SQL, past every application check) |
-| Bypasses | `AcrossTenants()` (the only `IgnoreQueryFilters` call) is allowed in a short list of named files, each with its reason | `TenantBypassAllowListTests` |
+| 6. Row-level security | PostgreSQL policies on every tenant-owned table: a row is visible and writable only if its `organization_id` equals the session's `app.organization_id`. The API connects as its own user, which cannot bypass them (M14, D038) | `RowSecurityTests` (coverage of every tenant-owned table; raw SQL as the API's user; a pooled connection reused across tenants), `DatabaseRoleTests` (startup refuses a user that could bypass) |
+| Bypasses | `AcrossTenants()` (the only `IgnoreQueryFilters` call) is allowed in a short list of named files, each with its reason. In the database, the same files may widen reading in two narrow ways (`RowSecurity.ReadAsUser`, `PresentInvitationToken`), and one reviewed `SECURITY DEFINER` function answers the demo reset's question | `TenantBypassAllowListTests`, `RowSecurityTests.The_only_way_past_the_policies_is_the_reviewed_definer_function` |
 | Every endpoint | classified as public, user-scoped or tenant-scoped; each tenant endpoint has a matrix case, and each state change writes an audit entry | `EndpointCoverageTests`, `AuditCoverageTests` |
 
 **Mutation checks.** The suite was checked by breaking the code on purpose (M03, repeated on the full application in
@@ -170,7 +173,31 @@ M10):
 - with the membership check ignoring the caller, 139 fail;
 - an unclassified endpoint fails the classification test, and a tenant endpoint without a case fails the case test.
 
+Since M14 the layers overlap on purpose:
+- with the query filter on `Job` removed, the cross-tenant matrix still passes, because the database refuses the rows;
+- with the jobs policy removed as well, the matrix fails on five job endpoints;
+- without the session settings, 415 of 485 integration tests fail; the cross-tenant matrix fails because PostgreSQL refuses the writes that set it up, so the layer fails closed.
+
 Results are in `PROGRESS.md` → Measured results.
+
+### Row-level security (layer 6)
+- **Two database users.** Migrations run as the schema owner (`ConnectionStrings:DatabaseAdmin`), which is exempt from
+  the policies as table owner. The API connects as its own user (`ConnectionStrings:Database`), created at startup
+  from that connection string, with data access only. At startup the API refuses to run as a superuser, a
+  `BYPASSRLS` role or a table owner, since any of them would skip every policy.
+- **The settings.** `RowSecurityInterceptor` gives the database session three values before EF Core runs a command,
+  whenever they differ from what that connection last received: the entered organization, the user whose memberships
+  the scope reads, and the hash of a presented invitation token. Opening or closing a connection, or a rollback, makes
+  it set them again. Unset values are empty and match no row.
+- **One connection per tenant request.** `TenantResolutionFilter` opens the connection before resolving the tenant, so
+  the request's queries share it and the settings go out about once, not once per query.
+- **Policies.** `tenant_isolation` on every tenant-owned table, for every command. For `SELECT` only, two more:
+  `own_memberships` (a user's memberships in every organization, for the session, tenant resolution and the
+  five-owned limit) and `presented_invitation` (the one invitation whose token the request holds). The demo reset asks
+  the `SECURITY DEFINER` function `user_has_tenant_references` whether any organization still refers to a visitor
+  account; it answers yes or no for one user.
+- **Cost.** The planner folds the policy into the query's own filter (a one-time filter), and a query with no filter
+  uses the policy as its index condition. The measured cost is in the extra round trip (`PROGRESS.md`).
 
 ## Cross-cutting
 

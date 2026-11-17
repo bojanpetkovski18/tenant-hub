@@ -24,7 +24,11 @@ namespace TenantHub.Infrastructure.Data;
 /// Tenant isolation (SPEC 3.3): every <see cref="ITenantOwned"/> entity gets the named query filter
 /// <see cref="TenantQueries.FilterName"/>, and every save goes through <see cref="TenantGuard"/>.
 /// </summary>
-public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext? tenant = null, TimeProvider? time = null)
+public sealed class AppDbContext(
+    DbContextOptions<AppDbContext> options,
+    ITenantContext? tenant = null,
+    TimeProvider? time = null,
+    RowSecurity? rowSecurity = null)
     : IdentityUserContext<AppUser, Guid>(options), IAppDbContext, IDataProtectionKeyContext
 {
     /// <summary>The keys that sign session and antiforgery cookies, shared by every instance (K1).</summary>
@@ -32,6 +36,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenant
 
     // No tenant (design time, migrations, tests that only inspect the model): tenant-owned queries return nothing.
     private readonly ITenantContext _tenant = tenant ?? new TenantContext();
+    private readonly RowSecurity _rowSecurity = rowSecurity ?? new RowSecurity();
     private AuditWriter? _audit;
 
     private AuditWriter Audit => _audit ??= new AuditWriter(this, _tenant, time ?? TimeProvider.System);
@@ -50,6 +55,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenant
 
     /// <summary>Read by the query filters; EF Core evaluates it per query for this context instance.</summary>
     internal Guid? CurrentOrganizationId => _tenant.OrganizationId;
+
+    /// <summary>What <see cref="RowSecurityInterceptor"/> gives the database session; empty strings match no row.</summary>
+    internal (string Organization, string User, string Invitation) RowSecuritySettings => (
+        _tenant.OrganizationId?.ToString() ?? "",
+        _rowSecurity.UserId?.ToString() ?? "",
+        _rowSecurity.InvitationTokenHash is { } hash ? Convert.ToHexStringLower(hash) : "");
+
+    /// <summary>The settings this context's connection last received; null when they must be applied again.</summary>
+    internal string? AppliedRowSecurity { get; set; }
 
     // Audit entries first, so they pass the tenant guard like every other row, then one transaction for all.
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
@@ -70,6 +84,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenant
     {
         base.OnModelCreating(builder);
         builder.HasPostgresExtension("citext");
+        builder.HasDbFunction(typeof(DatabaseFunctions).GetMethod(nameof(DatabaseFunctions.UserHasTenantReferences))!)
+            .HasName(DatabaseFunctions.UserHasTenantReferencesName);
 
         builder.Entity<AppUser>(user =>
         {

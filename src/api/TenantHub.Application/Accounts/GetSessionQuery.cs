@@ -19,7 +19,7 @@ public sealed record MembershipSummary(Guid OrganizationId, string Slug, string 
 public sealed record SessionUser(Guid Id, string Email, string DisplayName, IReadOnlyList<MembershipSummary> Memberships);
 
 /// <summary>The signed-in user and their active memberships (removed ones grant nothing, SPEC 5.2).</summary>
-public sealed class GetSessionQuery(IAppDbContext db, IIdentityService identity)
+public sealed class GetSessionQuery(IAppDbContext db, IIdentityService identity, RowSecurity rowSecurity)
 {
     public async Task<SessionUser?> HandleAsync(Guid userId, CancellationToken cancellationToken)
     {
@@ -28,7 +28,9 @@ public sealed class GetSessionQuery(IAppDbContext db, IIdentityService identity)
             return null;
         }
 
-        // User-scoped: the user's memberships in every organization (tenant bypass, allow-listed).
+        // User-scoped: the user's memberships in every organization (tenant bypass, allow-listed). The database
+        // allows reading a user's own memberships everywhere once the scope says whose they are (D038).
+        rowSecurity.ReadAsUser(userId);
         var memberships = await db.Memberships
             .AcrossTenants()
             .AsNoTracking()

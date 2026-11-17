@@ -41,7 +41,8 @@ public sealed class InvitationAcceptance(
     IIdentityService identity,
     IDatabaseLocks locks,
     PlanLimitsCheck limits,
-    TimeProvider time)
+    TimeProvider time,
+    RowSecurity rowSecurity)
 {
     public async Task<InvitationPreview> PreviewAsync(string token, Guid? signedInUserId, CancellationToken cancellationToken)
     {
@@ -154,6 +155,8 @@ public sealed class InvitationAcceptance(
             throw InvitationErrors.NotFound();
         }
 
+        // Holding the link is what lets the database show this one invitation before the invitee is a member (D038).
+        rowSecurity.PresentInvitationToken(hash);
         var invitations = db.Invitations.AcrossTenants();
         var invitation = await (tracked ? invitations : invitations.AsNoTracking())
             .SingleOrDefaultAsync(i => i.TokenHash == hash, cancellationToken);
@@ -162,7 +165,11 @@ public sealed class InvitationAcceptance(
             : throw InvitationErrors.NotFound();
     }
 
-    private Task<bool> IsActiveMemberAsync(Guid organizationId, Guid userId, CancellationToken cancellationToken) =>
-        db.Memberships.AcrossTenants()
+    /// <summary>The signed-in user's own membership, which the database lets the scope read (D038).</summary>
+    private Task<bool> IsActiveMemberAsync(Guid organizationId, Guid userId, CancellationToken cancellationToken)
+    {
+        rowSecurity.ReadAsUser(userId);
+        return db.Memberships.AcrossTenants()
             .AnyAsync(m => m.OrganizationId == organizationId && m.UserId == userId && m.RemovedAt == null, cancellationToken);
+    }
 }

@@ -92,7 +92,9 @@ public sealed partial class AuditLogTests(PostgresFixture postgres)
         // Auckland is UTC+13 on 22 October 2026: 10:59 UTC is 23:59 on the 22nd there, 11:01 UTC is 00:01 on the 23rd.
         async Task<long> InsertAtAsync(string instant)
         {
-            await using var connection = new NpgsqlConnection(factory.Services.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()["ConnectionStrings:Database"]);
+            // Arranged as the owner: a raw insert by the API's user would (rightly) need the tenant setting (D038).
+            await using var connection = new NpgsqlConnection(PostgresFixture.AdminConnectionStringFor(
+                factory.Services.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()["ConnectionStrings:Database"]!));
             await connection.OpenAsync(Ct);
             await using var command = new NpgsqlCommand(
                 """

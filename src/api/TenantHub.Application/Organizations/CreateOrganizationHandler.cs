@@ -14,7 +14,8 @@ public sealed record CreateOrganizationCommand(Guid UserId, string Name, string 
 public sealed class CreateOrganizationHandler(
     IAppDbContext db,
     IDatabaseLocks locks,
-    OrganizationCreator creator)
+    OrganizationCreator creator,
+    RowSecurity rowSecurity)
 {
     public async Task<MembershipSummary> HandleAsync(CreateOrganizationCommand command, CancellationToken cancellationToken)
     {
@@ -23,6 +24,8 @@ public sealed class CreateOrganizationHandler(
         // Serializes this user's concurrent requests, so two at once cannot both pass the count below.
         await locks.LockUserAsync(command.UserId, cancellationToken);
         // Counts across all organizations (tenant bypass, allow-listed): the limit is per user, not per tenant.
+        // The database allows it as the user's own memberships (D038).
+        rowSecurity.ReadAsUser(command.UserId);
         var owned = await db.Memberships.AcrossTenants().CountAsync(
             m => m.UserId == command.UserId && m.Role == Role.Owner && m.RemovedAt == null,
             cancellationToken);

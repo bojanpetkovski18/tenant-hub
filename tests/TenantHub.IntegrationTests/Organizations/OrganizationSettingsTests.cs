@@ -115,7 +115,7 @@ public sealed class OrganizationSettingsTests(PostgresFixture postgres)
 
     private static async Task<long> CountAsync(string connectionString, string table, Guid organizationId)
     {
-        await using var connection = new NpgsqlConnection(connectionString);
+        await using var connection = new NpgsqlConnection(PostgresFixture.AdminConnectionStringFor(connectionString));
         await connection.OpenAsync(Ct);
         // The table name comes from the EF model above, never from input; the organization is a parameter.
         await using var command = new NpgsqlCommand($"SELECT count(*) FROM \"{table}\" WHERE organization_id = @org", connection);

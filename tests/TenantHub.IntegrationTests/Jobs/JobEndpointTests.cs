@@ -298,7 +298,7 @@ public sealed class JobEndpointTests(PostgresFixture postgres)
     public async Task The_database_refuses_a_job_that_points_at_another_organizations_client_or_member()
     {
         var tenants = await SharedApiTenants.GetAsync<JobEndpointTests>(postgres);
-        await using var connection = new NpgsqlConnection(tenants.ConnectionString);
+        await using var connection = new NpgsqlConnection(PostgresFixture.AdminConnectionStringFor(tenants.ConnectionString));
         await connection.OpenAsync(Ct);
         Guid ownerA;
         Guid ownerB;

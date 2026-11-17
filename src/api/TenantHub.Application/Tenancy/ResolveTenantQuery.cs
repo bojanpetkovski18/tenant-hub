@@ -9,10 +9,12 @@ namespace TenantHub.Application.Tenancy;
 /// the route. No tenant is entered yet, so this is one of the allow-listed bypasses. Null means "not a member" and
 /// the API answers 404, so other organizations' existence is not revealed.
 /// </summary>
-public sealed class ResolveTenantQuery(IAppDbContext db, TenantContext tenant)
+public sealed class ResolveTenantQuery(IAppDbContext db, TenantContext tenant, RowSecurity rowSecurity)
 {
     public async Task<bool> TryEnterAsync(Guid organizationId, Guid userId, CancellationToken cancellationToken)
     {
+        // The caller's own membership: what the database lets a scope read before it enters a tenant (D038).
+        rowSecurity.ReadAsUser(userId);
         var role = await db.Memberships
             .AcrossTenants()
             .AsNoTracking()
