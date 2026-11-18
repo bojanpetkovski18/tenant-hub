@@ -26,7 +26,8 @@ internal sealed record CreateJobStep(
     JobPriority Priority,
     DateOnly? ScheduledOn,
     DateOnly? DueOn,
-    decimal? QuotedAmount) : SeedStep(At, ActorEmail);
+    decimal? QuotedAmount,
+    int? EstimatedMinutes = null) : SeedStep(At, ActorEmail);
 
 internal sealed record MoveJobStep(DateTimeOffset At, string ActorEmail, int Job, JobStatus To, string? Reason) : SeedStep(At, ActorEmail);
 
@@ -148,7 +149,9 @@ internal static class DemoPlan
                 priorities[random.Next(priorities.Length)],
                 target == JobStatus.New ? null : scheduled,
                 random.Next(9) == 0 ? null : scheduled.AddDays(random.Next(0, 4)),
-                random.Next(6) == 0 ? null : Math.Round(60m + random.Next(0, 180) * 7.5m, 2)));
+                random.Next(6) == 0 ? null : Math.Round(60m + random.Next(0, 180) * 7.5m, 2),
+                // From the index, not the random sequence, so the rest of the demo data stays as it was (M17 board load).
+                j % 7 == 6 ? null : 60 + (j % 6) * 30));
 
             // The job's moves, each a while after the one before; then kept strictly in order and in the past.
             var moves = new List<(double Hours, string Actor, JobStatus To, string? Reason)>();
