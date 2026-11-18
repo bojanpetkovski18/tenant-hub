@@ -1,3 +1,4 @@
+using TenantHub.Domain.Agreements;
 using TenantHub.Domain.Clients;
 using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
@@ -28,6 +29,17 @@ internal sealed record CreateJobStep(
     decimal? QuotedAmount) : SeedStep(At, ActorEmail);
 
 internal sealed record MoveJobStep(DateTimeOffset At, string ActorEmail, int Job, JobStatus To, string? Reason) : SeedStep(At, ActorEmail);
+
+/// <summary>An agreement as the seed plans it (SPEC-V2 4.2, M16): its first visit is <see cref="DaysAgo"/> days before today.</summary>
+internal sealed record SeedAgreement(string Title, Recurrence Recurrence, int DaysAgo, string AssigneeEmail, decimal QuotedAmount, int EstimatedMinutes);
+
+internal sealed record CreateAgreementStep(DateTimeOffset At, string ActorEmail, int Agreement, int Client, SeedAgreement Plan, DateOnly StartsOn) : SeedStep(At, ActorEmail);
+
+/// <summary>The assignee starts and completes the visit of that day.</summary>
+internal sealed record CompleteVisitStep(DateTimeOffset At, string ActorEmail, int Agreement, DateOnly Date) : SeedStep(At, ActorEmail);
+
+/// <summary>The daily run, as the system, bringing the horizon up to today.</summary>
+internal sealed record GenerateVisitsStep(DateTimeOffset At, string ActorEmail) : SeedStep(At, ActorEmail);
 
 /// <summary>Who is in a seeded organization, and with which role.</summary>
 public sealed record SeedPerson(string Email, string DisplayName, Role Role);
@@ -70,7 +82,8 @@ internal static class DemoPlan
         int jobCount,
         int firstDay,
         int span,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        IReadOnlyList<SeedAgreement>? agreements = null)
     {
         var random = new Random(organization.RandomSeed);
         var today = Organization.TodayIn(organization.TimeZone, now);
@@ -184,6 +197,29 @@ internal static class DemoPlan
                 var when = times[m] > createdAt ? times[m] : createdAt.AddSeconds(m + 1);
                 steps.Add(new MoveJobStep(when, moves[m].Actor, j, moves[m].To, moves[m].Reason));
             }
+        }
+
+        // Agreements started some weeks ago: created that morning, each past visit done by its assignee on its day, and
+        // a last daily run so the visits reach 60 days ahead (D032, M16).
+        var seeded = agreements ?? [];
+        for (var a = 0; a < seeded.Count; a++)
+        {
+            var agreement = seeded[a];
+            var startsOn = today.AddDays(-agreement.DaysAgo);
+            // Started today: created after everything else, so generation sees the final open-jobs count.
+            var createdAt = agreement.DaysAgo == 0 ? now.AddMinutes(-1) : At(startsOn, 7.5);
+            steps.Add(new CreateAgreementStep(createdAt, Manager(), a, active[random.Next(active.Count)], agreement, startsOn));
+            foreach (var day in new Schedule(agreement.Recurrence, startsOn, null, null).Occurrences(startsOn, today.AddDays(-1)))
+            {
+                // The daily run of that day, as the scheduler would have made it, then the visit.
+                steps.Add(new GenerateVisitsStep(At(day, 0.25), managers[0].Email));
+                steps.Add(new CompleteVisitStep(At(day, 10 + random.Next(0, 6)), agreement.AssigneeEmail, a, day));
+            }
+        }
+
+        if (seeded.Count > 0)
+        {
+            steps.Add(new GenerateVisitsStep(now.AddMinutes(-2), managers[0].Email));
         }
 
         // Stable: time first, then creation before changes, then plan order.

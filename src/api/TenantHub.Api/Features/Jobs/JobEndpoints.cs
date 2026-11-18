@@ -16,9 +16,10 @@ public sealed record JobRequest(
     JobPriority? Priority,
     DateOnly? ScheduledOn,
     DateOnly? DueOn,
-    decimal? QuotedAmount)
+    decimal? QuotedAmount,
+    int? EstimatedMinutes = null)
 {
-    public JobInput ToInput() => new(Title, Description, ClientId, AssigneeUserId, Priority, ScheduledOn, DueOn, QuotedAmount);
+    public JobInput ToInput() => new(Title, Description, ClientId, AssigneeUserId, Priority, ScheduledOn, DueOn, QuotedAmount, EstimatedMinutes);
 }
 
 /// <summary><see cref="Version"/> is the value the client last read; a newer one in the database means 409.</summary>
@@ -31,9 +32,10 @@ public sealed record UpdateJobRequest(
     DateOnly? ScheduledOn,
     DateOnly? DueOn,
     decimal? QuotedAmount,
-    uint Version)
+    uint Version,
+    int? EstimatedMinutes = null)
 {
-    public JobInput ToInput() => new(Title, Description, ClientId, AssigneeUserId, Priority, ScheduledOn, DueOn, QuotedAmount);
+    public JobInput ToInput() => new(Title, Description, ClientId, AssigneeUserId, Priority, ScheduledOn, DueOn, QuotedAmount, EstimatedMinutes);
 }
 
 public sealed record TransitionRequest(JobStatus To, [property: MaxLength(2000)] string? Reason);
@@ -50,6 +52,7 @@ public static class JobEndpoints
                 string[]? priority,
                 string? assignee,
                 Guid? clientId,
+                Guid? agreementId,
                 bool? overdue,
                 DateOnly? dueFrom,
                 DateOnly? dueTo,
@@ -71,7 +74,8 @@ public static class JobEndpoints
                     dueTo,
                     completedFrom,
                     sort,
-                    PageRequest.From(page, pageSize)),
+                    PageRequest.From(page, pageSize),
+                    agreementId),
                 ct)))
             .RequirePermission(Permissions.JobsRead);
 
@@ -98,6 +102,11 @@ public static class JobEndpoints
         jobs.MapPost("/{id:guid}/transitions", async (Guid id, TransitionRequest request, JobCommands commands, CancellationToken ct) =>
                 TypedResults.Ok(await commands.TransitionAsync(id, request.To, request.Reason, ct)))
             .RequirePermission(Permissions.JobsWork);
+
+        // Skipping one visit of an agreement is an agreement decision (SPEC-V2 2.2, 7).
+        jobs.MapPost("/{id:guid}/skip", async (Guid id, JobCommands commands, CancellationToken ct) =>
+                TypedResults.Ok(await commands.SkipAsync(id, ct)))
+            .RequirePermission(Permissions.AgreementsManage);
 
         jobs.MapDelete("/{id:guid}", async (Guid id, JobCommands commands, CancellationToken ct) =>
             {

@@ -101,7 +101,8 @@ public sealed class JobFilterTests(PostgresFixture postgres)
         // The ORDER BY text comes from this test's own table, never from input; the organization is a parameter.
         var oracle = await OracleAsync(seed, FormattableStringFactory.Create($"SELECT id AS \"Value\" FROM jobs WHERE organization_id = {{0}} ORDER BY {orderBy}", seed.Org));
 
-        Assert.Equal(150, actual.Count);
+        // Every job of the seed: the 150 planned ones and the agreements' visits (M16), over several pages of 40.
+        Assert.True(actual.Count > 150, $"{actual.Count} jobs");
         Assert.Equal(oracle, actual);
     }
 

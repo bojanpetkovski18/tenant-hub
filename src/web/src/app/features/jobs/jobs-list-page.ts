@@ -79,6 +79,24 @@ const pageSize = 25;
         </div>
       </div>
 
+      @if (query().agreementId) {
+        <p class="flex flex-wrap items-center gap-2 text-sm">
+          Showing the visits of one agreement.
+          <a
+            [routerLink]="['/o', slug(), 'agreements', query().agreementId]"
+            class="font-medium text-accent hover:underline"
+            >Open the agreement</a
+          >
+          <button
+            type="button"
+            class="font-medium text-accent hover:underline"
+            (click)="change({ agreementId: '', page: 1 })"
+          >
+            Show all jobs
+          </button>
+        </p>
+      }
+
       <div class="flex flex-wrap items-end gap-3" role="search">
         <div class="min-w-0 flex-1 basis-56">
           <label class="th-label" for="job-search">Search</label>
@@ -405,6 +423,7 @@ export class JobsListPage {
   readonly priority = input<string>();
   readonly assignee = input<string>();
   readonly clientId = input<string>();
+  readonly agreementId = input<string>();
   readonly overdue = input<string>();
   readonly dueFrom = input<string>();
   readonly dueTo = input<string>();
@@ -435,6 +454,7 @@ export class JobsListPage {
       priority: this.priority(),
       assignee: this.assignee(),
       clientId: this.clientId(),
+      agreementId: this.agreementId(),
       overdue: this.overdue(),
       dueFrom: this.dueFrom(),
       dueTo: this.dueTo(),
@@ -514,6 +534,7 @@ export class JobsListPage {
       priorities: [],
       assignee: '',
       clientId: '',
+      agreementId: '',
       overdue: false,
       dueFrom: '',
       dueTo: '',

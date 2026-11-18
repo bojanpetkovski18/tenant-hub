@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
+using TenantHub.Domain.Agreements;
 using TenantHub.Domain.Clients;
 using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Organizations;
@@ -19,7 +20,8 @@ public sealed class PlanLimitsCheck(IAppDbContext db, ITenantContext tenant, Tim
         var seats = await SeatsAsync(cancellationToken);
         var clients = await db.Clients.CountAsync(c => c.Status == ClientStatus.Active, cancellationToken);
         var jobs = await db.Jobs.CountAsync(j => j.Status != JobStatus.Completed && j.Status != JobStatus.Cancelled, cancellationToken);
-        return new PlanUsage(seats, clients, jobs);
+        var agreements = await db.Agreements.CountAsync(a => a.Status == AgreementStatus.Active, cancellationToken);
+        return new PlanUsage(seats, clients, jobs, agreements);
     }
 
     public async Task<int> SeatsAsync(CancellationToken cancellationToken)

@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
 using TenantHub.Application.Tenancy;
 using TenantHub.Domain;
+using TenantHub.Domain.Agreements;
 using TenantHub.Domain.Audit;
 using TenantHub.Domain.Clients;
 using TenantHub.Domain.Invitations;
@@ -56,6 +57,8 @@ public sealed class AppDbContext(
     public DbSet<Invitation> Invitations => Set<Invitation>();
 
     public DbSet<Job> Jobs => Set<Job>();
+
+    public DbSet<Agreement> Agreements => Set<Agreement>();
 
     /// <summary>Side effects waiting for the dispatcher (D039); written through <see cref="IOutbox"/>.</summary>
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();

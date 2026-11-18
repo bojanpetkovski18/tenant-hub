@@ -16,6 +16,8 @@ import { LimitReached } from '../../shared/ui/limit-reached';
 import { EmptyState, ErrorState } from '../../shared/ui/states';
 import { PagedList } from '../../shared/list/paged-list.store';
 import { JobStatusBadge } from '../jobs/job-badges';
+import { AgreementStatusBadge } from '../agreements/agreement-status-badge';
+import { AgreementListItem, AgreementsApi } from '../agreements/agreements.api';
 import { JobListItem, JobsApi } from '../jobs/jobs.api';
 import { ClientStatusBadge } from './client-status-badge';
 import { Client, ClientsApi } from './clients.api';
@@ -28,6 +30,7 @@ import { Client, ClientsApi } from './clients.api';
     DatePipe,
     EmptyState,
     ErrorState,
+    AgreementStatusBadge,
     ClientStatusBadge,
     JobStatusBadge,
     LimitReached,
@@ -178,6 +181,49 @@ import { Client, ClientsApi } from './clients.api';
           >
         }
       </section>
+
+      @if (canReadAgreements()) {
+        <section class="th-card mt-5" aria-labelledby="agreements-heading">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="agreements-heading" class="text-lg font-semibold">Agreements</h2>
+            @if (canManageAgreements() && client.status === 'active') {
+              <a
+                [routerLink]="['/o', slug(), 'agreements', 'new']"
+                [queryParams]="{ clientId: client.id }"
+                class="th-button-secondary"
+                >New agreement</a
+              >
+            }
+          </div>
+          @if (agreementsError(); as error) {
+            <div class="mt-3">
+              <app-error-state [message]="error.title" (retry)="loadAgreements()" />
+            </div>
+          } @else if (agreements() === null) {
+            <div class="mt-3 h-16 animate-pulse rounded bg-surface-2" aria-busy="true"></div>
+          } @else if (agreements()!.length === 0) {
+            <p class="mt-2 text-sm text-muted">No repeating work for this client.</p>
+          } @else {
+            <ul class="mt-3 divide-y divide-border" aria-label="This client's agreements">
+              @for (agreement of agreements(); track agreement.id) {
+                <li class="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <a
+                    [routerLink]="['/o', slug(), 'agreements', agreement.id]"
+                    class="min-w-0 hover:underline"
+                  >
+                    {{ agreement.title }}
+                    <span class="text-sm text-muted">· {{ agreement.schedule }}</span>
+                  </a>
+                  <app-agreement-status-badge
+                    [status]="agreement.status"
+                    [hold]="agreement.pausedReason"
+                  />
+                </li>
+              }
+            </ul>
+          }
+        </section>
+      }
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -190,6 +236,7 @@ export class ClientDetailPage {
 
   private readonly api = inject(ClientsApi);
   private readonly jobsApi = inject(JobsApi);
+  private readonly agreementsApi = inject(AgreementsApi);
   private readonly session = inject(SessionStore);
   private readonly confirm = inject(Confirm);
   private readonly router = inject(Router);
@@ -200,6 +247,14 @@ export class ClientDetailPage {
   protected readonly listLink = computed(() => ['/o', this.slug(), 'clients']);
   protected readonly canDelete = computed(() => this.session.can(this.slug(), 'clients.delete'));
   protected readonly canCreateJob = computed(() => this.session.can(this.slug(), 'jobs.create'));
+  protected readonly canReadAgreements = computed(() =>
+    this.session.can(this.slug(), 'agreements.read'),
+  );
+  protected readonly canManageAgreements = computed(() =>
+    this.session.can(this.slug(), 'agreements.manage'),
+  );
+  protected readonly agreements = signal<readonly AgreementListItem[] | null>(null);
+  protected readonly agreementsError = signal<ApiProblem | null>(null);
 
   /** The client's latest jobs (SPEC 4.1) and how many are open, for the archive warning (SPEC 5.4). */
   protected readonly jobs = signal<PagedList<JobListItem> | null>(null);
@@ -233,12 +288,28 @@ export class ClientDetailPage {
     try {
       this.client.set(await this.api.get(membership.organizationId, this.id()));
       void this.loadJobs();
+      if (this.canReadAgreements()) {
+        void this.loadAgreements();
+      }
     } catch (error) {
       const problem = toApiProblem(error);
       this.notFound.set(problem.code === 'client-not-found');
       this.loadError.set(problem.code === 'client-not-found' ? null : problem);
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  protected async loadAgreements(): Promise<void> {
+    this.agreementsError.set(null);
+    try {
+      const page = await this.agreementsApi.list(this.membership()!.organizationId, {
+        clientId: this.id(),
+        pageSize: '20',
+      });
+      this.agreements.set(page.items);
+    } catch (error) {
+      this.agreementsError.set(toApiProblem(error));
     }
   }
 

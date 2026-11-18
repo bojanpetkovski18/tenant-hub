@@ -12,6 +12,8 @@ export interface JobQuery {
   /** A user id, `me`, `none`, or '' for anyone. */
   readonly assignee: string;
   readonly clientId: string;
+  /** The visits of one agreement (SPEC-V2 4.2), from the agreement page. */
+  readonly agreementId: string;
   readonly overdue: boolean;
   readonly dueFrom: string;
   readonly dueTo: string;
@@ -28,6 +30,7 @@ export interface RawJobQuery {
   readonly priority?: string;
   readonly assignee?: string;
   readonly clientId?: string;
+  readonly agreementId?: string;
   readonly overdue?: string;
   readonly dueFrom?: string;
   readonly dueTo?: string;
@@ -67,6 +70,7 @@ export function parseJobQuery(raw: RawJobQuery): JobQuery {
     priorities: listOf(raw.priority, jobPriorities),
     assignee: assignee === 'me' || assignee === 'none' || uuid.test(assignee) ? assignee : '',
     clientId: uuid.test(raw.clientId ?? '') ? raw.clientId! : '',
+    agreementId: uuid.test(raw.agreementId ?? '') ? raw.agreementId! : '',
     overdue: raw.overdue === 'true',
     dueFrom: isoDate.test(raw.dueFrom ?? '') ? raw.dueFrom! : '',
     dueTo: isoDate.test(raw.dueTo ?? '') ? raw.dueTo! : '',
@@ -91,6 +95,7 @@ export function jobApiParams(
   if (query.priorities.length > 0) params['priority'] = query.priorities;
   if (query.assignee) params['assignee'] = query.assignee;
   if (query.clientId) params['clientId'] = query.clientId;
+  if (query.agreementId) params['agreementId'] = query.agreementId;
   if (query.overdue) params['overdue'] = 'true';
   if (query.dueFrom) params['dueFrom'] = query.dueFrom;
   if (query.dueTo) params['dueTo'] = query.dueTo;
@@ -132,6 +137,7 @@ export function activeFilterCount(query: JobQuery): number {
     query.priorities.length > 0,
     !!query.assignee,
     !!query.clientId,
+    !!query.agreementId,
     query.overdue,
     !!query.dueFrom || !!query.dueTo,
     !!query.completedFrom,

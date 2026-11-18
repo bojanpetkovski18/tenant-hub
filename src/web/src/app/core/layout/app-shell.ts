@@ -101,6 +101,13 @@ export class AppShell {
       icon: 'M9 5h11M9 12h11M9 19h11M4 5h.01M4 12h.01M4 19h.01',
     },
     {
+      path: 'agreements',
+      anyOf: ['agreements.read'],
+      label: 'Agreements',
+      // A repeat arrow: work that comes back on its own.
+      icon: 'M17 2l4 4-4 4M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v1a4 4 0 0 1-4 4H3',
+    },
+    {
       path: 'clients',
       anyOf: ['clients.read'],
       label: 'Clients',

@@ -22,6 +22,8 @@ export const permissionsFor: Readonly<Record<Role, readonly Permission[]>> = {
     'jobs.manage',
     'jobs.work',
     'audit.read',
+    'agreements.read',
+    'agreements.manage',
   ],
   admin: [
     'org.read',
@@ -35,9 +37,19 @@ export const permissionsFor: Readonly<Record<Role, readonly Permission[]>> = {
     'jobs.manage',
     'jobs.work',
     'audit.read',
+    'agreements.read',
+    'agreements.manage',
   ],
-  member: ['org.read', 'clients.read', 'clients.write', 'jobs.read', 'jobs.create', 'jobs.work'],
-  viewer: ['org.read', 'clients.read', 'jobs.read'],
+  member: [
+    'org.read',
+    'clients.read',
+    'clients.write',
+    'jobs.read',
+    'jobs.create',
+    'jobs.work',
+    'agreements.read',
+  ],
+  viewer: ['org.read', 'clients.read', 'jobs.read', 'agreements.read'],
 };
 import { SessionStore } from '../core/session/session.store';
 import { tenantAccessInterceptor } from '../core/session/tenant-access.interceptor';

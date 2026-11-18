@@ -30,12 +30,18 @@ const overview = (overrides: Partial<OrganizationOverview> = {}): OrganizationOv
   plan: 'free',
   timeZone: 'Europe/Amsterdam',
   createdAt: '2026-10-01T09:00:00Z',
-  usage: { seats: 3, activeClients: 20, openJobs: 12 },
-  limits: { seats: 3, activeClients: 25, openJobs: 50 },
+  usage: { seats: 3, activeClients: 20, openJobs: 12, activeAgreements: 1 },
+  limits: { seats: 3, activeClients: 25, openJobs: 50, activeAgreements: 3 },
   plans: [
-    { plan: 'free', limits: { seats: 3, activeClients: 25, openJobs: 50 } },
-    { plan: 'team', limits: { seats: 10, activeClients: 500, openJobs: 2000 } },
-    { plan: 'business', limits: { seats: 50, activeClients: null, openJobs: null } },
+    { plan: 'free', limits: { seats: 3, activeClients: 25, openJobs: 50, activeAgreements: 3 } },
+    {
+      plan: 'team',
+      limits: { seats: 10, activeClients: 500, openJobs: 2000, activeAgreements: 200 },
+    },
+    {
+      plan: 'business',
+      limits: { seats: 50, activeClients: null, openJobs: null, activeAgreements: null },
+    },
   ],
   ...overrides,
 });
@@ -95,6 +101,7 @@ describe('settings page', () => {
       '3 of 3 seats',
       '20 of 25 active clients',
       '12 of 50 open jobs',
+      '1 of 3 active agreements',
     ]);
     expect(meters[0]!.firstElementChild!.className).toContain('bg-danger');
     expect(meters[0]!.firstElementChild!.className).toContain('w-full');
@@ -119,7 +126,10 @@ describe('settings page', () => {
   it('lists every limit that blocks a downgrade', async () => {
     const element = await open(
       olivia,
-      overview({ plan: 'team', limits: { seats: 10, activeClients: 500, openJobs: 2000 } }),
+      overview({
+        plan: 'team',
+        limits: { seats: 10, activeClients: 500, openJobs: 2000, activeAgreements: 200 },
+      }),
     );
 
     [...main(element).querySelectorAll('button')]

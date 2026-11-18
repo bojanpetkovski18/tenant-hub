@@ -38,6 +38,10 @@ const messages = {
     min: 'Enter an amount of 0 or more.',
     max: 'Use at most 1,000,000.00.',
   },
+  estimatedMinutes: {
+    min: 'Enter at least 1 minute.',
+    max: 'Use at most 1,440 minutes (a day).',
+  },
   description: { maxlength: 'Use at most 5,000 characters.' },
 } as const;
 
@@ -249,6 +253,27 @@ type Field = keyof typeof messages;
               <p id="quotedAmount-error" class="th-field-error">{{ message }}</p>
             }
           </div>
+
+          <div>
+            <label class="th-label" for="estimatedMinutes">
+              Estimated time, minutes <span class="font-normal text-muted">(optional)</span>
+            </label>
+            <input
+              id="estimatedMinutes"
+              type="number"
+              inputmode="numeric"
+              min="1"
+              max="1440"
+              step="1"
+              class="th-input"
+              formControlName="estimatedMinutes"
+              [attr.aria-invalid]="!!error('estimatedMinutes')"
+              [attr.aria-describedby]="error('estimatedMinutes') ? 'estimatedMinutes-error' : null"
+            />
+            @if (error('estimatedMinutes'); as message) {
+              <p id="estimatedMinutes-error" class="th-field-error">{{ message }}</p>
+            }
+          </div>
         </div>
 
         <div>
@@ -335,6 +360,7 @@ export class JobFormPage {
     scheduledOn: [''],
     dueOn: [''],
     quotedAmount: [null as number | null, [Validators.min(0), Validators.max(1_000_000)]],
+    estimatedMinutes: [null as number | null, [Validators.min(1), Validators.max(1440)]],
     description: ['', Validators.maxLength(5000)],
   });
   private version = 0;
@@ -425,6 +451,7 @@ export class JobFormPage {
       scheduledOn: value.scheduledOn || null,
       dueOn: value.dueOn || null,
       quotedAmount: value.quotedAmount ?? null,
+      estimatedMinutes: value.estimatedMinutes ?? null,
     };
     this.saving.set(true);
     try {
@@ -480,6 +507,7 @@ export class JobFormPage {
       scheduledOn: job.scheduledOn ?? '',
       dueOn: job.dueOn ?? '',
       quotedAmount: job.quotedAmount,
+      estimatedMinutes: job.estimatedMinutes,
       description: job.description ?? '',
     });
   }

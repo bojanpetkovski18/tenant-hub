@@ -3,12 +3,18 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using TenantHub.Application.Abstractions;
+using TenantHub.Application.Agreements;
 using TenantHub.Application.Demo;
+using TenantHub.Application.Jobs;
+using TenantHub.Application.Organizations;
 using TenantHub.Application.Tenancy;
+using TenantHub.Domain.Agreements;
 using TenantHub.Domain.Clients;
 using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
 using TenantHub.Domain.Organizations;
+using TenantHub.Infrastructure.Background;
 using TenantHub.Infrastructure.Data;
 using TenantHub.Infrastructure.Identity;
 
@@ -25,6 +31,7 @@ namespace TenantHub.Infrastructure.Seed;
 public sealed partial class DemoSeeder(
     AppDbContext db,
     UserManager<AppUser> users,
+    IIdentityService identity,
     DbContextOptions<AppDbContext> options,
     TimeProvider time,
     ILogger<DemoSeeder> logger)
@@ -72,6 +79,21 @@ public sealed partial class DemoSeeder(
             Person("sam@tenanthub.example", Role.Admin),
             Person("leo@harborpine.example", Role.Member),
         ]);
+
+    // Repeating work (M16): the visits are generated and, in the past, done by the assignee.
+    private static readonly SeedAgreement[] BrightlineAgreements =
+    [
+        new("Weekly office cleaning", Recurrence.Weekly([DayOfWeek.Monday, DayOfWeek.Thursday]), 28, "maya@brightline.example", 180m, 120),
+        new("Window cleaning", Recurrence.Weekly([DayOfWeek.Tuesday], everyWeeks: 2), 35, "noah@brightline.example", 140m, 90),
+        new("Monthly deep clean", Recurrence.MonthlyOnWeekday(WeekOfMonth.Last, DayOfWeek.Friday), 70, "maya@brightline.example", 420m, 240),
+    ];
+
+    // Free plan, at 3 of 3 seats and near 50 open jobs: an agreement started today fills the room that is left, and its
+    // page shows generation held at the plan limit (SPEC 8.3: the demo shows limit handling).
+    private static readonly SeedAgreement[] HarborPineAgreements =
+    [
+        new("Weekly lawn care", Recurrence.Weekly([DayOfWeek.Monday, DayOfWeek.Thursday]), 0, "leo@harborpine.example", 85m, 60),
+    ];
 
     public static IReadOnlyList<string> Emails { get; } = [.. People.Select(u => u.Email)];
 
@@ -136,10 +158,10 @@ public sealed partial class DemoSeeder(
         }
 
         var created = 0;
-        foreach (var (organization, clients, archivedEvery, jobs, firstDay, span) in new[]
+        foreach (var (organization, clients, archivedEvery, jobs, firstDay, span, agreements) in new[]
         {
-            (Brightline, DemoClients.CleaningCompany(), 8, 150, -118, 147),
-            (HarborPine, DemoClients.Landscaper(), 12, 70, -36, 70),
+            (Brightline, DemoClients.CleaningCompany(), 8, 150, -118, 147, BrightlineAgreements),
+            (HarborPine, DemoClients.Landscaper(), 12, 70, -36, 70, HarborPineAgreements),
         })
         {
             if (await db.Organizations.AnyAsync(o => o.Slug == organization.Slug, cancellationToken))
@@ -147,7 +169,7 @@ public sealed partial class DemoSeeder(
                 continue;
             }
 
-            var steps = DemoPlan.For(organization, clients, archivedEvery, jobs, firstDay, span, now);
+            var steps = DemoPlan.For(organization, clients, archivedEvery, jobs, firstDay, span, now, agreements);
             await SeedOrganizationAsync(organization, clients, steps, ids, now, cancellationToken);
             created++;
         }
@@ -199,6 +221,7 @@ public sealed partial class DemoSeeder(
             var roles = seed.People.ToDictionary(p => p.Email, p => p.Role, StringComparer.Ordinal);
             var clientIds = new Guid[clients.Count];
             var jobIds = new Dictionary<int, Guid>();
+            var agreementIds = new Dictionary<int, Guid>();
             var names = new Dictionary<Guid, string>();
             foreach (var person in seed.People)
             {
@@ -210,7 +233,17 @@ public sealed partial class DemoSeeder(
                 clock.Now = step.At;
                 var actorId = ids[step.ActorEmail];
                 var role = roles[step.ActorEmail];
-                await using var context = Context(organization.Id, actorId, role, clock);
+                var tenant = new TenantContext();
+                if (step is GenerateVisitsStep)
+                {
+                    tenant.EnterAsSystem(organization.Id);
+                }
+                else
+                {
+                    tenant.Enter(organization.Id, actorId, role);
+                }
+
+                await using var context = new AppDbContext(options, tenant, clock);
                 switch (step)
                 {
                     case CreateClientStep create:
@@ -244,6 +277,37 @@ public sealed partial class DemoSeeder(
                         (await context.Jobs.SingleAsync(j => j.Id == jobIds[move.Job], cancellationToken))
                             .TransitionTo(move.To, JobActor.From(actorId, role), move.Reason, step.At);
                         break;
+                    case CreateAgreementStep create:
+                        var home = await context.Organizations.SingleAsync(o => o.Id == organization.Id, cancellationToken);
+                        var agreement = Agreement.Create(
+                            organization.Id,
+                            clientIds[create.Client],
+                            AgreementTemplate.Validate(create.Plan.Title, null, ids[create.Plan.AssigneeEmail], JobPriority.Normal, create.Plan.QuotedAmount, create.Plan.EstimatedMinutes),
+                            new Schedule(create.Plan.Recurrence, create.StartsOn, null, null),
+                            home.TodayAt(step.At),
+                            actorId,
+                            names,
+                            step.At);
+                        context.Agreements.Add(agreement);
+                        agreementIds[create.Agreement] = agreement.Id;
+                        await Generator(context, tenant, clock).GenerateAsync(home, [agreement], cancellationToken);
+                        await new RecurringWork(context).EnsureDailyGenerationAsync(organization.Id, VisitGenerator.NextDailyRun(home, step.At), cancellationToken);
+                        break;
+                    case CompleteVisitStep visit:
+                        // Absent only when the plan's open-jobs limit left it out (Harbor & Pine is on Free): nothing to do then.
+                        if (await context.Jobs.SingleOrDefaultAsync(j => j.AgreementId == agreementIds[visit.Agreement] && j.OccurrenceOn == visit.Date, cancellationToken) is not { } done)
+                        {
+                            break;
+                        }
+
+                        done.TransitionTo(JobStatus.InProgress, JobActor.From(actorId, role), null, step.At.AddHours(-2));
+                        done.TransitionTo(JobStatus.Completed, JobActor.From(actorId, role), null, step.At);
+                        break;
+                    case GenerateVisitsStep:
+                        var current = await context.Organizations.SingleAsync(o => o.Id == organization.Id, cancellationToken);
+                        var active = await context.Agreements.Where(a => a.Status == AgreementStatus.Active).ToListAsync(cancellationToken);
+                        await Generator(context, tenant, clock).GenerateAsync(current, active, cancellationToken);
+                        break;
                 }
 
                 await context.SaveChangesAsync(cancellationToken);
@@ -259,6 +323,10 @@ public sealed partial class DemoSeeder(
             throw;
         }
     }
+
+    /// <summary>The application's generator over a seed context, so seeded visits follow the same rules as real ones.</summary>
+    private VisitGenerator Generator(AppDbContext context, TenantContext tenant, TimeProvider clock) =>
+        new(context, new PlanLimitsCheck(context, tenant, clock), new JobViews(context, tenant, identity, clock), clock);
 
     /// <summary>A context working in the organization as this person, writing at the seed clock's time.</summary>
     private AppDbContext Context(Guid organizationId, Guid userId, Role role, SeedClock clock)

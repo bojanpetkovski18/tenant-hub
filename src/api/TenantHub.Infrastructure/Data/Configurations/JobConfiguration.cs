@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using TenantHub.Domain.Agreements;
 using TenantHub.Domain.Clients;
 using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
@@ -10,6 +11,8 @@ namespace TenantHub.Infrastructure.Data.Configurations;
 
 internal sealed class JobConfiguration : IEntityTypeConfiguration<Job>
 {
+    public const string OccurrenceIndex = "ux_jobs_agreement_occurrence";
+
     public void Configure(EntityTypeBuilder<Job> job)
     {
         job.ToTable("jobs");
@@ -57,5 +60,17 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<Job>
             .HasForeignKey(j => new { j.OrganizationId, j.AssigneeUserId })
             .OnDelete(DeleteBehavior.NoAction);
         job.HasOne<AppUser>().WithMany().HasForeignKey(j => j.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+
+        // Visits of agreements (SPEC-V2 8): each occurrence once per agreement, whatever runs generation and however
+        // often (the backstop under the organization lock, D041). Also the index of the composite foreign key.
+        job.Property(j => j.OccurrenceOn).HasColumnType("date");
+        job.HasIndex(j => new { j.OrganizationId, j.AgreementId, j.OccurrenceOn })
+            .IsUnique()
+            .HasFilter("agreement_id IS NOT NULL")
+            .HasDatabaseName(OccurrenceIndex);
+        job.HasOne<Agreement>().WithMany()
+            .HasForeignKey(j => new { j.OrganizationId, j.AgreementId })
+            .HasPrincipalKey(a => new { a.OrganizationId, a.Id })
+            .OnDelete(DeleteBehavior.NoAction);
     }
 }

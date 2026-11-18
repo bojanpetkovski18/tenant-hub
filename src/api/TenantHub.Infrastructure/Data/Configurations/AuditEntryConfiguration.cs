@@ -20,6 +20,7 @@ internal sealed class AuditEntryConfiguration : IEntityTypeConfiguration<AuditEn
         entry.Property(a => a.Id).UseIdentityAlwaysColumn();
 
         entry.Property(a => a.ActorName).HasMaxLength(80);
+        entry.Property(a => a.ActorKind).HasConversion<string>().HasMaxLength(20);
         entry.Property(a => a.Action).HasMaxLength(64);
         entry.Property(a => a.EntityType).HasMaxLength(32);
         entry.Property(a => a.Summary).HasMaxLength(500);

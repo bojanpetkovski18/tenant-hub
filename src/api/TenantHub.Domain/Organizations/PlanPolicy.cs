@@ -6,16 +6,19 @@ public enum LimitKind
     Seats,
     ActiveClients,
     OpenJobs,
+
+    /// <summary>Agreements that are active (not paused or ended), SPEC-V2 4.8.</summary>
+    ActiveAgreements,
 }
 
 /// <summary>A plan's limits; null means unlimited.</summary>
-public sealed record PlanLimits(int? Seats, int? ActiveClients, int? OpenJobs)
+public sealed record PlanLimits(int? Seats, int? ActiveClients, int? OpenJobs, int? ActiveAgreements)
 {
     public static PlanLimits For(Plan plan) => plan switch
     {
-        Plan.Free => new(Seats: 3, ActiveClients: 25, OpenJobs: 50),
-        Plan.Team => new(Seats: 10, ActiveClients: 500, OpenJobs: 2_000),
-        Plan.Business => new(Seats: 50, ActiveClients: null, OpenJobs: null),
+        Plan.Free => new(Seats: 3, ActiveClients: 25, OpenJobs: 50, ActiveAgreements: 3),
+        Plan.Team => new(Seats: 10, ActiveClients: 500, OpenJobs: 2_000, ActiveAgreements: 200),
+        Plan.Business => new(Seats: 50, ActiveClients: null, OpenJobs: null, ActiveAgreements: null),
         _ => throw new ArgumentOutOfRangeException(nameof(plan), plan, "Unknown plan."),
     };
 
@@ -24,6 +27,7 @@ public sealed record PlanLimits(int? Seats, int? ActiveClients, int? OpenJobs)
         LimitKind.Seats => Seats,
         LimitKind.ActiveClients => ActiveClients,
         LimitKind.OpenJobs => OpenJobs,
+        LimitKind.ActiveAgreements => ActiveAgreements,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 }
@@ -32,13 +36,14 @@ public sealed record PlanLimits(int? Seats, int? ActiveClients, int? OpenJobs)
 /// What an organization uses (SPEC 5.5): seats are active members plus pending invitations; archived clients and
 /// closed jobs do not count.
 /// </summary>
-public sealed record PlanUsage(int Seats, int ActiveClients, int OpenJobs)
+public sealed record PlanUsage(int Seats, int ActiveClients, int OpenJobs, int ActiveAgreements)
 {
     public int Of(LimitKind kind) => kind switch
     {
         LimitKind.Seats => Seats,
         LimitKind.ActiveClients => ActiveClients,
         LimitKind.OpenJobs => OpenJobs,
+        LimitKind.ActiveAgreements => ActiveAgreements,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 }
@@ -52,7 +57,7 @@ public sealed record LimitBreach(LimitKind Limit, int Allowed, int Usage);
 /// </summary>
 public static class PlanPolicy
 {
-    public static readonly IReadOnlyList<LimitKind> Kinds = [LimitKind.Seats, LimitKind.ActiveClients, LimitKind.OpenJobs];
+    public static readonly IReadOnlyList<LimitKind> Kinds = [LimitKind.Seats, LimitKind.ActiveClients, LimitKind.OpenJobs, LimitKind.ActiveAgreements];
 
     /// <summary>Refuses (403 <c>plan-limit-reached</c>) when adding <paramref name="adding"/> would exceed the limit.</summary>
     public static void EnsureRoomFor(Plan plan, PlanUsage usage, LimitKind kind, int adding = 1)
@@ -82,7 +87,9 @@ public static class PlanPolicy
         (LimitKind.ActiveClients, 1) => "1 active client",
         (LimitKind.ActiveClients, _) => $"{count} active clients",
         (LimitKind.OpenJobs, 1) => "1 open job",
-        _ => $"{count} open jobs",
+        (LimitKind.OpenJobs, _) => $"{count} open jobs",
+        (LimitKind.ActiveAgreements, 1) => "1 active agreement",
+        _ => $"{count} active agreements",
     };
 }
 

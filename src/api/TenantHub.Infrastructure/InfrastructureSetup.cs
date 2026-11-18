@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TenantHub.Application.Abstractions;
 using TenantHub.Application.Accounts;
+using TenantHub.Application.Agreements;
 using TenantHub.Application.Demo;
 using TenantHub.Infrastructure.Background;
 using TenantHub.Infrastructure.Data;
@@ -44,6 +45,8 @@ public static class InfrastructureSetup
         services.AddSingleton<Scheduler>();
         services.AddOutboxHandler<EmailOutboxHandler>(AccountEmails.PasswordReset, AccountEmails.Verification);
         services.AddScheduledTask<OutboxRetentionTask>(OutboxRetentionTask.Name);
+        services.AddScheduledTask<AgreementGenerationTask>(IRecurringWork.DailyGeneration, perOrganization: true);
+        services.AddScoped<IRecurringWork, RecurringWork>();
         if (demo.Enabled)
         {
             services.AddScheduledTask<DemoResetTask>(DemoResetTask.Name);

@@ -163,7 +163,7 @@ public sealed class DemoModeTests(PostgresFixture postgres)
             var reseeded = await db.Organizations.SingleAsync(o => o.Slug == DemoSeeder.BrightlineSlug, Ct);
             Assert.Equal(Start.AddHours(25), reseeded.CreatedAt);
             Assert.Equal(40, await db.Clients.AcrossTenants().CountAsync(c => c.OrganizationId == reseeded.Id, Ct));
-            Assert.Equal(150, await db.Jobs.AcrossTenants().CountAsync(j => j.OrganizationId == reseeded.Id, Ct));
+            Assert.Equal(150, await db.Jobs.AcrossTenants().CountAsync(j => j.OrganizationId == reseeded.Id && j.AgreementId == null, Ct));
             Assert.Equal(8, await db.Users.CountAsync(u => u.Email!.EndsWith(".example") && !u.Email.EndsWith("@test.example"), Ct));
         }
     }

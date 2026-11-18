@@ -127,6 +127,117 @@ namespace TenantHub.Infrastructure.Data.Migrations
                     b.ToTable("user_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("TenantHub.Domain.Agreements.Agreement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AssigneeUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assignee_user_id");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(5000)
+                        .HasColumnType("character varying(5000)")
+                        .HasColumnName("description");
+
+                    b.Property<DateOnly?>("EndsOn")
+                        .HasColumnType("date")
+                        .HasColumnName("ends_on");
+
+                    b.Property<int?>("EstimatedMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("estimated_minutes");
+
+                    b.Property<DateOnly?>("GeneratedThrough")
+                        .HasColumnType("date")
+                        .HasColumnName("generated_through");
+
+                    b.Property<int?>("MaxVisits")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_visits");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("PausedReason")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("paused_reason");
+
+                    b.Property<string>("Priority")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("priority");
+
+                    b.Property<decimal?>("QuotedAmount")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("quoted_amount");
+
+                    b.Property<string>("Recurrence")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("recurrence");
+
+                    b.Property<DateOnly>("StartsOn")
+                        .HasColumnType("date")
+                        .HasColumnName("starts_on");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_agreements");
+
+                    b.HasAlternateKey("OrganizationId", "Id")
+                        .HasName("ak_agreements_organization_id_id");
+
+                    b.HasIndex("CreatedByUserId")
+                        .HasDatabaseName("ix_agreements_created_by_user_id");
+
+                    b.HasIndex("OrganizationId", "AssigneeUserId")
+                        .HasDatabaseName("ix_agreements_organization_id_assignee_user_id");
+
+                    b.HasIndex("OrganizationId", "ClientId")
+                        .HasDatabaseName("ix_agreements_organization_id_client_id");
+
+                    b.ToTable("agreements", (string)null);
+                });
+
             modelBuilder.Entity("TenantHub.Domain.Audit.AuditEntry", b =>
                 {
                     b.Property<long>("Id")
@@ -142,11 +253,21 @@ namespace TenantHub.Infrastructure.Data.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("action");
 
+                    b.Property<string>("ActorKind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("actor_kind");
+
                     b.Property<string>("ActorName")
                         .IsRequired()
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)")
                         .HasColumnName("actor_name");
+
+                    b.Property<Guid?>("ActorRef")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_ref");
 
                     b.Property<Guid?>("ActorUserId")
                         .HasColumnType("uuid")
@@ -357,9 +478,17 @@ namespace TenantHub.Infrastructure.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("AgreementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("agreement_id");
+
                     b.Property<Guid?>("AssigneeUserId")
                         .HasColumnType("uuid")
                         .HasColumnName("assignee_user_id");
+
+                    b.Property<bool>("ChangedByHand")
+                        .HasColumnType("boolean")
+                        .HasColumnName("changed_by_hand");
 
                     b.Property<Guid>("ClientId")
                         .HasColumnType("uuid")
@@ -386,9 +515,17 @@ namespace TenantHub.Infrastructure.Data.Migrations
                         .HasColumnType("date")
                         .HasColumnName("due_on");
 
+                    b.Property<int?>("EstimatedMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("estimated_minutes");
+
                     b.Property<int>("Number")
                         .HasColumnType("integer")
                         .HasColumnName("number");
+
+                    b.Property<DateOnly?>("OccurrenceOn")
+                        .HasColumnType("date")
+                        .HasColumnName("occurrence_on");
 
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uuid")
@@ -449,6 +586,11 @@ namespace TenantHub.Infrastructure.Data.Migrations
                     b.HasIndex("OrganizationId", "Number")
                         .IsUnique()
                         .HasDatabaseName("ux_jobs_number");
+
+                    b.HasIndex("OrganizationId", "AgreementId", "OccurrenceOn")
+                        .IsUnique()
+                        .HasDatabaseName("ux_jobs_agreement_occurrence")
+                        .HasFilter("agreement_id IS NOT NULL");
 
                     b.HasIndex("OrganizationId", "DueOn", "Number")
                         .HasDatabaseName("ix_jobs_due");
@@ -789,6 +931,37 @@ namespace TenantHub.Infrastructure.Data.Migrations
                         .HasConstraintName("fk_user_tokens_users_user_id");
                 });
 
+            modelBuilder.Entity("TenantHub.Domain.Agreements.Agreement", b =>
+                {
+                    b.HasOne("TenantHub.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_agreements_users_created_by_user_id");
+
+                    b.HasOne("TenantHub.Domain.Organizations.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_agreements_organizations_organization_id");
+
+                    b.HasOne("TenantHub.Domain.Memberships.Membership", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "AssigneeUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_agreements_memberships_organization_id_assignee_user_id");
+
+                    b.HasOne("TenantHub.Domain.Clients.Client", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "ClientId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_agreements_clients_organization_id_client_id");
+                });
+
             modelBuilder.Entity("TenantHub.Domain.Audit.AuditEntry", b =>
                 {
                     b.HasOne("TenantHub.Domain.Organizations.Organization", null)
@@ -847,6 +1020,13 @@ namespace TenantHub.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_jobs_organizations_organization_id");
+
+                    b.HasOne("TenantHub.Domain.Agreements.Agreement", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "AgreementId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_jobs_agreements_organization_id_agreement_id");
 
                     b.HasOne("TenantHub.Domain.Memberships.Membership", null)
                         .WithMany()

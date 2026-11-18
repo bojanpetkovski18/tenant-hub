@@ -34,6 +34,15 @@ public enum CaseResource
     /// <summary>A New job created just for this request, assigned to the caller's role when known, else the Owner.</summary>
     FreshJob,
 
+    /// <summary>The organization's standing agreement (weekly, no visits).</summary>
+    Agreement,
+
+    /// <summary>An agreement created just for this request (pause, resume, end and edits change it).</summary>
+    FreshAgreement,
+
+    /// <summary>A visit generated just for this request from a new agreement (skipping uses it up).</summary>
+    FreshVisit,
+
     /// <summary>
     /// A new organization standing in for the requested one (for deletes, which use it up): like A (A's role users,
     /// same roles) when A is requested, owned by B's Owner when B is, and a random id otherwise.
@@ -78,7 +87,8 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         CaseResource.Client or CaseResource.FreshClient => "client-not-found",
         CaseResource.FreshMember => "member-not-found",
         CaseResource.Invitation or CaseResource.FreshInvitation => "invitation-not-found",
-        CaseResource.Job or CaseResource.FreshJob => "job-not-found",
+        CaseResource.Job or CaseResource.FreshJob or CaseResource.FreshVisit => "job-not-found",
+        CaseResource.Agreement or CaseResource.FreshAgreement => "agreement-not-found",
         _ => throw new InvalidOperationException($"{Key} takes no id."),
     };
 
@@ -89,6 +99,8 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         CaseResource.FreshMember => tenants.MemberB,
         CaseResource.Invitation or CaseResource.FreshInvitation => tenants.InvitationB,
         CaseResource.Job or CaseResource.FreshJob => tenants.JobB,
+        CaseResource.FreshVisit => tenants.VisitB,
+        CaseResource.Agreement or CaseResource.FreshAgreement => tenants.AgreementB,
         _ => throw new InvalidOperationException($"{Key} takes no id."),
     };
 
@@ -237,6 +249,60 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
             Audited = true,
         },
 
+        // Visits of agreements (SPEC-V2 7, M16).
+        new("POST", "/jobs/{id:guid}/skip", Permissions.AgreementsManage)
+        {
+            Resource = CaseResource.FreshVisit,
+            Audited = true,
+        },
+
+        // Agreements (SPEC-V2 7, M16). The start is two days out, so it is "today or later" in every time zone.
+        new("GET", "/agreements/", Permissions.AgreementsRead),
+        new("POST", "/agreements/", Permissions.AgreementsManage)
+        {
+            Allowed = HttpStatusCode.Created,
+            Audited = true,
+            Body = input => Task.FromResult<object>(new
+            {
+                clientId = input.Tenants.ClientIn(input.OrganizationId),
+                title = $"Matrix agreement {Guid.NewGuid():N}",
+                recurrence = new { kind = "weekly", interval = 1, weekdays = new[] { "tuesday" } },
+                startsOn = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(2),
+            }),
+        },
+        new("POST", "/agreements/preview", Permissions.AgreementsRead)
+        {
+            NotAuditedBecause = "a preview: it computes the next dates and saves nothing",
+            Body = _ => Task.FromResult<object>(new { recurrence = new { kind = "monthlyByDay", interval = 1, lastDay = true } }),
+        },
+        new("GET", "/agreements/{id:guid}", Permissions.AgreementsRead) { Resource = CaseResource.Agreement },
+        new("PUT", "/agreements/{id:guid}", Permissions.AgreementsManage)
+        {
+            Resource = CaseResource.FreshAgreement,
+            Audited = true,
+            Body = async input =>
+            {
+                var (agreement, version) = await input.Tenants.AgreementStateAsync(input.ResourceId!.Value);
+                return new
+                {
+                    title = agreement?.Title ?? "Unknown agreement",
+                    description = $"Note {Guid.NewGuid():N}",
+                    recurrence = new { kind = "weekly", interval = 1, weekdays = new[] { "monday" } },
+                    startsOn = agreement?.StartsOn ?? DateOnly.FromDateTime(DateTime.UtcNow).AddDays(7),
+                    estimatedMinutes = agreement?.EstimatedMinutes,
+                    version,
+                };
+            },
+        },
+        new("POST", "/agreements/{id:guid}/pause", Permissions.AgreementsManage) { Resource = CaseResource.FreshAgreement, Audited = true },
+        new("POST", "/agreements/{id:guid}/resume", Permissions.AgreementsManage)
+        {
+            Resource = CaseResource.FreshAgreement,
+            Audited = true,
+            Arrange = input => input.Tenants.SetPausedAsync(input.ResourceId!.Value),
+        },
+        new("POST", "/agreements/{id:guid}/end", Permissions.AgreementsManage) { Resource = CaseResource.FreshAgreement, Audited = true },
+
         new("GET", "/audit/", Permissions.AuditRead),
         new("GET", "/dashboard", Permissions.OrgRead),
 
@@ -265,6 +331,9 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
             CaseResource.FreshInvitation => await tenants.CreateInvitationAsync(organizationId),
             CaseResource.Job => tenants.JobIn(organizationId),
             CaseResource.FreshJob => await tenants.CreateJobAsync(organizationId, caller),
+            CaseResource.Agreement => tenants.AgreementIn(organizationId),
+            CaseResource.FreshAgreement => await tenants.CreateAgreementAsync(organizationId),
+            CaseResource.FreshVisit => await tenants.CreateVisitAsync(organizationId),
             _ => null,
         };
         var input = new CaseInput(tenants, organizationId, resourceId);

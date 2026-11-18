@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
 using TenantHub.Application.Organizations;
+using TenantHub.Domain.Agreements;
 using TenantHub.Domain.Clients;
 using TenantHub.Domain.Organizations;
 
@@ -57,10 +58,16 @@ public sealed class ClientCommands(
         return ToView(client);
     }
 
+    /// <summary>Archiving pauses the client's active agreements in the same save (SPEC-V2 5.1).</summary>
     public async Task<ClientView> ArchiveAsync(Guid id, CancellationToken cancellationToken)
     {
         var client = await LoadAsync(id, cancellationToken);
         client.Archive(time.GetUtcNow());
+        foreach (var agreement in await db.Agreements.Where(a => a.ClientId == id && a.Status == AgreementStatus.Active).ToListAsync(cancellationToken))
+        {
+            agreement.PauseForArchivedClient(client.Name, time.GetUtcNow());
+        }
+
         await SaveAsync(cancellationToken);
         return ToView(client);
     }
@@ -89,6 +96,13 @@ public sealed class ClientCommands(
         if (await db.Jobs.AnyAsync(j => j.ClientId == id, cancellationToken))
         {
             throw ClientErrors.HasJobs();
+        }
+
+        // Its agreements had no visit (a visit is a job), so they go with it: nothing else refers to them.
+        foreach (var agreement in await db.Agreements.Where(a => a.ClientId == id).ToListAsync(cancellationToken))
+        {
+            agreement.MarkDeleted();
+            db.Agreements.Remove(agreement);
         }
 
         client.MarkDeleted();

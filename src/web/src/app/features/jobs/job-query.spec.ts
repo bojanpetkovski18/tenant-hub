@@ -8,6 +8,7 @@ describe('job query (URL ↔ API)', () => {
       priority: 'low,urgent',
       assignee: 'me',
       clientId: '0199f0a0-0000-7000-8000-0000000000c1',
+      agreementId: '0199f0a0-0000-7000-8000-0000000000d1',
       overdue: 'true',
       dueFrom: '2026-10-01',
       dueTo: '2026-10-31',
@@ -22,6 +23,7 @@ describe('job query (URL ↔ API)', () => {
       priorities: ['urgent', 'low'],
       assignee: 'me',
       clientId: '0199f0a0-0000-7000-8000-0000000000c1',
+      agreementId: '0199f0a0-0000-7000-8000-0000000000d1',
       overdue: true,
       dueFrom: '2026-10-01',
       dueTo: '2026-10-31',
@@ -29,13 +31,14 @@ describe('job query (URL ↔ API)', () => {
       sort: 'due',
       page: 3,
     });
-    expect(activeFilterCount(query)).toBe(7);
+    expect(activeFilterCount(query)).toBe(8);
   });
 
   it('falls back to the defaults for anything it does not recognize', () => {
     const query = parseJobQuery({
       assignee: 'someone',
       clientId: 'not-a-guid',
+      agreementId: 'also-not-a-guid',
       overdue: 'yes',
       dueFrom: '01/10/2026',
       sort: 'salary',
@@ -48,6 +51,7 @@ describe('job query (URL ↔ API)', () => {
       priorities: [],
       assignee: '',
       clientId: '',
+      agreementId: '',
       overdue: false,
       dueFrom: '',
       dueTo: '',

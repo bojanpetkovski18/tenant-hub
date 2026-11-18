@@ -34,4 +34,18 @@ public sealed class TenantContext : ITenantContext
         Role = role;
         Permissions = Domain.Memberships.Permissions.For(role);
     }
+
+    /// <summary>
+    /// Scheduled work for one organization (agreement generation, SPEC-V2 4.9): no user and no permissions. Whatever it
+    /// writes passes the tenant guard and row-level security like a request; its audit entries name the system.
+    /// </summary>
+    public void EnterAsSystem(Guid organizationId)
+    {
+        if (OrganizationId is { } current && (current != organizationId || UserId is not null))
+        {
+            throw new InvalidOperationException("A scope works inside one organization for one actor; it cannot switch.");
+        }
+
+        OrganizationId = organizationId;
+    }
 }

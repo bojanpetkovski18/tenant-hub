@@ -73,8 +73,8 @@ describe('client pages', () => {
       let element = await open('/o/brightline/clients/c1');
       http.expectOne(clientUrl).flush(acme);
       await settle(harness.fixture);
-      // Clients actions, then the jobs section's link to a new job for this client (jobs.create).
-      expect(buttonsIn(element)).toEqual(['Edit', 'Archive', 'Delete', 'New job']);
+      // Clients actions, then the links to a new job (jobs.create) and a new agreement (agreements.manage) for it.
+      expect(buttonsIn(element)).toEqual(['Edit', 'Archive', 'Delete', 'New job', 'New agreement']);
 
       TestBed.resetTestingModule();
       element = await open('/o/brightline/clients/c1', viewer);

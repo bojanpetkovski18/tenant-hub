@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
 using TenantHub.Domain;
 using TenantHub.Domain.Jobs;
+using TenantHub.Domain.Memberships;
 using TenantHub.Domain.Organizations;
 
 namespace TenantHub.Application.Jobs;
@@ -26,6 +27,11 @@ public sealed record JobView(
     DateOnly? ScheduledOn,
     DateOnly? DueOn,
     decimal? QuotedAmount,
+    int? EstimatedMinutes,
+    Guid? AgreementId,
+    string? AgreementTitle,
+    DateOnly? OccurrenceOn,
+    bool ChangedByHand,
     bool IsOverdue,
     DateTimeOffset CreatedAt,
     string CreatedByName,
@@ -35,6 +41,7 @@ public sealed record JobView(
     bool CanEdit,
     bool CanAssign,
     bool CanDelete,
+    bool CanSkip,
     IReadOnlyList<JobTransitionOption> Transitions);
 
 public static class JobErrors
@@ -87,6 +94,9 @@ public sealed class JobViews(IAppDbContext db, ITenantContext tenant, IIdentityS
     {
         var names = await NamesAsync([job.ClientId], [job.AssigneeUserId, job.CreatedByUserId], cancellationToken);
         var today = await TodayAsync(cancellationToken);
+        var agreementTitle = job.AgreementId is { } agreementId
+            ? await db.Agreements.Where(a => a.Id == agreementId).Select(a => a.Title).SingleOrDefaultAsync(cancellationToken)
+            : null;
         var actor = Actor();
         return new JobView(
             job.Id,
@@ -103,6 +113,11 @@ public sealed class JobViews(IAppDbContext db, ITenantContext tenant, IIdentityS
             job.ScheduledOn,
             job.DueOn,
             job.QuotedAmount,
+            job.EstimatedMinutes,
+            job.AgreementId,
+            agreementTitle,
+            job.OccurrenceOn,
+            job.ChangedByHand,
             job.IsOverdue(today),
             job.CreatedAt,
             names.GetValueOrDefault(job.CreatedByUserId, "A former member"),
@@ -112,6 +127,9 @@ public sealed class JobViews(IAppDbContext db, ITenantContext tenant, IIdentityS
             CanEdit: job.CanEdit(actor),
             CanAssign: actor.CanManage,
             CanDelete: actor.CanManage && job.Status is JobStatus.New or JobStatus.Cancelled,
+            // Skipping is cancelling a visit with a fixed reason: who may cancel, for visits of an agreement (SPEC-V2 2.2).
+            CanSkip: job.AgreementId is not null && tenant.HasPermission(Permissions.AgreementsManage)
+                && job.AllowedFor(actor).Contains(JobStatus.Cancelled),
             job.OptionsFor(actor));
     }
 }

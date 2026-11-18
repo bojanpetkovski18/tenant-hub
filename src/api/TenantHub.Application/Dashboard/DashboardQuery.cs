@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
 using TenantHub.Application.Audit;
 using TenantHub.Application.Organizations;
+using TenantHub.Domain.Agreements;
 using TenantHub.Domain.Clients;
 using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
@@ -102,7 +103,8 @@ public sealed class DashboardQuery(
             new(JobStatus.Cancelled, counts?.Cancelled ?? 0),
         };
         var open = (counts?.New ?? 0) + (counts?.Scheduled ?? 0) + (counts?.InProgress ?? 0);
-        var usage = new PlanUsage(await limits.SeatsAsync(cancellationToken), activeClients, open);
+        var agreements = await db.Agreements.CountAsync(a => a.Status == AgreementStatus.Active, cancellationToken);
+        var usage = new PlanUsage(await limits.SeatsAsync(cancellationToken), activeClients, open, agreements);
 
         IReadOnlyList<AuditEntryView>? activity = null;
         if (tenant.HasPermission(Permissions.AuditRead))

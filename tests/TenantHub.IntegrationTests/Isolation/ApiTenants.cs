@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using TenantHub.Api.Features.Auth;
 using TenantHub.Application.Invitations;
 using TenantHub.Application.Tenancy;
+using TenantHub.Domain.Agreements;
 using TenantHub.Domain.Clients;
 using TenantHub.Domain.Invitations;
 using TenantHub.Domain.Jobs;
@@ -59,6 +60,13 @@ public sealed class ApiTenants : IAsyncDisposable
     public Guid JobB { get; private set; }
 
     public string JobBTitle { get; } = "Bravo Hedge Trimming";
+
+    /// <summary>A standing agreement in A and one in B (weekly, no visits), and a visit generated in B.</summary>
+    public Guid AgreementA { get; private set; }
+
+    public Guid AgreementB { get; private set; }
+
+    public Guid VisitB { get; private set; }
 
     public string OrgBOwnerEmail { get; } = $"owner-{Guid.NewGuid():N}@bravo.example";
 
@@ -121,7 +129,12 @@ public sealed class ApiTenants : IAsyncDisposable
             .OrderBy(j => j.Id)
             .Select(j => new { j.Id, j.Number, j.Title, j.Status, j.AssigneeUserId, j.Version })
             .ToListAsync(Ct);
-        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit, invitations, jobs, next = organization.NextJobNumber });
+        var agreements = await db.Agreements.AcrossTenants().AsNoTracking()
+            .Where(a => a.OrganizationId == OrgB)
+            .OrderBy(a => a.Id)
+            .Select(a => new { a.Id, a.Title, a.Status, a.Version })
+            .ToListAsync(Ct);
+        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit, invitations, jobs, agreements, next = organization.NextJobNumber });
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
     }
 
@@ -133,6 +146,78 @@ public sealed class ApiTenants : IAsyncDisposable
 
     public Guid InvitationIn(Guid organizationId) =>
         organizationId == OrgA ? InvitationA : organizationId == OrgB ? InvitationB : Guid.NewGuid();
+
+    public Guid AgreementIn(Guid organizationId) =>
+        organizationId == OrgA ? AgreementA : organizationId == OrgB ? AgreementB : Guid.NewGuid();
+
+    /// <summary>A weekly agreement in A or B starting next week, written as its Owner, without visits.</summary>
+    public async Task<Guid> CreateAgreementAsync(Guid organizationId, string? title = null)
+    {
+        if (organizationId != OrgA && organizationId != OrgB)
+        {
+            return Guid.NewGuid();
+        }
+
+        var ownerId = await OwnerIdAsync(organizationId);
+        await using var db = ContextAs(organizationId, ownerId);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var agreement = Agreement.Create(
+            organizationId,
+            ClientIn(organizationId),
+            AgreementTemplate.Validate(title ?? $"Agreement {Guid.NewGuid():N}", null, null, JobPriority.Normal, null, 60),
+            new Schedule(Recurrence.Weekly([DayOfWeek.Monday]), today.AddDays(7), null, null),
+            today,
+            ownerId,
+            new Dictionary<Guid, string>(),
+            DateTimeOffset.UtcNow);
+        db.Agreements.Add(agreement);
+        await db.SaveChangesAsync(Ct);
+        return agreement.Id;
+    }
+
+    /// <summary>A visit (New, generated from a new agreement of its own) in A or B, for skipping.</summary>
+    public async Task<Guid> CreateVisitAsync(Guid organizationId)
+    {
+        if (organizationId != OrgA && organizationId != OrgB)
+        {
+            return Guid.NewGuid();
+        }
+
+        var agreementId = await CreateAgreementAsync(organizationId);
+        await using var db = ContextAs(organizationId, await OwnerIdAsync(organizationId));
+        var organization = await db.Organizations.SingleAsync(o => o.Id == organizationId, Ct);
+        var agreement = await db.Agreements.SingleAsync(a => a.Id == agreementId, Ct);
+        var visit = Job.Generate(agreement, organization.TakeJobNumber(), agreement.StartsOn, new Dictionary<Guid, string>(), DateTimeOffset.UtcNow);
+        db.Jobs.Add(visit);
+        await db.SaveChangesAsync(Ct);
+        return visit.Id;
+    }
+
+    /// <summary>What a PUT needs to send back unchanged, plus its version.</summary>
+    public async Task<(Agreement? Agreement, uint Version)> AgreementStateAsync(Guid agreementId)
+    {
+        await using var db = PostgresFixture.CreateDbContext(ConnectionString);
+        var agreement = await db.Agreements.AcrossTenants().AsNoTracking().SingleOrDefaultAsync(a => a.Id == agreementId, Ct);
+        return (agreement, agreement?.Version ?? 0);
+    }
+
+    public async Task SetPausedAsync(Guid agreementId)
+    {
+        await using var lookup = PostgresFixture.CreateDbContext(ConnectionString);
+        var organizationId = await lookup.Agreements.AcrossTenants().Where(a => a.Id == agreementId).Select(a => (Guid?)a.OrganizationId).SingleOrDefaultAsync(Ct);
+        if (organizationId is null)
+        {
+            return;
+        }
+
+        await using var db = await OwnerContextAsync(organizationId.Value);
+        var agreement = await db.Agreements.SingleAsync(a => a.Id == agreementId, Ct);
+        if (agreement.Status == AgreementStatus.Active)
+        {
+            agreement.Pause(DateTimeOffset.UtcNow);
+            await db.SaveChangesAsync(Ct);
+        }
+    }
 
     /// <summary>A new client in A or B, written as that organization's Owner (like a request would).</summary>
     public async Task<Guid> CreateClientAsync(Guid organizationId, string? name = null)
@@ -364,6 +449,9 @@ public sealed class ApiTenants : IAsyncDisposable
         InvitationB = await CreateInvitationAsync(OrgB);
         JobA = await CreateJobAsync(OrgA, Role.Member, "Alpha Standing Job");
         JobB = await CreateJobAsync(OrgB, title: JobBTitle);
+        AgreementA = await CreateAgreementAsync(OrgA, "Alpha Standing Agreement");
+        AgreementB = await CreateAgreementAsync(OrgB, "Bravo Standing Agreement");
+        VisitB = await CreateVisitAsync(OrgB);
     }
 
     /// <summary>
