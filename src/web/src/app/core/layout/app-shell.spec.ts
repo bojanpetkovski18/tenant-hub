@@ -37,6 +37,7 @@ describe('AppShell', () => {
       'Jobs',
       'Board',
       'Agreements',
+      'Requests',
       'Clients',
       'Members',
       'Audit log',
@@ -170,7 +171,17 @@ describe('AppShell navigation by permission', () => {
     [
       'owner',
       olivia,
-      ['Dashboard', 'Jobs', 'Board', 'Agreements', 'Clients', 'Members', 'Audit log', 'Settings'],
+      [
+        'Dashboard',
+        'Jobs',
+        'Board',
+        'Agreements',
+        'Requests',
+        'Clients',
+        'Members',
+        'Audit log',
+        'Settings',
+      ],
     ],
   ])('shows a %s only what their permissions allow', async (_role, user, expected) => {
     TestBed.configureTestingModule({

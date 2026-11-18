@@ -98,6 +98,8 @@ export interface Job {
   readonly canDelete: boolean;
   readonly canSkip: boolean;
   readonly transitions: readonly JobTransitionOption[];
+  /** The quote's approval by the client (SPEC-V2 5.4), and whether the caller can send it now. */
+  readonly quote?: JobQuote;
 }
 
 export interface JobInput {
@@ -181,4 +183,24 @@ export class JobsApi {
   skip(organizationId: string, id: string): Promise<Job> {
     return firstValueFrom(this.http.post<Job>(`${jobsUrl(organizationId)}/${id}/skip`, {}));
   }
+
+  /** Sends the quote to the client's portal contacts for approval (SPEC-V2 5.4). */
+  sendQuote(organizationId: string, id: string): Promise<Job> {
+    return firstValueFrom(this.http.post<Job>(`${jobsUrl(organizationId)}/${id}/quote`, {}));
+  }
+}
+
+export type ApprovalStatus = 'notRequested' | 'pending' | 'approved' | 'declined';
+
+export interface JobQuote {
+  readonly status: ApprovalStatus;
+  readonly sentAt: string | null;
+  readonly sentByName: string | null;
+  readonly approvedAmount: number | null;
+  readonly decidedAt: string | null;
+  readonly decidedByName: string | null;
+  readonly comment: string | null;
+  readonly canSend: boolean;
+  /** Why it cannot be sent now, for those who could; null for everyone else. */
+  readonly cannotSend: string | null;
 }

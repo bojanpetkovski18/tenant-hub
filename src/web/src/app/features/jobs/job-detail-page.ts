@@ -23,6 +23,7 @@ import {
   statusLabels,
   transitionLabels,
 } from './jobs.api';
+import { JobQuotePanel } from './job-quote-panel';
 import { AskReason } from './reason-dialog';
 
 const fieldLabels: Readonly<Record<string, string>> = {
@@ -53,6 +54,7 @@ const fieldLabels: Readonly<Record<string, string>> = {
     JobPriorityLabel,
     OverdueMarker,
     LimitReached,
+    JobQuotePanel,
   ],
   template: `
     <a [routerLink]="listLink()" class="text-sm text-muted hover:text-fg">← Jobs</a>
@@ -227,6 +229,12 @@ const fieldLabels: Readonly<Record<string, string>> = {
         </dl>
       </section>
 
+      <app-job-quote-panel
+        [job]="job"
+        [organizationId]="organizationId()"
+        (changed)="quoteSent($event)"
+      />
+
       <section class="th-card mt-5" aria-labelledby="history-heading">
         <h2 id="history-heading" class="text-lg font-semibold">History</h2>
         @if (historyError(); as error) {
@@ -283,6 +291,7 @@ export class JobDetailPage {
   private readonly router = inject(Router);
 
   private readonly membership = computed(() => this.session.membershipBySlug(this.slug()));
+  protected readonly organizationId = computed(() => this.membership()?.organizationId ?? '');
   // Absolute: ".." from a multi-segment route (jobs/:id) would leave the jobs section entirely.
   protected readonly listLink = computed(() => ['/o', this.slug(), 'jobs']);
 
@@ -334,6 +343,13 @@ export class JobDetailPage {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  /** The quote went to the client: the job (now Pending) and its history change. */
+  protected quoteSent(job: Job): void {
+    this.job.set(job);
+    this.actionDone.set(`Sent the quote for ${job.label} to the client for approval.`);
+    void this.loadHistory();
   }
 
   protected async loadHistory(): Promise<void> {

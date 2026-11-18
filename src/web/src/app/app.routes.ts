@@ -152,6 +152,12 @@ export const routes: Routes = [
           import('./features/agreements/agreement-form-page').then((m) => m.AgreementFormPage),
       },
       {
+        path: 'requests',
+        title: 'Requests',
+        loadComponent: () =>
+          import('./features/requests/requests-page').then((m) => m.RequestsPage),
+      },
+      {
         path: 'members',
         title: 'Members',
         loadComponent: () => import('./features/members/members-page').then((m) => m.MembersPage),
@@ -168,6 +174,11 @@ export const routes: Routes = [
           import('./features/settings/settings-page').then((m) => m.SettingsPage),
       },
     ],
+  },
+  {
+    // The client portal: its own area, layout and session (SPEC-V2 4.4, D040), loaded only when opened.
+    path: 'portal/:slug',
+    loadChildren: () => import('./features/portal/portal.routes').then((m) => m.portalRoutes),
   },
   {
     path: '**',

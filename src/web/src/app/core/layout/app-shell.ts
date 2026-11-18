@@ -36,6 +36,7 @@ import { OrgSwitcher } from './org-switcher';
 import { SkipLink } from './skip-link';
 import { UserMenu } from './user-menu';
 import { Wordmark } from './wordmark';
+import { RequestsCount } from '../../features/requests/requests.api';
 import { VerifyEmailBanner } from './verify-email-banner';
 
 interface NavItem {
@@ -86,6 +87,9 @@ export class AppShell {
     return this.navItems.filter((item) => item.anyOf.some((p) => granted.includes(p)));
   });
   private readonly currentOrganization = inject(CurrentOrganizationStore);
+  /** The open work requests, shown next to "Requests" (SPEC-V2 6). */
+  protected readonly openRequests = inject(RequestsCount).open;
+  private readonly requestsCount = inject(RequestsCount);
   protected readonly drawerOpen = signal(false);
   protected readonly navItems: readonly NavItem[] = [
     {
@@ -113,6 +117,13 @@ export class AppShell {
       label: 'Agreements',
       // A repeat arrow: work that comes back on its own.
       icon: 'M17 2l4 4-4 4M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v1a4 4 0 0 1-4 4H3',
+    },
+    {
+      path: 'requests',
+      anyOf: ['portal.manage'],
+      label: 'Requests',
+      // An inbox tray: work clients asked for.
+      icon: 'M22 12h-6l-2 3h-4l-2-3H2M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1Z',
     },
     {
       path: 'clients',
@@ -149,6 +160,9 @@ export class AppShell {
         rememberLastOrganization(membership.slug);
         // Also the server-side membership check on entry; a lost membership is handled by the interceptor.
         void this.currentOrganization.load(membership.organizationId);
+        if (membership.permissions.includes('portal.manage')) {
+          void this.requestsCount.refresh(membership.organizationId);
+        }
       }
     });
 

@@ -1,10 +1,16 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { PlanLimits, PlanName, PlanUsage } from '../../shared/plan/plan';
+import { PlanFeature, PlanLimits, PlanName, PlanUsage } from '../../shared/plan/plan';
 
-export type { PlanLimits, PlanName, PlanUsage } from '../../shared/plan/plan';
-export { limitLabels, limitNames, planLabels } from '../../shared/plan/plan';
+export type { PlanFeature, PlanLimits, PlanName, PlanUsage } from '../../shared/plan/plan';
+export {
+  featureLabels,
+  limitLabels,
+  limitNames,
+  planFeatures,
+  planLabels,
+} from '../../shared/plan/plan';
 
 /** The organization with its usage against its plan, and every plan to compare (US-50). */
 export interface OrganizationOverview {
@@ -18,7 +24,12 @@ export interface OrganizationOverview {
   readonly createdAt: string;
   readonly usage: PlanUsage;
   readonly limits: PlanLimits;
-  readonly plans: readonly { readonly plan: PlanName; readonly limits: PlanLimits }[];
+  readonly features: readonly PlanFeature[];
+  readonly plans: readonly {
+    readonly plan: PlanName;
+    readonly limits: PlanLimits;
+    readonly features: readonly PlanFeature[];
+  }[];
 }
 
 const orgUrl = (organizationId: string) => `/api/orgs/${encodeURIComponent(organizationId)}`;
@@ -39,9 +50,17 @@ export class SettingsApi {
     return firstValueFrom(this.http.patch<OrganizationOverview>(orgUrl(organizationId), changes));
   }
 
-  changePlan(organizationId: string, plan: PlanName): Promise<OrganizationOverview> {
+  /** <c>confirmFeatureLoss</c>: the Owner saw which features in use the downgrade turns off (SPEC-V2 4.8). */
+  changePlan(
+    organizationId: string,
+    plan: PlanName,
+    confirmFeatureLoss = false,
+  ): Promise<OrganizationOverview> {
     return firstValueFrom(
-      this.http.put<OrganizationOverview>(`${orgUrl(organizationId)}/plan`, { plan }),
+      this.http.put<OrganizationOverview>(`${orgUrl(organizationId)}/plan`, {
+        plan,
+        confirmFeatureLoss,
+      }),
     );
   }
 

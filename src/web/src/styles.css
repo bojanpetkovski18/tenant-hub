@@ -183,6 +183,11 @@
     @apply rounded-md border border-success/40 bg-success/10 px-4 py-3 text-sm text-fg;
   }
 
+  /* Neutral news (signed out, session ended): not an error, not a success. */
+  .th-alert-info {
+    @apply rounded-md border border-accent/40 bg-accent-soft/40 px-4 py-3 text-sm text-fg;
+  }
+
   .th-menu {
     @apply min-w-56 rounded-lg border border-border bg-surface p-1 shadow-lg;
   }

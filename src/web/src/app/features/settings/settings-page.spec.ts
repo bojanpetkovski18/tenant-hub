@@ -33,15 +33,22 @@ const overview = (overrides: Partial<OrganizationOverview> = {}): OrganizationOv
   createdAt: '2026-10-01T09:00:00Z',
   usage: { seats: 3, activeClients: 20, openJobs: 12, activeAgreements: 1 },
   limits: { seats: 3, activeClients: 25, openJobs: 50, activeAgreements: 3 },
+  features: [],
   plans: [
-    { plan: 'free', limits: { seats: 3, activeClients: 25, openJobs: 50, activeAgreements: 3 } },
+    {
+      plan: 'free',
+      limits: { seats: 3, activeClients: 25, openJobs: 50, activeAgreements: 3 },
+      features: [],
+    },
     {
       plan: 'team',
       limits: { seats: 10, activeClients: 500, openJobs: 2000, activeAgreements: 200 },
+      features: ['portal'],
     },
     {
       plan: 'business',
       limits: { seats: 50, activeClients: null, openJobs: null, activeAgreements: null },
+      features: ['portal', 'integrations'],
     },
   ],
   ...overrides,
@@ -185,6 +192,47 @@ describe('settings page', () => {
       'Seats: 4 in use, Free allows 3',
       'Active clients: 26 in use, Free allows 25',
     ]);
+  });
+
+  it('names the features a downgrade turns off and switches only when the Owner confirms', async () => {
+    const element = await open(olivia, overview({ plan: 'team', features: ['portal'] }));
+    const dialogButton = (label: string) =>
+      [...document.querySelectorAll('button')].find(
+        (b) => text(b) === label && b.closest('app-confirm-dialog'),
+      )!;
+
+    expect(text(main(element).querySelector('#plan'))).toContain('Client portal');
+    [...main(element).querySelectorAll('button')]
+      .find((b) => text(b) === 'Switch to Free')!
+      .click();
+    await settle(harness.fixture);
+    dialogButton('Switch to Free').click();
+    await settle(harness.fixture);
+    const first = http.expectOne(`${orgUrl}/plan`);
+    expect(first.request.body).toEqual({ plan: 'free', confirmFeatureLoss: false });
+    first.flush(
+      {
+        title: 'The Free plan does not include the client portal.',
+        code: 'plan-feature-loss',
+        plan: 'free',
+        features: ['portal'],
+      },
+      { status: 409, statusText: 'Conflict' },
+    );
+    await settle(harness.fixture);
+
+    expect(text(document.querySelector('#confirm-title'))).toBe('Turn off Client portal?');
+    expect(text(document.querySelector('#confirm-message'))).toContain('everything is kept');
+    dialogButton('Switch to Free').click();
+    await settle(harness.fixture);
+    const confirmed = http.expectOne(`${orgUrl}/plan`);
+    expect(confirmed.request.body).toEqual({ plan: 'free', confirmFeatureLoss: true });
+    confirmed.flush(overview({ plan: 'free' }));
+    await settle(harness.fixture);
+
+    expect(text(main(element).querySelector('#plan [role="status"]'))).toBe(
+      'You are now on the Free plan; Client portal is off.',
+    );
   });
 
   it('deletes only after the exact name is typed, then returns to the picker', async () => {

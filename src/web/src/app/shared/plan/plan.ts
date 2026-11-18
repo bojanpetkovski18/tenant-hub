@@ -2,6 +2,16 @@ import { LimitName } from '../../core/http/api-problem';
 
 export type PlanName = 'free' | 'team' | 'business';
 
+/** What a plan includes beyond its limits (SPEC-V2 4.8). */
+export type PlanFeature = 'portal' | 'integrations';
+
+export const featureLabels: Readonly<Record<PlanFeature, string>> = {
+  portal: 'Client portal',
+  integrations: 'API keys and webhooks',
+};
+
+export const planFeatures: readonly PlanFeature[] = ['portal', 'integrations'];
+
 /** A plan's limits; null is unlimited. */
 export interface PlanLimits {
   readonly seats: number | null;

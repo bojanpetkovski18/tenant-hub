@@ -23,11 +23,14 @@ import { EmptyState, ErrorState } from '../../shared/ui/states';
 import { UsageMeters } from '../../shared/ui/usage-meters';
 import {
   OrganizationOverview,
+  PlanFeature,
   PlanLimits,
   PlanName,
   SettingsApi,
+  featureLabels,
   limitLabels,
   limitNames,
+  planFeatures,
   planLabels,
 } from './settings.api';
 
@@ -193,6 +196,16 @@ export function blockingText(detail: PlanLimitDetail, target: string): string {
                   @for (limit of limitNames; track limit) {
                     <li>{{ allowance(limit, option.limits) }}</li>
                   }
+                  @for (feature of planFeatures; track feature) {
+                    <li>
+                      @if (option.features.includes(feature)) {
+                        {{ featureLabels[feature] }}
+                      } @else {
+                        <span class="line-through decoration-1">{{ featureLabels[feature] }}</span>
+                        <span class="sr-only"> (not included)</span>
+                      }
+                    </li>
+                  }
                 </ul>
                 @if (canBill() && option.plan !== org.plan) {
                   <button
@@ -267,6 +280,8 @@ export class SettingsPage {
   protected readonly planLabels = planLabels;
   protected readonly limitLabels = limitLabels;
   protected readonly limitNames = limitNames;
+  protected readonly planFeatures = planFeatures;
+  protected readonly featureLabels = featureLabels;
   protected readonly timeZones = timeZoneOptions();
 
   private readonly membership = computed(() => this.session.membershipBySlug(this.slug()));
@@ -385,7 +400,9 @@ export class SettingsPage {
       this.planDone.set(`You are now on the ${planLabels[plan]} plan.`);
     } catch (error) {
       const problem = toApiProblem(error);
-      if (problem.code === 'plan-downgrade-blocked' && problem.blocking) {
+      if (problem.code === 'plan-feature-loss' && problem.features) {
+        await this.confirmFeatureLoss(plan, problem.features);
+      } else if (problem.code === 'plan-downgrade-blocked' && problem.blocking) {
         this.planError.set({ target: plan, blocking: problem.blocking });
       } else {
         this.planDone.set(null);
@@ -394,6 +411,29 @@ export class SettingsPage {
       }
     } finally {
       this.planBusy.set(false);
+    }
+  }
+
+  /**
+   * The downgrade would turn off features in use (US-52): say which, and that the data stays; switch only when the
+   * Owner confirms.
+   */
+  private async confirmFeatureLoss(plan: PlanName, features: readonly string[]): Promise<void> {
+    const names = features.map((f) => featureLabels[f as PlanFeature] ?? f).join(' and ');
+    const confirmed = await this.confirm.ask({
+      title: `Turn off ${names}?`,
+      message: `The ${planLabels[plan]} plan does not include ${names}, which your organization uses. Client contacts lose access to the portal; everything is kept and comes back if you change the plan again.`,
+      confirmLabel: `Switch to ${planLabels[plan]}`,
+      danger: true,
+    });
+    if (!confirmed) {
+      return;
+    }
+    try {
+      this.show(await this.api.changePlan(this.membership()!.organizationId, plan, true));
+      this.planDone.set(`You are now on the ${planLabels[plan]} plan; ${names} is off.`);
+    } catch (error) {
+      this.loadError.set(toApiProblem(error));
     }
   }
 

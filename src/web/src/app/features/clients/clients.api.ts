@@ -89,4 +89,39 @@ export class ClientsApi {
   delete(organizationId: string, id: string): Promise<void> {
     return firstValueFrom(this.http.delete<void>(`${clientsUrl(organizationId)}/${id}`));
   }
+
+  /** The client's active portal contacts (SPEC-V2 5.3); 403 `plan-feature-unavailable` on a plan without the portal. */
+  contacts(organizationId: string, clientId: string): Promise<ClientContact[]> {
+    return firstValueFrom(
+      this.http.get<ClientContact[]>(`${clientsUrl(organizationId)}/${clientId}/contacts`),
+    );
+  }
+
+  addContact(
+    organizationId: string,
+    clientId: string,
+    input: { name: string; email: string },
+  ): Promise<ClientContact> {
+    return firstValueFrom(
+      this.http.post<ClientContact>(`${clientsUrl(organizationId)}/${clientId}/contacts`, input),
+    );
+  }
+
+  removeContact(organizationId: string, contactId: string): Promise<void> {
+    return firstValueFrom(
+      this.http.delete<void>(
+        `/api/orgs/${encodeURIComponent(organizationId)}/contacts/${encodeURIComponent(contactId)}`,
+      ),
+    );
+  }
+}
+
+/** A person at the client who may use the portal (SPEC-V2 5.3). */
+export interface ClientContact {
+  readonly id: string;
+  readonly clientId: string;
+  readonly name: string;
+  readonly email: string;
+  readonly createdAt: string;
+  readonly lastSignInAt: string | null;
 }

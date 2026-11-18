@@ -20,6 +20,7 @@ import { Confirm } from '../../shared/ui/confirm-dialog';
 import { LimitReached } from '../../shared/ui/limit-reached';
 import { EmptyState, ErrorState } from '../../shared/ui/states';
 import { ClientOption, ClientsApi } from '../clients/clients.api';
+import { RequestsApi, RequestsCount } from '../requests/requests.api';
 import { Member, MembersApi } from '../members/members.api';
 import { Job, JobPriority, JobsApi, jobPriorities, priorityLabels } from './jobs.api';
 
@@ -58,8 +59,20 @@ type Field = keyof typeof messages;
   template: `
     <a [routerLink]="backLink()" class="text-sm text-muted hover:text-fg">← Back</a>
     <h1 class="mt-3 text-2xl font-semibold tracking-tight">
-      {{ id() ? 'Edit ' + (job()?.label ?? 'job') : 'New job' }}
+      {{
+        id()
+          ? 'Edit ' + (job()?.label ?? 'job')
+          : fromRequest()
+            ? 'New job from a request'
+            : 'New job'
+      }}
     </h1>
+    @if (fromRequest()) {
+      <p class="mt-1 text-sm text-muted">
+        Saving creates the job for the client who asked and marks their request as planned; they see
+        it in the portal.
+      </p>
+    }
 
     @if (!allowed()) {
       <div class="mt-5">
@@ -309,10 +322,17 @@ export class JobFormPage {
   readonly id = input<string>();
   /** Query parameter: preselects the client when coming from a client's page. */
   readonly clientId = input<string>();
+  /** Query parameters from the Requests inbox (SPEC-V2 5.5): saving converts that request; the rest prefill. */
+  readonly fromRequest = input<string>();
+  readonly title = input<string>();
+  readonly description = input<string>();
+  readonly scheduledOn = input<string>();
 
   private readonly api = inject(JobsApi);
   private readonly membersApi = inject(MembersApi);
   private readonly clientsApi = inject(ClientsApi);
+  private readonly requestsApi = inject(RequestsApi);
+  private readonly requestsCount = inject(RequestsCount);
   private readonly session = inject(SessionStore);
   private readonly confirm = inject(Confirm);
   private readonly router = inject(Router);
@@ -398,8 +418,17 @@ export class JobFormPage {
       void this.loadOptions();
       if (this.id()) {
         void this.load();
-      } else if (this.clientId()) {
-        this.form.controls.clientId.setValue(this.clientId()!);
+      } else {
+        if (this.clientId()) {
+          this.form.controls.clientId.setValue(this.clientId()!);
+        }
+        if (this.fromRequest()) {
+          this.form.patchValue({
+            title: this.title() ?? '',
+            description: this.description() ?? '',
+            scheduledOn: this.scheduledOn() ?? '',
+          });
+        }
       }
     });
 
@@ -456,9 +485,15 @@ export class JobFormPage {
     this.saving.set(true);
     try {
       const id = this.id();
+      const request = this.fromRequest();
       const saved = id
         ? await this.api.update(organizationId, id, input, this.version)
-        : await this.api.create(organizationId, input);
+        : request
+          ? await this.requestsApi.convert(organizationId, request, input)
+          : await this.api.create(organizationId, input);
+      if (request) {
+        void this.requestsCount.refresh(organizationId);
+      }
       // The detail page confirms the save (the success state; a screen reader hears it as a status).
       await this.router.navigate(['/o', this.slug(), 'jobs', saved.id], {
         queryParams: { notice: id ? 'saved' : 'created' },
