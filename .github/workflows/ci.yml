@@ -156,14 +156,15 @@ jobs:
         with:
           node-version-file: src/web/.nvmrc
 
-      # Reads the lock file only; nothing is installed. Moderate and above fail the gate (D020).
+      # Reads the lock file only; nothing is installed. Moderate and above fail the gate (D020), except advisories listed
+      # in tools/audit-exceptions.json with a reason, until their expiry date.
       - name: npm audit
         working-directory: src/web
-        run: npm audit --audit-level=moderate
+        run: node ../../tools/npm-audit.mjs
 
       - name: npm audit (end-to-end tests)
         working-directory: tests/e2e
-        run: npm audit --audit-level=moderate
+        run: node ../../tools/npm-audit.mjs
 
       - name: NuGet vulnerable packages (including transitive)
         run: |

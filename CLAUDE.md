@@ -77,7 +77,7 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
 - `npm run format:check` / `npm run format`: Prettier check / fix.
 - `npm run test:ci`: Vitest component tests, single run (151 tests after M15). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
 - `npm run build`: production build to `src/web/dist/web`.
-- `npm audit --audit-level=moderate`: npm advisories (CI gate).
+- `node ../../tools/npm-audit.mjs` (from `src/web` or `tests/e2e`): the npm advisory gate CI runs, `npm audit` at moderate and above except the advisories listed with a reason and an unexpired date in `tools/audit-exceptions.json` (D020); exit 1 on a failure, `--today YYYY-MM-DD` to test an expiry. Verified 2026-11-18. `npm audit --audit-level=moderate` shows the raw report.
 
 **Full stack and end-to-end** (verified 2026-10-25, M11)
 - `docker compose up --build --wait`: the production image with PostgreSQL and Mailpit, migrated and seeded; app on `http://localhost:8080`, Mailpit inbox on `http://localhost:8026`. About 30 s to build without layer cache and 20 s to healthy. Separate from `docker-compose.dev.yml` (own project and volume); stop the dev compose's Mailpit first only if you changed its ports. `docker compose down` stops it; `--volumes` also deletes its data. On 2026-11-17 (M15) `up --build` stopped with "additional privileges requested: pass --allow=fs.read=Dockerfile" (Compose now builds through `buildx bake`; `COMPOSE_BAKE=false` did not help). What worked: `docker build -t tenant-hub:local .`, then `docker compose up --no-build --wait`.
