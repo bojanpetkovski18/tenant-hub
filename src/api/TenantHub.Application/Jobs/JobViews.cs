@@ -126,7 +126,8 @@ public sealed class JobViews(IAppDbContext db, ITenantContext tenant, IIdentityS
             job.Version,
             CanEdit: job.CanEdit(actor),
             CanAssign: actor.CanManage,
-            CanDelete: actor.CanManage && job.Status is JobStatus.New or JobStatus.Cancelled,
+            // Visits are skipped or cancelled, never deleted (their row stops the date being generated again).
+            CanDelete: actor.CanManage && job.AgreementId is null && job.Status is JobStatus.New or JobStatus.Cancelled,
             // Skipping is cancelling a visit with a fixed reason: who may cancel, for visits of an agreement (SPEC-V2 2.2).
             CanSkip: job.AgreementId is not null && tenant.HasPermission(Permissions.AgreementsManage)
                 && job.AllowedFor(actor).Contains(JobStatus.Cancelled),

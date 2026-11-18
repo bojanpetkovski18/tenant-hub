@@ -206,6 +206,46 @@ public sealed class AgreementFlowTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task A_visit_cannot_be_deleted_so_it_is_never_generated_again()
+    {
+        // Review finding (2026-11-18): deleting a New or skipped visit left its date free, and the next daily run
+        // generated it again. A visit is skipped or cancelled instead.
+        await using var org = await OrgAsync(Monday);
+        var agreement = await org.CreateAsync(Weekly("monday"), startsOn: D("2027-01-04"));
+        var visits = await org.VisitsAsync(agreement.Id);
+        var fresh = visits[1];
+        var skipped = visits[2];
+        (await org.Owner.PostJsonAsync(org.Url($"/jobs/{skipped.Id}/skip"), new { })).EnsureSuccessStatusCode();
+
+        await ProblemAssert.HasCodeAsync(await org.Owner.SendJsonAsync(HttpMethod.Delete, org.Url($"/jobs/{fresh.Id}"), null), HttpStatusCode.Conflict, "visit-not-deletable");
+        await ProblemAssert.HasCodeAsync(await org.Owner.SendJsonAsync(HttpMethod.Delete, org.Url($"/jobs/{skipped.Id}"), null), HttpStatusCode.Conflict, "visit-not-deletable");
+        Assert.False((await org.GetJobAsync(fresh.Id)).CanDelete);
+
+        org.Clock.Advance(TimeSpan.FromDays(1));
+        await RunDueAsync(org.Factory);
+        var after = await org.VisitsAsync(agreement.Id);
+        Assert.Equal([fresh.Id], after.Where(v => v.OccurrenceOn == fresh.OccurrenceOn).Select(v => v.Id));
+        Assert.Equal([skipped.Id], after.Where(v => v.OccurrenceOn == skipped.OccurrenceOn).Select(v => v.Id));
+    }
+
+    [Fact]
+    public async Task The_list_shows_active_then_paused_then_ended_agreements()
+    {
+        await using var org = await OrgAsync(Monday);
+        var ended = await org.CreateAsync(Weekly("monday"), startsOn: D("2027-01-11"), title: "A cleaning that ended");
+        var paused = await org.CreateAsync(Weekly("tuesday"), startsOn: D("2027-01-11"), title: "B cleaning on hold");
+        var active = await org.CreateAsync(Weekly("wednesday"), startsOn: D("2027-01-11"), title: "C cleaning");
+        (await org.PostAsync($"/agreements/{ended.Id}/end", new { })).EnsureSuccessStatusCode();
+        (await org.PostAsync($"/agreements/{paused.Id}/pause", new { })).EnsureSuccessStatusCode();
+
+        var list = await org.Owner.Http.GetFromJsonAsync<System.Text.Json.JsonElement>(org.Url("/agreements"), BrowserClient.Json, Ct);
+
+        Assert.Equal(
+            [active.Id, paused.Id, ended.Id],
+            list.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()));
+    }
+
+    [Fact]
     public async Task Ending_cancels_new_and_scheduled_future_visits_and_keeps_the_rest()
     {
         await using var org = await OrgAsync(Monday);
@@ -253,6 +293,8 @@ public sealed class AgreementFlowTests(PostgresFixture postgres)
 
         Assert.Equal(50, (await org.VisitsAsync(created.Id)).Count);
         Assert.Equal((AgreementStatus.Active, GenerationHold.PlanLimit), (created.Status, created.PausedReason!.Value));
+        // Review finding (2026-11-18): visits exist up to the last one made (4 January + 49 days), not the horizon.
+        Assert.Equal(D("2027-02-22"), created.GeneratedThrough);
         await using var db = PostgresFixture.CreateDbContext(org.ConnectionString);
         var held = await db.AuditEntries.AcrossTenants().SingleAsync(e => e.OrganizationId == org.Id && e.Action == "agreement.generation_held", Ct);
         Assert.Equal(ActorKind.System, held.ActorKind);
@@ -421,8 +463,8 @@ public sealed class AgreementFlowTests(PostgresFixture postgres)
 
         public Task<HttpResponseMessage> PostAsync(string path, object body) => Owner.PostJsonAsync(Url(path), body);
 
-        public async Task<AgreementView> CreateAsync(object recurrence, DateOnly startsOn, bool assignee = false, DateOnly? endsOn = null) =>
-            await ReadAsync<AgreementView>(await PostAsync("/agreements", Body(recurrence, startsOn, ClientId, assignee: assignee ? OwnerId : null, endsOn: endsOn)));
+        public async Task<AgreementView> CreateAsync(object recurrence, DateOnly startsOn, bool assignee = false, DateOnly? endsOn = null, string title = "Office cleaning") =>
+            await ReadAsync<AgreementView>(await PostAsync("/agreements", Body(recurrence, startsOn, ClientId, title, assignee: assignee ? OwnerId : null, endsOn: endsOn)));
 
         public async Task<AgreementView> UpdateAsync(AgreementView agreement, object recurrence, string title, DateOnly startsOn) =>
             await ReadAsync<AgreementView>(await Owner.SendJsonAsync(HttpMethod.Put, Url($"/agreements/{agreement.Id}"), Body(recurrence, startsOn, title: title, version: (await GetAgreementAsync(agreement.Id)).Version)));

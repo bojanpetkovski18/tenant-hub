@@ -3,7 +3,8 @@ using TenantHub.Domain.Jobs;
 namespace TenantHub.Domain.Agreements;
 
 /// <summary>The visits a generation run creates, earliest first, and the agreements the plan limit cut short.</summary>
-public sealed record GenerationPlan(IReadOnlyList<(Agreement Agreement, DateOnly Date)> Visits, IReadOnlySet<Guid> CutShort);
+/// <remarks><c>LeftOut</c>: for each agreement the plan limit cut short, the first date it left out.</remarks>
+public sealed record GenerationPlan(IReadOnlyList<(Agreement Agreement, DateOnly Date)> Visits, IReadOnlyDictionary<Guid, DateOnly> LeftOut);
 
 /// <summary>What an edit does to an agreement's following visits: those still on a visit date are updated, the rest withdrawn.</summary>
 public sealed record EditPlan(IReadOnlyList<Job> Update, IReadOnlyList<Job> Withdraw);
@@ -46,7 +47,7 @@ public static class VisitGeneration
         var allowed = room is { } r ? Math.Max(r, 0) : wanted.Count;
         return new GenerationPlan(
             wanted.Take(allowed).ToList(),
-            wanted.Skip(allowed).Select(v => v.Agreement.Id).ToHashSet());
+            wanted.Skip(allowed).GroupBy(v => v.Agreement.Id).ToDictionary(g => g.Key, g => g.Min(v => v.Date)));
     }
 
     /// <summary>
