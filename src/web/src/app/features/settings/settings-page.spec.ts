@@ -29,6 +29,7 @@ const overview = (overrides: Partial<OrganizationOverview> = {}): OrganizationOv
   slug: 'brightline',
   plan: 'free',
   timeZone: 'Europe/Amsterdam',
+  dailyCapacityMinutes: 480,
   createdAt: '2026-10-01T09:00:00Z',
   usage: { seats: 3, activeClients: 20, openJobs: 12, activeAgreements: 1 },
   limits: { seats: 3, activeClients: 25, openJobs: 50, activeAgreements: 3 },
@@ -113,6 +114,32 @@ describe('settings page', () => {
       'Delete organization',
     ]);
     expect(text(main(element))).toContain('Unlimited open jobs');
+  });
+
+  it('saves the working day in hours as minutes, which the board compares with', async () => {
+    const element = await open(admin, overview({ dailyCapacityMinutes: 450 }));
+
+    const hours = main(element).querySelector<HTMLInputElement>('#org-capacity')!;
+    expect(hours.value).toBe('7.5');
+    hours.value = '0.25';
+    hours.dispatchEvent(new Event('input'));
+    main(element).querySelector('form')!.dispatchEvent(new Event('submit'));
+    await settle(harness.fixture);
+    http.expectNone((r) => r.method === 'PATCH');
+    expect(text(main(element).querySelector('#org-capacity-error'))).toBe(
+      'Use at least half an hour.',
+    );
+
+    hours.value = '6.5';
+    hours.dispatchEvent(new Event('input'));
+    main(element).querySelector('form')!.dispatchEvent(new Event('submit'));
+    await settle(harness.fixture);
+    const request = http.expectOne((r) => r.method === 'PATCH' && r.url === orgUrl);
+    expect(request.request.body).toEqual({
+      name: 'Brightline Cleaning Co.',
+      timeZone: 'Europe/Amsterdam',
+      dailyCapacityMinutes: 390,
+    });
   });
 
   it('shows an Admin the general settings and usage, but no plan switch or danger zone', async () => {

@@ -35,6 +35,7 @@ describe('AppShell', () => {
     expect(links.map((link) => link.textContent?.trim())).toEqual([
       'Dashboard',
       'Jobs',
+      'Board',
       'Agreements',
       'Clients',
       'Members',
@@ -165,11 +166,11 @@ describe('AppShell navigation by permission', () => {
   };
 
   it.each([
-    ['viewer', viewerOnly, ['Dashboard', 'Jobs', 'Agreements', 'Clients', 'Members']],
+    ['viewer', viewerOnly, ['Dashboard', 'Jobs', 'Board', 'Agreements', 'Clients', 'Members']],
     [
       'owner',
       olivia,
-      ['Dashboard', 'Jobs', 'Agreements', 'Clients', 'Members', 'Audit log', 'Settings'],
+      ['Dashboard', 'Jobs', 'Board', 'Agreements', 'Clients', 'Members', 'Audit log', 'Settings'],
     ],
   ])('shows a %s only what their permissions allow', async (_role, user, expected) => {
     TestBed.configureTestingModule({
