@@ -24,6 +24,9 @@ public sealed class PermissionsTests
         { "jobs.manage", true, true, false, false },
         { "jobs.work", true, true, true, false },
         { "audit.read", true, true, false, false },
+        // SPEC-V2 2.2.
+        { "agreements.read", true, true, true, true },
+        { "agreements.manage", true, true, false, false },
     };
 
     [Theory]

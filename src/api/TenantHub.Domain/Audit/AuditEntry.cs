@@ -21,6 +21,12 @@ public sealed class AuditEntry : ITenantOwned
 
     public string ActorName { get; private set; } = "";
 
+    /// <summary>User for v1 rows and staff actions; System, Contact or ApiKey from v2 (SPEC-V2 5.9).</summary>
+    public ActorKind ActorKind { get; private set; }
+
+    /// <summary>The contact or API key that acted; null for users and the system.</summary>
+    public Guid? ActorRef { get; private set; }
+
     public string Action { get; private set; } = "";
 
     public string EntityType { get; private set; } = "";
@@ -33,13 +39,19 @@ public sealed class AuditEntry : ITenantOwned
 
     public string? TraceId { get; private set; }
 
-    public static AuditEntry From(IAuditableEvent change, Guid? actorUserId, string actorName, DateTimeOffset occurredAt, string? traceId) =>
-        new()
+    /// <summary>The event's own actor when it names one, otherwise the scope's user (or the system when there is none).</summary>
+    public static AuditEntry From(IAuditableEvent change, Guid? actorUserId, string actorName, DateTimeOffset occurredAt, string? traceId)
+    {
+        // No user in the scope (a scheduled task, the seed's system steps) means the system acted.
+        var actor = change.Actor ?? new AuditActor(actorUserId is null ? ActorKind.System : ActorKind.User, actorUserId, null, actorName);
+        return new()
         {
             OrganizationId = change.OrganizationId,
             OccurredAt = occurredAt,
-            ActorUserId = actorUserId,
-            ActorName = actorName,
+            ActorUserId = actor.UserId,
+            ActorName = actor.Name,
+            ActorKind = actor.Kind,
+            ActorRef = actor.Ref,
             Action = change.Action,
             EntityType = change.EntityType,
             EntityId = change.EntityId,
@@ -47,4 +59,5 @@ public sealed class AuditEntry : ITenantOwned
             Changes = change.Changes,
             TraceId = traceId,
         };
+    }
 }

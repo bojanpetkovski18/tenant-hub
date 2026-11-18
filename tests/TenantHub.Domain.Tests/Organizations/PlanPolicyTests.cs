@@ -10,9 +10,9 @@ public sealed class PlanPolicyTests
     [Fact]
     public void The_limits_are_the_spec()
     {
-        Assert.Equal(new PlanLimits(3, 25, 50), PlanLimits.For(Plan.Free));
-        Assert.Equal(new PlanLimits(10, 500, 2_000), PlanLimits.For(Plan.Team));
-        Assert.Equal(new PlanLimits(50, null, null), PlanLimits.For(Plan.Business));
+        Assert.Equal(new PlanLimits(3, 25, 50, 3), PlanLimits.For(Plan.Free));
+        Assert.Equal(new PlanLimits(10, 500, 2_000, 200), PlanLimits.For(Plan.Team));
+        Assert.Equal(new PlanLimits(50, null, null, null), PlanLimits.For(Plan.Business));
     }
 
     public static TheoryData<Plan, LimitKind, int, bool> Boundaries() => new()
@@ -33,7 +33,12 @@ public sealed class PlanPolicyTests
         { Plan.Business, LimitKind.Seats, 49, true },
         { Plan.Business, LimitKind.Seats, 50, false },
         { Plan.Business, LimitKind.ActiveClients, 1_000_000, true },
+        { Plan.Free, LimitKind.ActiveAgreements, 2, true },
+        { Plan.Free, LimitKind.ActiveAgreements, 3, false },
+        { Plan.Team, LimitKind.ActiveAgreements, 199, true },
+        { Plan.Team, LimitKind.ActiveAgreements, 200, false },
         { Plan.Business, LimitKind.OpenJobs, 1_000_000, true },
+        { Plan.Business, LimitKind.ActiveAgreements, 1_000_000, true },
     };
 
     [Theory]
@@ -42,9 +47,10 @@ public sealed class PlanPolicyTests
     {
         var usage = kind switch
         {
-            LimitKind.Seats => new PlanUsage(used, 0, 0),
-            LimitKind.ActiveClients => new PlanUsage(1, used, 0),
-            _ => new PlanUsage(1, 0, used),
+            LimitKind.Seats => new PlanUsage(used, 0, 0, 0),
+            LimitKind.ActiveClients => new PlanUsage(1, used, 0, 0),
+            LimitKind.OpenJobs => new PlanUsage(1, 0, used, 0),
+            _ => new PlanUsage(1, 0, 0, used),
         };
 
         var error = Record.Exception(() => PlanPolicy.EnsureRoomFor(plan, usage, kind));
@@ -64,7 +70,7 @@ public sealed class PlanPolicyTests
     [Fact]
     public void The_message_names_the_plan_the_limit_and_the_usage()
     {
-        var error = Assert.Throws<PlanLimitReachedException>(() => PlanPolicy.EnsureRoomFor(Plan.Free, new PlanUsage(3, 0, 0), LimitKind.Seats));
+        var error = Assert.Throws<PlanLimitReachedException>(() => PlanPolicy.EnsureRoomFor(Plan.Free, new PlanUsage(3, 0, 0, 0), LimitKind.Seats));
 
         Assert.Equal("Your Free plan allows 3 seats, and 3 are in use.", error.Message);
     }
@@ -72,14 +78,16 @@ public sealed class PlanPolicyTests
     [Fact]
     public void A_downgrade_is_blocked_by_every_limit_the_usage_exceeds_and_only_those()
     {
-        var usage = new PlanUsage(Seats: 4, ActiveClients: 25, OpenJobs: 51);
+        var usage = new PlanUsage(Seats: 4, ActiveClients: 25, OpenJobs: 51, ActiveAgreements: 4);
 
         var blocking = PlanPolicy.BlockingLimits(Plan.Free, usage);
 
-        // 25 clients fit exactly; seats and open jobs do not.
-        Assert.Equal([new LimitBreach(LimitKind.Seats, 3, 4), new LimitBreach(LimitKind.OpenJobs, 50, 51)], blocking);
-        Assert.Empty(PlanPolicy.BlockingLimits(Plan.Free, new PlanUsage(3, 25, 50)));
-        Assert.Empty(PlanPolicy.BlockingLimits(Plan.Business, new PlanUsage(50, 10_000, 10_000)));
+        // 25 clients fit exactly; seats, open jobs and agreements do not.
+        Assert.Equal(
+            [new LimitBreach(LimitKind.Seats, 3, 4), new LimitBreach(LimitKind.OpenJobs, 50, 51), new LimitBreach(LimitKind.ActiveAgreements, 3, 4)],
+            blocking);
+        Assert.Empty(PlanPolicy.BlockingLimits(Plan.Free, new PlanUsage(3, 25, 50, 3)));
+        Assert.Empty(PlanPolicy.BlockingLimits(Plan.Business, new PlanUsage(50, 10_000, 10_000, 10_000)));
     }
 
     [Fact]
@@ -87,9 +95,9 @@ public sealed class PlanPolicyTests
     {
         var organization = Organization.Create("Harbor & Pine", "harbor-pine", "UTC", Guid.NewGuid(), Now);
 
-        Assert.False(organization.ChangePlan(Plan.Free, new PlanUsage(1, 0, 0)));
-        Assert.True(organization.ChangePlan(Plan.Team, new PlanUsage(5, 30, 60)));
-        var refused = Assert.Throws<PlanDowngradeBlockedException>(() => organization.ChangePlan(Plan.Free, new PlanUsage(5, 30, 60)));
+        Assert.False(organization.ChangePlan(Plan.Free, new PlanUsage(1, 0, 0, 0)));
+        Assert.True(organization.ChangePlan(Plan.Team, new PlanUsage(5, 30, 60, 0)));
+        var refused = Assert.Throws<PlanDowngradeBlockedException>(() => organization.ChangePlan(Plan.Free, new PlanUsage(5, 30, 60, 0)));
 
         Assert.Equal(Plan.Team, organization.Plan);
         Assert.Equal("plan-downgrade-blocked", refused.Code);

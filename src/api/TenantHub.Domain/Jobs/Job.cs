@@ -1,3 +1,4 @@
+using TenantHub.Domain.Agreements;
 using TenantHub.Domain.Memberships;
 
 namespace TenantHub.Domain.Jobs;
@@ -20,6 +21,7 @@ public sealed class Job : AggregateRoot, ITenantOwned
         ["scheduledOn"] = "scheduled date",
         ["dueOn"] = "due date",
         ["quotedAmount"] = "quoted amount",
+        ["estimatedMinutes"] = "estimated time",
     };
 
     private Job()
@@ -51,6 +53,17 @@ public sealed class Job : AggregateRoot, ITenantOwned
 
     public decimal? QuotedAmount { get; private set; }
 
+    public int? EstimatedMinutes { get; private set; }
+
+    /// <summary>The agreement this visit was generated from (SPEC-V2 4.2); null for jobs made by hand.</summary>
+    public Guid? AgreementId { get; private set; }
+
+    /// <summary>The agreement's occurrence this visit is; with the agreement, unique, so it is never generated twice.</summary>
+    public DateOnly? OccurrenceOn { get; private set; }
+
+    /// <summary>A person edited this visit, so changes to its agreement leave it alone (SPEC-V2 5.1).</summary>
+    public bool ChangedByHand { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public Guid CreatedByUserId { get; private set; }
@@ -64,7 +77,7 @@ public sealed class Job : AggregateRoot, ITenantOwned
 
     public string Label => FormatNumber(Number);
 
-    public JobDetails Details => new(Title, Description, ClientId, AssigneeUserId, Priority, ScheduledOn, DueOn, QuotedAmount);
+    public JobDetails Details => new(Title, Description, ClientId, AssigneeUserId, Priority, ScheduledOn, DueOn, QuotedAmount, EstimatedMinutes);
 
     public static string FormatNumber(int number) => $"JOB-{number:D4}";
 
@@ -134,9 +147,93 @@ public sealed class Job : AggregateRoot, ITenantOwned
 
         Apply(details);
         UpdatedAt = now;
+        ChangedByHand |= AgreementId is not null;
         var fields = string.Join(", ", changes.Select(c => FieldLabels.GetValueOrDefault(c.Field, c.Field)));
         Raise(new JobEvent(this, "job.updated", $"Updated {Label}: {fields}", changes));
         return true;
+    }
+
+    /// <summary>
+    /// A visit of <paramref name="agreement"/> on <paramref name="occurrence"/> (SPEC-V2 5.1): the template's fields,
+    /// scheduled and due that day, Scheduled when the template has an assignee and otherwise New. The agreement's
+    /// creator is its creator; the audit names the system.
+    /// </summary>
+    public static Job Generate(Agreement agreement, int number, DateOnly occurrence, IReadOnlyDictionary<Guid, string> names, DateTimeOffset now)
+    {
+        var details = agreement.Template.ForVisit(agreement.ClientId, occurrence);
+        var job = new Job
+        {
+            Id = Guid.CreateVersion7(now),
+            OrganizationId = agreement.OrganizationId,
+            Number = number,
+            Status = details.AssigneeUserId is null ? JobStatus.New : JobStatus.Scheduled,
+            AgreementId = agreement.Id,
+            OccurrenceOn = occurrence,
+            CreatedAt = now,
+            CreatedByUserId = agreement.CreatedByUserId,
+            UpdatedAt = now,
+        };
+        job.Apply(details);
+        var empty = new JobDetails("", null, Guid.Empty, null, details.Priority, null, null, null);
+        var changes = empty.ChangesTo(details, names).Select(c => c with { From = null }).ToList();
+        changes.Add(new FieldChange("status", null, JobLabels.Of(job.Status)));
+        job.Raise(new JobEvent(job, "job.created", $"Created {job.Label} “{job.Title}” for {JobDetails.Date(occurrence)}", changes, agreement.SystemActor));
+        return job;
+    }
+
+    /// <summary>
+    /// Whether a change to the agreement reaches this visit (SPEC-V2 5.1): it is the agreement's, today or later, New or
+    /// Scheduled, and nobody has edited it.
+    /// </summary>
+    public bool FollowsAgreement(Guid agreementId, DateOnly today) =>
+        AgreementId == agreementId && !ChangedByHand && OccurrenceOn >= today && Status is JobStatus.New or JobStatus.Scheduled;
+
+    /// <summary>
+    /// Brings a following visit in line with the agreement's template, recorded as the system. The status follows the
+    /// assignee as at generation (Scheduled with one, New without); nobody has worked on such a visit yet.
+    /// </summary>
+    public bool FollowAgreement(Agreement agreement, IReadOnlyDictionary<Guid, string> names, DateTimeOffset now)
+    {
+        var details = agreement.Template.ForVisit(ClientId, OccurrenceOn!.Value);
+        var status = details.AssigneeUserId is null ? JobStatus.New : JobStatus.Scheduled;
+        var changes = Details.ChangesTo(details, names).ToList();
+        if (status != Status)
+        {
+            changes.Add(new FieldChange("status", JobLabels.Of(Status), JobLabels.Of(status)));
+        }
+
+        if (changes.Count == 0)
+        {
+            return false;
+        }
+
+        Apply(details);
+        Status = status;
+        UpdatedAt = now;
+        var fields = string.Join(", ", changes.Select(c => FieldLabels.GetValueOrDefault(c.Field, c.Field)));
+        Raise(new JobEvent(this, "job.updated", $"Updated {Label} to follow its agreement: {fields}", changes, agreement.SystemActor));
+        return true;
+    }
+
+    /// <summary>
+    /// A following visit whose date the agreement no longer has (its schedule changed): recorded as deleted by the
+    /// system; the caller removes the row. Nobody had touched it, so no work is lost.
+    /// </summary>
+    public void WithdrawFromAgreement(Agreement agreement) =>
+        Raise(new JobEvent(this, "job.deleted", $"Deleted {Label} “{Title}”: the agreement no longer has a visit on {JobDetails.Date(OccurrenceOn)}", [], agreement.SystemActor));
+
+    /// <summary>
+    /// Skips this one visit (SPEC-V2 5.1): cancelled with the reason "Skipped". It keeps its occurrence date, so it is
+    /// not generated again. Only visits of an agreement can be skipped; the workflow decides from which statuses.
+    /// </summary>
+    public void Skip(JobActor actor, DateTimeOffset now)
+    {
+        if (AgreementId is null)
+        {
+            throw new DomainException("not-a-visit", $"{Label} is not a visit of an agreement; cancel it instead.");
+        }
+
+        TransitionTo(JobStatus.Cancelled, actor, "Skipped", now);
     }
 
     /// <summary>Moves along the workflow, or explains why not (409 with the allowed list, 403, or 400 with the missing field).</summary>
@@ -285,6 +382,7 @@ public sealed class Job : AggregateRoot, ITenantOwned
         ScheduledOn = details.ScheduledOn;
         DueOn = details.DueOn;
         QuotedAmount = details.QuotedAmount;
+        EstimatedMinutes = details.EstimatedMinutes;
     }
 }
 
@@ -300,7 +398,7 @@ public sealed class InvalidJobTransitionException(Job job, JobStatus target, IRe
     public IReadOnlyList<JobStatus> Allowed { get; } = allowed;
 }
 
-public sealed record JobEvent(Job Job, string Action, string Summary, IReadOnlyList<FieldChange> Changes) : IAuditableEvent
+public sealed record JobEvent(Job Job, string Action, string Summary, IReadOnlyList<FieldChange> Changes, AuditActor? Actor = null) : IAuditableEvent
 {
     public Guid OrganizationId => Job.OrganizationId;
 

@@ -84,6 +84,12 @@ public sealed class MemberCommands(
         {
             job.Unassign(memberName, why, now);
         }
+
+        // Agreements whose visits they would have done get no assignee either (SPEC-V2 5.1).
+        foreach (var agreement in await db.Agreements.Where(a => a.AssigneeUserId == userId).ToListAsync(cancellationToken))
+        {
+            agreement.ClearAssignee(memberName, why, now);
+        }
     }
 
     private Actor Actor() => new(tenant.UserId!.Value, tenant.Role!.Value);

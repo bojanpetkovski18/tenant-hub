@@ -17,16 +17,20 @@ public interface IScheduledTask
 /// <summary>The run's organization (null for application-wide work), when it was due and the clock at its start.</summary>
 public sealed record ScheduledRun(Guid? OrganizationId, DateTimeOffset DueAt, DateTimeOffset Now);
 
-public sealed record ScheduledTaskRoute(string Name, Type TaskType);
+/// <summary><c>PerOrganization</c> tasks get a row per organization from the feature that needs one; the others one row at start.</summary>
+public sealed record ScheduledTaskRoute(string Name, Type TaskType, bool PerOrganization = false);
 
 public static class SchedulerRegistration
 {
-    /// <summary>An application-wide task: the scheduler creates its row, first due at once.</summary>
-    public static IServiceCollection AddScheduledTask<TTask>(this IServiceCollection services, string name)
+    /// <summary>
+    /// An application-wide task gets its row from the scheduler, first due at once. A per-organization task's rows are
+    /// written by the feature that needs them (agreements: <c>IRecurringWork</c>).
+    /// </summary>
+    public static IServiceCollection AddScheduledTask<TTask>(this IServiceCollection services, string name, bool perOrganization = false)
         where TTask : class, IScheduledTask
     {
         services.AddScoped<TTask>();
-        services.AddSingleton(new ScheduledTaskRoute(name, typeof(TTask)));
+        services.AddSingleton(new ScheduledTaskRoute(name, typeof(TTask), perOrganization));
         return services;
     }
 }
@@ -57,7 +61,7 @@ public sealed partial class Scheduler(
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var now = time.GetUtcNow();
-        foreach (var name in _routes.Keys)
+        foreach (var name in _routes.Values.Where(r => !r.PerOrganization).Select(r => r.Name))
         {
             // The unique index treats a null organization as a value, so a second instance's insert is ignored.
             await db.Database.ExecuteSqlAsync(

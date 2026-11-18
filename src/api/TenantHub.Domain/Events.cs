@@ -24,6 +24,24 @@ public interface IAuditableEvent : IDomainEvent
     string Summary { get; }
 
     IReadOnlyList<FieldChange> Changes { get; }
+
+    /// <summary>Who did it when that is not the request's user: "System (agreement …)" for generated visits (SPEC-V2 5.9).</summary>
+    AuditActor? Actor => null;
+}
+
+/// <summary>Who an audit entry names (SPEC-V2 5.9). Staff users are the v1 case; the others come with v2.</summary>
+public enum ActorKind
+{
+    User,
+    Contact,
+    ApiKey,
+    System,
+}
+
+/// <summary>An actor other than the signed-in user: <see cref="Ref"/> is the contact or API key id.</summary>
+public sealed record AuditActor(ActorKind Kind, Guid? UserId, Guid? Ref, string Name)
+{
+    public static AuditActor System(string name) => new(ActorKind.System, null, null, name);
 }
 
 /// <summary>Base for aggregates that raise domain events; the persistence layer collects them on save.</summary>

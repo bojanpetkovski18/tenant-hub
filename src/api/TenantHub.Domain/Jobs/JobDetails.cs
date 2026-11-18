@@ -14,12 +14,16 @@ public sealed record JobDetails(
     JobPriority Priority,
     DateOnly? ScheduledOn,
     DateOnly? DueOn,
-    decimal? QuotedAmount)
+    decimal? QuotedAmount,
+    int? EstimatedMinutes = null)
 {
     public const int TitleMinLength = 2;
     public const int TitleMaxLength = 120;
     public const int DescriptionMaxLength = 5000;
     public const decimal MaxQuotedAmount = 1_000_000m;
+
+    /// <summary>A visit takes at most a working day; the board (M17) adds these up per day.</summary>
+    public const int MaxEstimatedMinutes = 1440;
 
     public static JobDetails Validate(
         string? title,
@@ -29,7 +33,8 @@ public sealed record JobDetails(
         JobPriority? priority,
         DateOnly? scheduledOn,
         DateOnly? dueOn,
-        decimal? quotedAmount)
+        decimal? quotedAmount,
+        int? estimatedMinutes = null)
     {
         var normalizedTitle = string.Join(' ', (title ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         var normalizedDescription = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
@@ -51,9 +56,10 @@ public sealed record JobDetails(
             quotedAmount is null || (quotedAmount is >= 0 and <= MaxQuotedAmount && decimal.Round(quotedAmount.Value, 2) == quotedAmount),
             "quotedAmount",
             "Enter an amount from 0 to 1,000,000.00 with at most two decimals.");
+        Check(estimatedMinutes is null or (>= 1 and <= MaxEstimatedMinutes), "estimatedMinutes", $"Enter 1–{MaxEstimatedMinutes} minutes.");
 
         return errors.Count == 0
-            ? new JobDetails(normalizedTitle, normalizedDescription, clientId!.Value, assigneeUserId, priority ?? JobPriority.Normal, scheduledOn, dueOn, quotedAmount)
+            ? new JobDetails(normalizedTitle, normalizedDescription, clientId!.Value, assigneeUserId, priority ?? JobPriority.Normal, scheduledOn, dueOn, quotedAmount, estimatedMinutes)
             : throw new DomainValidationException(errors);
     }
 
@@ -70,6 +76,7 @@ public sealed record JobDetails(
             ("scheduledOn", Date(ScheduledOn), Date(other.ScheduledOn)),
             ("dueOn", Date(DueOn), Date(other.DueOn)),
             ("quotedAmount", Money(QuotedAmount), Money(other.QuotedAmount)),
+            ("estimatedMinutes", Minutes(EstimatedMinutes), Minutes(other.EstimatedMinutes)),
         }
         .Where(f => !string.Equals(f.From, f.To, StringComparison.Ordinal))
         .Select(f => new FieldChange(f.Field, f.From, f.To)),
@@ -81,4 +88,6 @@ public sealed record JobDetails(
     internal static string? Date(DateOnly? date) => date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     internal static string? Money(decimal? amount) => amount?.ToString("0.00", CultureInfo.InvariantCulture);
+
+    internal static string? Minutes(int? minutes) => minutes is { } value ? $"{value} min" : null;
 }

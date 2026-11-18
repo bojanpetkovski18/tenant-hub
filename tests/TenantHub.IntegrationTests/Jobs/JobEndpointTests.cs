@@ -290,8 +290,9 @@ public sealed class JobEndpointTests(PostgresFixture postgres)
         var numbers = await db.Jobs.AcrossTenants().Where(j => j.OrganizationId == tenants.OrgA).Select(j => j.Number).OrderBy(n => n).ToListAsync(Ct);
         Assert.Equal(Enumerable.Range(1, numbers.Count), numbers);
         Assert.Equal(numbers.Count + 1, (await db.Organizations.SingleAsync(o => o.Id == tenants.OrgA, Ct)).NextJobNumber);
-        // B's counter is its own.
-        Assert.Equal(1, await db.Jobs.AcrossTenants().Where(j => j.OrganizationId == tenants.OrgB).MaxAsync(j => j.Number, Ct));
+        // B's counter is its own: its numbers run from 1 to its own count (its standing job and visit), untouched by A's.
+        var numbersB = await db.Jobs.AcrossTenants().Where(j => j.OrganizationId == tenants.OrgB).Select(j => j.Number).OrderBy(n => n).ToListAsync(Ct);
+        Assert.Equal(Enumerable.Range(1, numbersB.Count), numbersB);
     }
 
     [Fact]

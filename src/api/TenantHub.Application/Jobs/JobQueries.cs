@@ -22,7 +22,8 @@ public sealed record JobListItem(
     DateOnly? ScheduledOn,
     DateOnly? DueOn,
     bool IsOverdue,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    Guid? AgreementId);
 
 /// <summary>
 /// The list filters of US-33. <see cref="Assignee"/> is a user id, <c>me</c> or <c>none</c>; unknown text is ignored,
@@ -39,7 +40,8 @@ public sealed record ListJobsRequest(
     DateOnly? DueTo,
     DateOnly? CompletedFrom,
     string? Sort,
-    PageRequest Paging);
+    PageRequest Paging,
+    Guid? AgreementId = null);
 
 /// <summary>
 /// The jobs list (US-33): search, filters, sort and paging, all in SQL. Sorting comes from a fixed allow-list; an
@@ -86,6 +88,12 @@ public sealed partial class ListJobsQuery(IAppDbContext db, ITenantContext tenan
         if (request.ClientId is { } clientId)
         {
             jobs = jobs.Where(j => j.ClientId == clientId);
+        }
+
+        // The visits of one agreement (SPEC-V2 4.2), from its page.
+        if (request.AgreementId is { } agreementId)
+        {
+            jobs = jobs.Where(j => j.AgreementId == agreementId);
         }
 
         if (request.Overdue)
@@ -140,6 +148,7 @@ public sealed partial class ListJobsQuery(IAppDbContext db, ITenantContext tenan
                 j.DueOn,
                 IsOverdue = j.DueOn < today && j.Status != JobStatus.Completed && j.Status != JobStatus.Cancelled,
                 j.UpdatedAt,
+                j.AgreementId,
             })
             .ToListAsync(cancellationToken);
 
@@ -159,7 +168,8 @@ public sealed partial class ListJobsQuery(IAppDbContext db, ITenantContext tenan
                 r.ScheduledOn,
                 r.DueOn,
                 r.IsOverdue,
-                r.UpdatedAt))
+                r.UpdatedAt,
+                r.AgreementId))
             .ToList();
 
         return new PagedList<JobListItem>(items, request.Paging.Page, request.Paging.PageSize, total);

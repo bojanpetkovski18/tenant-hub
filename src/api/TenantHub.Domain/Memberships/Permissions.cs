@@ -20,12 +20,17 @@ public static class Permissions
     public const string JobsWork = "jobs.work";
     public const string AuditRead = "audit.read";
 
+    // SPEC-V2 2.2: everyone reads agreements and their visits; Owners and Admins manage them.
+    public const string AgreementsRead = "agreements.read";
+    public const string AgreementsManage = "agreements.manage";
+
     public static IReadOnlyList<string> All { get; } =
     [
         OrgRead, OrgManage, OrgDelete, BillingManage, MembersManage,
         ClientsRead, ClientsWrite, ClientsDelete,
         JobsRead, JobsCreate, JobsManage, JobsWork,
         AuditRead,
+        AgreementsRead, AgreementsManage,
     ];
 
     private static readonly IReadOnlySet<string> OwnerPermissions = new HashSet<string>(All, StringComparer.Ordinal);
@@ -36,15 +41,16 @@ public static class Permissions
             ClientsRead, ClientsWrite, ClientsDelete,
             JobsRead, JobsCreate, JobsManage, JobsWork,
             AuditRead,
+            AgreementsRead, AgreementsManage,
         ],
         StringComparer.Ordinal);
 
     private static readonly IReadOnlySet<string> MemberPermissions = new HashSet<string>(
-        [OrgRead, ClientsRead, ClientsWrite, JobsRead, JobsCreate, JobsWork],
+        [OrgRead, ClientsRead, ClientsWrite, JobsRead, JobsCreate, JobsWork, AgreementsRead],
         StringComparer.Ordinal);
 
     private static readonly IReadOnlySet<string> ViewerPermissions = new HashSet<string>(
-        [OrgRead, ClientsRead, JobsRead],
+        [OrgRead, ClientsRead, JobsRead, AgreementsRead],
         StringComparer.Ordinal);
 
     public static IReadOnlySet<string> For(Role role) => role switch

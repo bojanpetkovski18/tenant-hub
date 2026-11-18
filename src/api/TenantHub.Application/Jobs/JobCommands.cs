@@ -16,10 +16,11 @@ public sealed record JobInput(
     JobPriority? Priority,
     DateOnly? ScheduledOn,
     DateOnly? DueOn,
-    decimal? QuotedAmount)
+    decimal? QuotedAmount,
+    int? EstimatedMinutes = null)
 {
     public JobDetails ToDetails() =>
-        JobDetails.Validate(Title, Description, ClientId, AssigneeUserId, Priority, ScheduledOn, DueOn, QuotedAmount);
+        JobDetails.Validate(Title, Description, ClientId, AssigneeUserId, Priority, ScheduledOn, DueOn, QuotedAmount, EstimatedMinutes);
 }
 
 /// <summary>
@@ -94,6 +95,15 @@ public sealed class JobCommands(
         job.TransitionTo(to, views.Actor(), reason, time.GetUtcNow());
         await SaveAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        return await views.ForAsync(job, cancellationToken);
+    }
+
+    /// <summary>Skips one visit of an agreement (SPEC-V2 5.1): cancelled as "Skipped", and its date is never generated again.</summary>
+    public async Task<JobView> SkipAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var job = await LoadAsync(id, cancellationToken);
+        job.Skip(views.Actor(), time.GetUtcNow());
+        await SaveAsync(cancellationToken);
         return await views.ForAsync(job, cancellationToken);
     }
 

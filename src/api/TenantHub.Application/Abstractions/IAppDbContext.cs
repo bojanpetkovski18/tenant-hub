@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using TenantHub.Domain.Agreements;
 using TenantHub.Domain.Audit;
 using TenantHub.Domain.Clients;
 using TenantHub.Domain.Invitations;
@@ -27,6 +28,8 @@ public interface IAppDbContext
     DbSet<Invitation> Invitations { get; }
 
     DbSet<Job> Jobs { get; }
+
+    DbSet<Agreement> Agreements { get; }
 
     /// <summary>For optimistic concurrency: handlers set the version the client last saw as the original value.</summary>
     EntityEntry<TEntity> Entry<TEntity>(TEntity entity)
