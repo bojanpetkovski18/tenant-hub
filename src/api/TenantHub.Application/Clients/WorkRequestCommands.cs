@@ -54,13 +54,15 @@ public sealed class WorkRequestCommands(
         }
 
         var total = await query.CountAsync(cancellationToken);
-        var rows = await (from r in query
-                          join c in db.Clients on r.ClientId equals c.Id
-                          join contact in db.ClientContacts on r.ContactId equals contact.Id
-                          join j in db.Jobs on r.JobId equals (Guid?)j.Id into linked
-                          from j in linked.DefaultIfEmpty()
-                          orderby r.Status == WorkRequestStatus.Open ? 0 : 1, r.CreatedAt descending
-                          select new { Request = r, Client = c.Name, Contact = contact.Name, JobNumber = j == null ? (int?)null : j.Number })
+        var withNames =
+            from r in query
+            join c in db.Clients on r.ClientId equals c.Id
+            join contact in db.ClientContacts on r.ContactId equals contact.Id
+            join j in db.Jobs on r.JobId equals (Guid?)j.Id into linked
+            from j in linked.DefaultIfEmpty()
+            orderby r.Status == WorkRequestStatus.Open ? 0 : 1, r.CreatedAt descending
+            select new { Request = r, Client = c.Name, Contact = contact.Name, JobNumber = j == null ? (int?)null : j.Number };
+        var rows = await withNames
             .Skip(paging.Skip)
             .Take(paging.PageSize)
             .ToListAsync(cancellationToken);

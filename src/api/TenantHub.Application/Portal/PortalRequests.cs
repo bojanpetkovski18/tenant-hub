@@ -26,13 +26,15 @@ public sealed class PortalRequests(IAppDbContext db, PortalContext portal, TimeP
 {
     public async Task<IReadOnlyList<PortalRequestView>> ListAsync(CancellationToken cancellationToken)
     {
-        var rows = await (from r in db.WorkRequests.AsNoTracking()
-                          where r.ClientId == portal.ClientId
-                          join c in db.ClientContacts on r.ContactId equals c.Id
-                          join j in db.Jobs on r.JobId equals (Guid?)j.Id into jobs
-                          from j in jobs.DefaultIfEmpty()
-                          orderby r.CreatedAt descending
-                          select new { Request = r, Contact = c.Name, JobNumber = j == null ? (int?)null : j.Number })
+        var mine =
+            from r in db.WorkRequests.AsNoTracking()
+            where r.ClientId == portal.ClientId
+            join c in db.ClientContacts on r.ContactId equals c.Id
+            join j in db.Jobs on r.JobId equals (Guid?)j.Id into jobs
+            from j in jobs.DefaultIfEmpty()
+            orderby r.CreatedAt descending
+            select new { Request = r, Contact = c.Name, JobNumber = j == null ? (int?)null : j.Number };
+        var rows = await mine
             .Take(100)
             .ToListAsync(cancellationToken);
         return [.. rows.Select(x => new PortalRequestView(
