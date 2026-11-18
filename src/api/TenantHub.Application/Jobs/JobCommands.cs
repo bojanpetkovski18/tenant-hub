@@ -107,11 +107,6 @@ public sealed class JobCommands(
     /// </summary>
     public async Task<JobView> ScheduleAsync(Guid id, ScheduleInput input, CancellationToken cancellationToken)
     {
-        if (input.ScheduledOn is not { } day)
-        {
-            throw new RequestValidationException(FieldErrors.From([("scheduledOn", "Choose a day.")]));
-        }
-
         var job = await LoadAsync(id, cancellationToken);
         db.Entry(job).Property(j => j.Version).OriginalValue = input.Version;
         if (input.AssigneeUserId is { } assignee && assignee != job.AssigneeUserId
@@ -121,7 +116,7 @@ public sealed class JobCommands(
         }
 
         var names = await views.NamesAsync([job.ClientId], [job.AssigneeUserId, input.AssigneeUserId], cancellationToken);
-        if (job.Schedule(input.AssigneeUserId, day, input.MoveDueDate, views.Actor(), names, time.GetUtcNow()))
+        if (job.Schedule(input.AssigneeUserId, input.ScheduledOn, input.MoveDueDate, views.Actor(), names, time.GetUtcNow()))
         {
             await SaveAsync(cancellationToken);
         }

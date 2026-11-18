@@ -111,6 +111,27 @@ public sealed class BoardTests(PostgresFixture postgres)
         Assert.Equal((org.OwnerId, D("2026-11-19")), (card.AssigneeUserId!.Value, card.ScheduledOn!.Value));
     }
 
+    // SPEC-V2 5.2: a card can also go back to "Not scheduled", by the job form's rules (it keeps its person; a New
+    // job given a person but no day stays New, since Scheduled needs a day).
+    [Fact]
+    public async Task A_card_taken_off_the_plan_goes_back_to_the_queue()
+    {
+        await using var org = await OrgAsync(DateTimeOffset.Parse("2026-11-16T09:00:00Z", CultureInfo.InvariantCulture), "UTC");
+        var planned = await org.JobAsync("Carpet clean", D("2026-11-18"), assign: true, due: D("2026-11-18"));
+        var waiting = await org.JobAsync("Window cleaning", null);
+        await org.TransitionAsync(planned, "scheduled");
+        var board = await org.BoardAsync();
+
+        var unplanned = await ReadAsync<JobView>(await org.MoveAsync(planned, org.OwnerId, null, board.Cards.Single().Version));
+        var assigned = await ReadAsync<JobView>(await org.MoveAsync(waiting, org.OwnerId, null, board.Unscheduled.Single().Version));
+
+        Assert.Equal((JobStatus.Scheduled, org.OwnerId, (DateOnly?)null, D("2026-11-18")), (unplanned.Status, unplanned.AssigneeUserId!.Value, unplanned.ScheduledOn, unplanned.DueOn!.Value));
+        Assert.Equal((JobStatus.New, org.OwnerId), (assigned.Status, assigned.AssigneeUserId!.Value));
+        var after = await org.BoardAsync();
+        Assert.Empty(after.Cards);
+        Assert.Equal(new[] { planned, waiting }.Order(), after.Unscheduled.Select(c => c.Id).Order());
+    }
+
     [Fact]
     public async Task Refused_moves_say_why()
     {
@@ -210,7 +231,7 @@ public sealed class BoardTests(PostgresFixture postgres)
         public async Task<BoardView> BoardAsync(string query = "") =>
             (await Owner.Http.GetFromJsonAsync<BoardView>(Url($"/board{query}"), BrowserClient.Json, Ct))!;
 
-        public Task<HttpResponseMessage> MoveAsync(Guid job, Guid? assignee, DateOnly day, uint version, bool moveDueDate = false) =>
+        public Task<HttpResponseMessage> MoveAsync(Guid job, Guid? assignee, DateOnly? day, uint version, bool moveDueDate = false) =>
             Owner.PostJsonAsync(Url($"/jobs/{job}/schedule"), new { assigneeUserId = assignee, scheduledOn = day, version, moveDueDate });
 
         public async ValueTask DisposeAsync()

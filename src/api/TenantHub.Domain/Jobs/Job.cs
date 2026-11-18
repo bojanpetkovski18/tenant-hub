@@ -154,14 +154,15 @@ public sealed class Job : AggregateRoot, ITenantOwned
     }
 
     /// <summary>
-    /// A move on the board (SPEC-V2 5.2): to a person (or nobody) and a day, in one step. Managers only, as for
+    /// A move on the board (SPEC-V2 5.2): to a person (or nobody) and a day (or back to "not scheduled"), in one step. Managers only, as for
     /// assigning and scheduling anywhere else; closed jobs stay where they are. A New job that ends up with an
-    /// assignee and a day becomes Scheduled through the ordinary workflow move. A day after the due date is refused
+    /// assignee and a day becomes Scheduled through the ordinary workflow move; without a day it stays New, and a job
+    /// taken off the plan keeps its status, as the job form allows. A day after the due date is refused
     /// unless <paramref name="moveDueDate"/> moves the due date along. Returns false when nothing changed.
     /// </summary>
     public bool Schedule(
         Guid? assigneeUserId,
-        DateOnly scheduledOn,
+        DateOnly? scheduledOn,
         bool moveDueDate,
         JobActor actor,
         IReadOnlyDictionary<Guid, string> names,
@@ -178,7 +179,7 @@ public sealed class Job : AggregateRoot, ITenantOwned
         }
 
         var dueOn = DueOn;
-        if (dueOn is { } due && scheduledOn > due)
+        if (dueOn is { } due && scheduledOn is { } day && day > due)
         {
             if (!moveDueDate)
             {
@@ -187,12 +188,12 @@ public sealed class Job : AggregateRoot, ITenantOwned
                     $"{Label} is due on {JobDetails.Date(due)}. Move the due date too, or choose an earlier day.");
             }
 
-            dueOn = scheduledOn;
+            dueOn = day;
         }
 
         var details = Details with { AssigneeUserId = assigneeUserId, ScheduledOn = scheduledOn, DueOn = dueOn };
         var changes = Details.ChangesTo(details, names);
-        var becomesScheduled = Status == JobStatus.New && assigneeUserId is not null;
+        var becomesScheduled = Status == JobStatus.New && assigneeUserId is not null && scheduledOn is not null;
         if (changes.Count == 0 && !becomesScheduled)
         {
             return false;

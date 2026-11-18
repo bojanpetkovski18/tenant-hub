@@ -51,7 +51,8 @@ export interface BoardView {
 
 export interface BoardMove {
   readonly assigneeUserId: string | null;
-  readonly scheduledOn: string;
+  /** Null takes the job off the plan (back to "Not scheduled"). */
+  readonly scheduledOn: string | null;
   readonly version: number;
   readonly moveDueDate?: boolean;
 }

@@ -13,11 +13,12 @@ export interface MoveOptions {
 
 export interface MoveChoice {
   readonly assigneeUserId: string | null;
-  readonly scheduledOn: string;
+  /** Null: back to "Not scheduled". */
+  readonly scheduledOn: string | null;
 }
 
 /**
- * The keyboard path of the board (SPEC-V2 9, WCAG 2.5.7): every move a drag can make, chosen from two fields. Any
+ * The keyboard path of the board (SPEC-V2 9, WCAG 2.5.7): every move a drag can make, chosen from two fields (an empty day is "Not scheduled"). Any
  * date is allowed, so a card can also go to another week (dragging stays within the week shown).
  */
 @Component({
@@ -53,9 +54,14 @@ export interface MoveChoice {
           #dayInput
           [value]="day()"
           [attr.aria-invalid]="!!error()"
-          [attr.aria-describedby]="error() ? 'move-day-error' : null"
-          (input)="day.set(dayInput.value); error.set(null)"
+          [attr.aria-describedby]="error() ? 'move-day-error' : 'move-day-hint'"
+          (input)="
+            day.set(dayInput.value); partial.set(dayInput.validity.badInput); error.set(null)
+          "
         />
+        <p id="move-day-hint" class="th-hint">
+          Leave it empty to put the job back in "Not scheduled".
+        </p>
         @if (error(); as message) {
           <p id="move-day-error" class="th-field-error">{{ message }}</p>
         }
@@ -75,13 +81,16 @@ export class MoveDialog {
   protected readonly assignee = signal<string | null>(this.data.card.assigneeUserId);
   protected readonly day = signal(this.data.day);
   protected readonly error = signal<string | null>(null);
+  /** The browser holds an incomplete date (its value is then empty). */
+  protected readonly partial = signal(false);
 
   protected submit(): void {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(this.day())) {
-      this.error.set('Choose a day.');
+    // A half-typed date also reads as "", so it must not be taken for "no day".
+    if (this.partial() || (this.day() !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(this.day()))) {
+      this.error.set('Finish the date, or clear it to put the job back in "Not scheduled".');
       return;
     }
-    this.ref.close({ assigneeUserId: this.assignee(), scheduledOn: this.day() });
+    this.ref.close({ assigneeUserId: this.assignee(), scheduledOn: this.day() || null });
   }
 }
 

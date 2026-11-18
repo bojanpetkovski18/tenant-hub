@@ -35,8 +35,13 @@ import { AskMove } from './move-dialog';
 /** Where a card can be dropped: a person (or nobody) on a day. */
 interface Cell {
   readonly assigneeUserId: string | null;
-  readonly day: string;
+  /** Null: back to "Not scheduled". */
+  readonly day: string | null;
+  /** "Not scheduled" takes the day away and leaves the person as it is. */
+  readonly keepsPerson?: boolean;
 }
+
+const notScheduled: Cell = { assigneeUserId: null, day: null, keepsPerson: true };
 
 interface Row {
   readonly userId: string | null;
@@ -280,7 +285,8 @@ const unassigned: Row = { userId: null, name: 'Unassigned', active: true };
             <div
               cdkDropList
               role="group"
-              [cdkDropListEnterPredicate]="noDrop"
+              [cdkDropListData]="notScheduled"
+              (cdkDropListDropped)="dropped($event)"
               [cdkDropListDisabled]="!b.canPlan"
               class="mt-3 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4"
               aria-label="Not scheduled"
@@ -361,15 +367,13 @@ export class BoardPage {
   protected readonly hoursText = hoursText;
   protected readonly dayText = dayText;
   protected readonly isMovable = isMovable;
+  protected readonly notScheduled = notScheduled;
   protected readonly board = signal<BoardView | null>(null);
   protected readonly error = signal<ApiProblem | null>(null);
   protected readonly busy = signal(false);
   protected readonly message = signal<string | null>(null);
   protected readonly announcement = signal('');
   protected readonly clients = signal<ClientOption[]>([]);
-  /** The unscheduled area is a source only: a card leaves it by getting a day. */
-  protected readonly noDrop = () => false;
-
   protected readonly statusFilter = computed(
     () => jobStatuses.find((s) => s === this.status()) ?? null,
   );
@@ -492,13 +496,15 @@ export class BoardPage {
     });
   }
 
+  /** A drop on a cell, or on "Not scheduled" (the card keeps its person and loses its day). */
   protected dropped(event: CdkDragDrop<Cell>): void {
     const card = event.item.data as BoardCard;
     const target = event.container.data;
-    if (card.assigneeUserId === target.assigneeUserId && card.scheduledOn === target.day) {
+    const assigneeUserId = target.keepsPerson ? card.assigneeUserId : target.assigneeUserId;
+    if (card.assigneeUserId === assigneeUserId && card.scheduledOn === target.day) {
       return;
     }
-    void this.move(card, target.assigneeUserId, target.day);
+    void this.move(card, assigneeUserId, target.day);
   }
 
   protected async openMove(card: BoardCard, day: string | null): Promise<void> {
@@ -542,7 +548,7 @@ export class BoardPage {
   private async move(
     card: BoardCard,
     assigneeUserId: string | null,
-    day: string,
+    day: string | null,
     moveDueDate = false,
   ): Promise<void> {
     const organizationId = this.membership()!.organizationId;
@@ -556,8 +562,11 @@ export class BoardPage {
         moveDueDate,
       });
       const person = this.rows().find((r) => r.userId === assigneeUserId)?.name ?? 'Unassigned';
+      const who = assigneeUserId ? person : 'nobody (unassigned)';
       this.announcement.set(
-        `${card.label} moved to ${assigneeUserId ? person : 'nobody (unassigned)'}, ${dayText(day)}.`,
+        day
+          ? `${card.label} moved to ${who}, ${dayText(day)}.`
+          : `${card.label} moved to Not scheduled, assigned to ${who}.`,
       );
     } catch (error) {
       const problem = toApiProblem(error);
@@ -565,7 +574,7 @@ export class BoardPage {
         this.busy.set(false);
         const confirmed = await this.confirm.ask({
           title: `Move the due date of ${card.label} too?`,
-          message: `${problem.title.split('. ')[0]}. Moving it to ${dayText(day)} moves the due date to that day as well.`,
+          message: `${problem.title.split('. ')[0]}. Moving it to ${dayText(day!)} moves the due date to that day as well.`,
           confirmLabel: 'Move both',
         });
         if (confirmed) {

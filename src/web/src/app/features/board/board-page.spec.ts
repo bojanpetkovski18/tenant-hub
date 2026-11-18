@@ -226,6 +226,24 @@ describe('board page', () => {
     expect(document.activeElement?.id).toBe('move-person');
   });
 
+  it('puts a card back in "Not scheduled" when the day is left empty', async () => {
+    const page = await openLoaded();
+
+    const request = await moveWithDialog(page, maya, '');
+    expect(request.request.body).toEqual({
+      assigneeUserId: maya,
+      scheduledOn: null,
+      version: 7,
+      moveDueDate: false,
+    });
+    request.flush({});
+    await settle(harness.fixture);
+    boardRequest().flush(board());
+    await settle(harness.fixture);
+
+    expect(announcement(page)).toBe('JOB-0042 moved to Not scheduled, assigned to Maya Torres.');
+  });
+
   it('asks before moving past the due date, then moves both', async () => {
     const page = await openLoaded();
 
@@ -375,6 +393,30 @@ describe('board page', () => {
     boardRequest().flush(board());
     await settle(harness.fixture);
     expect(announcement(page)).toBe('JOB-0042 moved to Noah Kim, Friday 20 November.');
+  });
+
+  it('takes a card off the plan when it is dropped on "Not scheduled", keeping its person', async () => {
+    await openLoaded();
+    const lists = harness.fixture.debugElement
+      .queryAll(By.directive(CdkDropList))
+      .map((d) => d.injector.get(CdkDropList));
+    const planned = harness.fixture.debugElement
+      .queryAll(By.directive(CdkDrag))
+      .map((d) => d.injector.get(CdkDrag))
+      .find((d) => (d.data as BoardCard).id === 'j42')!;
+    const queue = lists.find(
+      (l) => l.element.nativeElement.getAttribute('aria-label') === 'Not scheduled',
+    )!;
+
+    queue.dropped.emit({ item: planned, container: queue } as CdkDragDrop<unknown>);
+    await settle(harness.fixture);
+
+    expect(http.expectOne(`${jobsUrl}/j42/schedule`).request.body).toEqual({
+      assigneeUserId: maya,
+      scheduledOn: null,
+      version: 7,
+      moveDueDate: false,
+    });
   });
 
   it('picks up a card without adding an inline style element', async () => {
