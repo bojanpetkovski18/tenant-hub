@@ -62,6 +62,8 @@ public sealed class AppDbContext(
 
     public DbSet<ClientContact> ClientContacts => Set<ClientContact>();
 
+    public DbSet<PortalSignInToken> PortalSignInTokens => Set<PortalSignInToken>();
+
     /// <summary>Side effects waiting for the dispatcher (D039); written through <see cref="IOutbox"/>.</summary>
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 

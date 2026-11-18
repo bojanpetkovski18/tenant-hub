@@ -478,6 +478,18 @@ public sealed class ApiTenants : IAsyncDisposable
         AgreementB = await CreateAgreementAsync(OrgB, "Bravo Standing Agreement");
         VisitB = await CreateVisitAsync(OrgB);
         ContactB = await CreateContactAsync(OrgB, ClientB);
+        // A contact and an unused sign-in link in each, so every tenant-owned table has rows on both sides.
+        await CreateSignInLinkAsync(OrgA, await CreateContactAsync(OrgA, ClientA));
+        await CreateSignInLinkAsync(OrgB, ContactB);
+    }
+
+    /// <summary>An unused portal sign-in link for the contact; the token itself is thrown away.</summary>
+    public async Task CreateSignInLinkAsync(Guid organizationId, Guid contactId)
+    {
+        await using var db = await OwnerContextAsync(organizationId);
+        var contact = await db.ClientContacts.SingleAsync(c => c.Id == contactId, Ct);
+        db.PortalSignInTokens.Add(PortalSignInToken.Issue(contact, InvitationTokens.Create().Hash, DateTimeOffset.UtcNow));
+        await db.SaveChangesAsync(Ct);
     }
 
     /// <summary>

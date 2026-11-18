@@ -74,6 +74,7 @@ public class ApiFactory(
         builder.UseSetting("RateLimiting:DemoAuthPermitLimit", "1000");
         builder.UseSetting("RateLimiting:DemoInvitationPermitLimit", "1000");
         builder.UseSetting("RateLimiting:AccountEmailPermitLimit", "1000");
+        builder.UseSetting("RateLimiting:PortalSignInPermitLimit", "1000");
         // The outbox dispatcher and the scheduler run only when a test drives them (DispatchOutboxAsync, Scheduler).
         builder.UseSetting(BackgroundWork.EnabledSetting, "false");
         foreach (var (key, value) in settings ?? new Dictionary<string, string?>())

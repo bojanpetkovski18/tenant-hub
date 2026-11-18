@@ -11,6 +11,9 @@ public enum EndpointAccess
 
     /// <summary>A signed-in user with an active membership in the organization in the route, and a permission.</summary>
     Tenant,
+
+    /// <summary>A portal session (SPEC-V2 3.2): a client contact, whose organization and client come from the session only.</summary>
+    Portal,
 }
 
 public sealed record EndpointAccessMetadata(EndpointAccess Access);
@@ -37,6 +40,16 @@ public static class EndpointAccessExtensions
         app.MapGroup(TenantRoutePrefix)
             .WithMetadata(new EndpointAccessMetadata(EndpointAccess.Tenant))
             .AddEndpointFilter<TenantResolutionFilter>();
+
+    /// <summary>
+    /// Routes under <c>/api/portal</c> for a signed-in contact: the portal session is checked before every handler
+    /// (contact, client and plan still valid), and the handlers read the client from the session only.
+    /// </summary>
+    public static RouteGroupBuilder MapPortalGroup(this IEndpointRouteBuilder app) =>
+        app.MapGroup(Auth.PortalAuth.ApiPath)
+            .WithMetadata(new EndpointAccessMetadata(EndpointAccess.Portal))
+            .RequireAuthorization(Auth.PortalAuth.Policy)
+            .AddEndpointFilter<PortalResolutionFilter>();
 
     public static TBuilder RequirePermission<TBuilder>(this TBuilder builder, string permission)
         where TBuilder : IEndpointConventionBuilder =>

@@ -28,6 +28,10 @@ public sealed class EndpointCoverageTests(OfflineApiFactory factory) : IClassFix
         "POST /api/demo/sign-in",
         "POST /api/invitations/preview", // the token in the body is the credential (D028)
         "POST /api/invitations/sign-up",
+        "POST /api/portal/sign-in/request", // always 202; the answer reveals nothing (SPEC-V2 7)
+        "POST /api/portal/sign-in/confirm", // the token in the body is the credential (D028)
+        "GET /api/portal/session", // like the staff session: who is signed in, or which portal this is
+        "POST /api/portal/sign-out",
         "* /health", // MapHealthChecks answers any method; read-only
         "* /health/live",
         "* {**path}",
@@ -48,7 +52,7 @@ public sealed class EndpointCoverageTests(OfflineApiFactory factory) : IClassFix
     {
         var unclassified = Endpoints().Where(e => e.Endpoint.Metadata.GetMetadata<EndpointAccessMetadata>() is null).Select(e => e.Key).ToList();
 
-        Assert.True(unclassified.Count == 0, $"Mark with .Public(), .UserScoped() or MapTenantGroup(): {string.Join(", ", unclassified)}");
+        Assert.True(unclassified.Count == 0, $"Mark with .Public(), .UserScoped(), MapTenantGroup() or MapPortalGroup(): {string.Join(", ", unclassified)}");
     }
 
     [Fact]
@@ -93,6 +97,37 @@ public sealed class EndpointCoverageTests(OfflineApiFactory factory) : IClassFix
 
         Assert.True(routed.SetEquals(cased),
             $"Missing cases: {string.Join(", ", routed.Except(cased))}; stale cases: {string.Join(", ", cased.Except(routed))}");
+    }
+
+    [Fact]
+    public void Portal_endpoints_need_a_portal_session_and_each_has_a_matrix_case()
+    {
+        // SPEC-V2 3.2: the fourth class. Under /api/portal, the portal policy, no anonymous access, and a line in the
+        // portal matrix for every route (and a route for every line).
+        var portal = Endpoints().Where(e => Access(e.Endpoint) == EndpointAccess.Portal).ToList();
+        var cased = Portal.PortalEndpointCase.All.Select(c => c.Key).ToHashSet();
+
+        Assert.NotEmpty(portal);
+        Assert.All(portal, e =>
+        {
+            Assert.Contains($" {Api.Common.Auth.PortalAuth.ApiPath}/", e.Key, StringComparison.Ordinal);
+            Assert.Contains(e.Endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>(), a => a.Policy == Api.Common.Auth.PortalAuth.Policy);
+            Assert.Null(e.Endpoint.Metadata.GetMetadata<IAllowAnonymous>());
+        });
+        Assert.True(portal.Select(e => e.Key).ToHashSet().SetEquals(cased),
+            $"Missing cases: {string.Join(", ", portal.Select(e => e.Key).Except(cased))}; stale cases: {string.Join(", ", cased.Except(portal.Select(e => e.Key)))}");
+    }
+
+    [Fact]
+    public void Nothing_else_is_routed_under_the_portal()
+    {
+        var outside = Endpoints()
+            .Where(e => Access(e.Endpoint) is not (EndpointAccess.Portal or EndpointAccess.Public)
+                && e.Key.Contains($" {Api.Common.Auth.PortalAuth.ApiPath}", StringComparison.Ordinal))
+            .Select(e => e.Key)
+            .ToList();
+
+        Assert.True(outside.Count == 0, $"Portal routes must use MapPortalGroup() or be reviewed public ones: {string.Join(", ", outside)}");
     }
 
     private static EndpointAccess? Access(Endpoint endpoint) => endpoint.Metadata.GetMetadata<EndpointAccessMetadata>()?.Access;

@@ -11,6 +11,9 @@ namespace TenantHub.IntegrationTests.Infrastructure;
 public sealed class BrowserClient : IDisposable
 {
     public static readonly Uri BaseAddress = new("https://localhost");
+
+    /// <summary>A portal page, for reading the cookies a browser there would see.</summary>
+    public static readonly Uri PortalPage = new("https://localhost/portal/");
     public const string Password = "Correct-Horse-9";
 
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -94,6 +97,26 @@ public sealed class BrowserClient : IDisposable
         return await Http.SendAsync(request, Ct);
     }
 
+    /// <summary>The portal session as its pages load it (issues the portal's XSRF token).</summary>
+    public async Task<JsonElement> PortalSessionAsync(string organizationSlug)
+    {
+        var response = await Http.GetAsync($"/api/portal/session?orgSlug={Uri.EscapeDataString(organizationSlug)}", Ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<JsonElement>(Json, Ct);
+    }
+
+    /// <summary>An unsafe portal request, after the portal page has loaded its session once.</summary>
+    public async Task<HttpResponseMessage> PortalSendAsync(HttpMethod method, string path, object? body, string organizationSlug)
+    {
+        if (Cookies.GetCookies(PortalPage)["XSRF-TOKEN"] is null)
+        {
+            await PortalSessionAsync(organizationSlug);
+        }
+
+        using var request = new HttpRequestMessage(method, path) { Content = body is null ? null : JsonContent.Create(body) };
+        return await Http.SendAsync(request, Ct);
+    }
+
     private async Task EnsureXsrfAsync()
     {
         if (Cookies.GetCookies(BaseAddress)["XSRF-TOKEN"] is null)
@@ -112,7 +135,12 @@ public sealed class XsrfHeaderHandler(CookieContainer cookies) : DelegatingHandl
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var unsafeMethod = request.Method != HttpMethod.Get && request.Method != HttpMethod.Head;
-        var token = cookies.GetCookies(BrowserClient.BaseAddress)["XSRF-TOKEN"]?.Value;
+        // Like Angular on the page it runs on: portal requests come from portal pages, which read the portal's token
+        // (path /portal) before the staff one (D040).
+        var page = request.RequestUri?.AbsolutePath.StartsWith("/api/portal", StringComparison.Ordinal) == true
+            ? BrowserClient.PortalPage
+            : BrowserClient.BaseAddress;
+        var token = cookies.GetCookies(page)["XSRF-TOKEN"]?.Value;
         if (Enabled && unsafeMethod && token is not null)
         {
             request.Headers.Add("X-XSRF-TOKEN", token);

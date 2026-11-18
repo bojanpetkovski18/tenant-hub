@@ -34,6 +34,11 @@ public sealed class RateLimitOptions
     public int AccountEmailPermitLimit { get; init; } = 5;
 
     public int AccountEmailWindowSeconds { get; init; } = 600;
+
+    /// <summary>Portal sign-in link requests per client IP per window; each contact also has a one-minute cooldown.</summary>
+    public int PortalSignInPermitLimit { get; init; } = 5;
+
+    public int PortalSignInWindowSeconds { get; init; } = 600;
 }
 
 public static class RateLimiting
@@ -41,6 +46,7 @@ public static class RateLimiting
     public const string AuthPolicy = "auth";
     public const string InvitationPolicy = "invitations";
     public const string AccountEmailPolicy = "account-email";
+    public const string PortalSignInPolicy = "portal-sign-in";
 
     public static IServiceCollection AddAppRateLimiting(this IServiceCollection services, IConfiguration configuration)
     {
@@ -55,6 +61,8 @@ public static class RateLimiting
                 InvitationWindowSeconds = options.InvitationWindowSeconds,
                 AccountEmailPermitLimit = options.AccountEmailPermitLimit,
                 AccountEmailWindowSeconds = options.AccountEmailWindowSeconds,
+                PortalSignInPermitLimit = options.PortalSignInPermitLimit,
+                PortalSignInWindowSeconds = options.PortalSignInWindowSeconds,
             };
         }
 
@@ -110,6 +118,16 @@ public static class RateLimiting
                 {
                     PermitLimit = options.AccountEmailPermitLimit,
                     Window = TimeSpan.FromSeconds(options.AccountEmailWindowSeconds),
+                    QueueLimit = 0,
+                }));
+
+            // Per client IP: a sign-in link request sends an email to whoever the address belongs to.
+            limiter.AddPolicy(PortalSignInPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
+                "ip:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = options.PortalSignInPermitLimit,
+                    Window = TimeSpan.FromSeconds(options.PortalSignInWindowSeconds),
                     QueueLimit = 0,
                 }));
         });

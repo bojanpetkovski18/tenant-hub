@@ -462,6 +462,51 @@ namespace TenantHub.Infrastructure.Data.Migrations
                     b.ToTable("client_contacts", (string)null);
                 });
 
+            modelBuilder.Entity("TenantHub.Domain.Clients.PortalSignInToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ContactId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contact_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<byte[]>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("bytea")
+                        .HasColumnName("token_hash");
+
+                    b.Property<DateTimeOffset?>("UsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("used_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_portal_sign_in_tokens");
+
+                    b.HasIndex("OrganizationId", "TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ux_portal_sign_in_tokens_token_hash");
+
+                    b.HasIndex("OrganizationId", "ContactId", "CreatedAt")
+                        .HasDatabaseName("ix_portal_sign_in_tokens_contact_created");
+
+                    b.ToTable("portal_sign_in_tokens", (string)null);
+                });
+
             modelBuilder.Entity("TenantHub.Domain.Invitations.Invitation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1080,6 +1125,24 @@ namespace TenantHub.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_client_contacts_clients_organization_id_client_id");
+                });
+
+            modelBuilder.Entity("TenantHub.Domain.Clients.PortalSignInToken", b =>
+                {
+                    b.HasOne("TenantHub.Domain.Organizations.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_portal_sign_in_tokens_organizations_organization_id");
+
+                    b.HasOne("TenantHub.Domain.Clients.ClientContact", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "ContactId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_portal_sign_in_tokens_client_contacts_organization_id_conta");
                 });
 
             modelBuilder.Entity("TenantHub.Domain.Invitations.Invitation", b =>
