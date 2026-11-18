@@ -40,7 +40,11 @@ public sealed class JobCommands(
     PlanLimitsCheck limits,
     TimeProvider time)
 {
-    public async Task<JobView> CreateAsync(JobInput input, CancellationToken cancellationToken)
+    /// <summary>
+    /// Creates a job. <paramref name="alongside"/> runs before the save, inside the same transaction and lock: converting a
+    /// work request into the job is one change, or none.
+    /// </summary>
+    public async Task<JobView> CreateAsync(JobInput input, CancellationToken cancellationToken, Func<Job, Task>? alongside = null)
     {
         var details = input.ToDetails();
         await EnsureReferencesAsync(details, current: null, cancellationToken);
@@ -54,6 +58,11 @@ public sealed class JobCommands(
         await limits.EnsureRoomForAsync(LimitKind.OpenJobs, cancellationToken);
         var job = Job.Create(organization.Id, organization.TakeJobNumber(), details, views.Actor(), names, time.GetUtcNow());
         db.Jobs.Add(job);
+        if (alongside is not null)
+        {
+            await alongside(job);
+        }
+
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return await views.ForAsync(job, cancellationToken);
@@ -152,6 +161,12 @@ public sealed class JobCommands(
     {
         var job = await LoadAsync(id, cancellationToken);
         job.MarkDeleted(views.Actor());
+        // A request converted into this job stays converted; it no longer links to a job that is gone.
+        foreach (var request in await db.WorkRequests.Where(r => r.JobId == id).ToListAsync(cancellationToken))
+        {
+            request.ForgetJob();
+        }
+
         db.Jobs.Remove(job);
         await SaveAsync(cancellationToken);
     }

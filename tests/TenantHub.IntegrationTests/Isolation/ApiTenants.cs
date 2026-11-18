@@ -71,6 +71,9 @@ public sealed class ApiTenants : IAsyncDisposable
     /// <summary>B's standing portal contact, at <see cref="ClientB"/>.</summary>
     public Guid ContactB { get; private set; }
 
+    /// <summary>B's standing open work request, from <see cref="ContactB"/>.</summary>
+    public Guid RequestB { get; private set; }
+
     public string OrgBOwnerEmail { get; } = $"owner-{Guid.NewGuid():N}@bravo.example";
 
     public string RemovedMemberEmail { get; } = $"removed-{Guid.NewGuid():N}@alpha.example";
@@ -142,7 +145,12 @@ public sealed class ApiTenants : IAsyncDisposable
             .OrderBy(c => c.Id)
             .Select(c => new { c.Id, c.ClientId, c.Name, c.Email, c.RemovedAt, c.LastSignInAt })
             .ToListAsync(Ct);
-        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit, invitations, jobs, agreements, contacts, next = organization.NextJobNumber });
+        var requests = await db.WorkRequests.AcrossTenants().AsNoTracking()
+            .Where(r => r.OrganizationId == OrgB)
+            .OrderBy(r => r.Id)
+            .Select(r => new { r.Id, r.Status, r.JobId, r.DeclineReason, r.Version })
+            .ToListAsync(Ct);
+        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit, invitations, jobs, agreements, contacts, requests, next = organization.NextJobNumber });
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
     }
 
@@ -481,6 +489,35 @@ public sealed class ApiTenants : IAsyncDisposable
         // A contact and an unused sign-in link in each, so every tenant-owned table has rows on both sides.
         await CreateSignInLinkAsync(OrgA, await CreateContactAsync(OrgA, ClientA));
         await CreateSignInLinkAsync(OrgB, ContactB);
+        RequestB = await CreateRequestAsync(OrgB, ContactB);
+        await CreateRequestAsync(OrgA);
+    }
+
+    /// <summary>An open work request in A or B, as its contact submits it (a new contact at a new client unless given).</summary>
+    public async Task<Guid> CreateRequestAsync(Guid organizationId, Guid? contactId = null)
+    {
+        if (organizationId != OrgA && organizationId != OrgB)
+        {
+            return Guid.NewGuid();
+        }
+
+        var contact = contactId ?? await CreateContactAsync(organizationId);
+        await using var lookup = await OwnerContextAsync(organizationId);
+        var row = await lookup.ClientContacts.AsNoTracking().SingleAsync(c => c.Id == contact, Ct);
+        var tenant = new TenantContext();
+        tenant.EnterAsContact(organizationId, row.ClientId, contact);
+        await using var db = PostgresFixture.CreateDbContext(ConnectionString, tenant);
+        var request = WorkRequest.Submit(
+            await db.ClientContacts.SingleAsync(c => c.Id == contact, Ct),
+            $"Request {Guid.NewGuid():N}"[..40],
+            null,
+            null,
+            0,
+            DateOnly.FromDateTime(DateTime.UtcNow),
+            DateTimeOffset.UtcNow);
+        db.WorkRequests.Add(request);
+        await db.SaveChangesAsync(Ct);
+        return request.Id;
     }
 
     /// <summary>Gives a job of A or B a quoted amount (written as the Owner); unknown ids are left alone.</summary>

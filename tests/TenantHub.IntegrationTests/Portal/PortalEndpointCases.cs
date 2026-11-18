@@ -29,8 +29,11 @@ public sealed partial record PortalEndpointCase(string Method, string Pattern)
 
     public Func<PortalClient, object>? Body { get; init; }
 
-    /// <summary>The answer includes the caller's own standing job: proves the endpoint shows data at all.</summary>
-    public bool ShowsOwnJob { get; init; }
+    /// <summary>What of the caller's own the answer must include (their job's title by default): proves it shows data.</summary>
+    public Func<PortalClient, string>? ShowsOwn { get; init; }
+
+    /// <summary>The answer includes the caller's own standing job.</summary>
+    public bool ShowsOwnJob { init => ShowsOwn = value ? client => client.JobTitle : null; }
 
     /// <summary>A successful call changes data and must write an audit entry naming the contact (SPEC-V2 5.9).</summary>
     public bool Audited { get; init; }
@@ -52,6 +55,8 @@ public sealed partial record PortalEndpointCase(string Method, string Pattern)
         new("GET", "/visits") { ShowsOwnJob = true },
         new("GET", "/visits/{id:guid}") { Resource = PortalResource.Visit, ShowsOwnJob = true },
         new("GET", "/quotes") { ShowsOwnJob = true },
+        new("GET", "/requests") { ShowsOwn = client => client.RequestTitle },
+        new("POST", "/requests") { Allowed = HttpStatusCode.Created, Audited = true, Body = _ => new { title = "Please clean the stairwell" } },
         new("POST", "/quotes/{id:guid}/approve") { Resource = PortalResource.Quote, ShowsOwnJob = true, Audited = true, Body = _ => new { comment = "Go ahead" } },
         new("POST", "/quotes/{id:guid}/decline") { Resource = PortalResource.Quote, ShowsOwnJob = true, Audited = true, Body = _ => new { comment = "Too dear" } },
     ];

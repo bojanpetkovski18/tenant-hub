@@ -20,7 +20,9 @@ public sealed record PortalClient(
     Guid ContactId,
     string ContactEmail,
     Guid JobId,
-    string JobTitle);
+    string JobTitle,
+    Guid RequestId,
+    string RequestTitle);
 
 /// <summary>
 /// The portal matrix's world (SPEC-V2 3.2): two organizations on Team, two clients in each, one contact per client,
@@ -128,7 +130,12 @@ public sealed class PortalTenants : IAsyncDisposable
         var audit = await db.AuditEntries.AcrossTenants().AsNoTracking()
             .Where(a => a.OrganizationId != except.OrganizationId)
             .CountAsync(Ct);
-        var json = JsonSerializer.Serialize(new { jobs, contacts, clients, audit });
+        var requests = await db.WorkRequests.AcrossTenants().AsNoTracking()
+            .Where(r => r.ClientId != except.ClientId)
+            .OrderBy(r => r.Id)
+            .Select(r => new { r.Id, r.Title, r.Status, r.Version })
+            .ToListAsync(Ct);
+        var json = JsonSerializer.Serialize(new { jobs, contacts, clients, audit, requests });
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
     }
 
@@ -173,7 +180,16 @@ public sealed class PortalTenants : IAsyncDisposable
         }));
         // The standing job's quote waits for the contact's decision.
         (await owner.PostJsonAsync($"{url}/jobs/{job}/quote", new { })).EnsureSuccessStatusCode();
-        return new PortalClient(name, organizationId, organizationName, slug, client, contact, email, job, jobTitle);
+        // And the contact has asked for something, as they would in the portal.
+        var requestTitle = $"{name} asks for a carpet clean";
+        var tenant = new TenantContext();
+        tenant.EnterAsContact(organizationId, client, contact);
+        await using var db = PostgresFixture.CreateDbContext(ConnectionString, tenant);
+        var request = Domain.Clients.WorkRequest.Submit(
+            await db.ClientContacts.SingleAsync(c => c.Id == contact, Ct), requestTitle, null, null, 0, DateOnly.FromDateTime(DateTime.UtcNow), DateTimeOffset.UtcNow);
+        db.WorkRequests.Add(request);
+        await db.SaveChangesAsync(Ct);
+        return new PortalClient(name, organizationId, organizationName, slug, client, contact, email, job, jobTitle, request.Id, requestTitle);
     }
 
     private static async Task<Guid> IdOfAsync(HttpResponseMessage response)

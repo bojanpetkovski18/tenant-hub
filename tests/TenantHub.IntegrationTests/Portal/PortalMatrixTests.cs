@@ -61,15 +61,16 @@ public sealed class PortalMatrixTests(PostgresFixture postgres) : IAsyncLifetime
         var body = await response.Content.ReadAsStringAsync(Ct);
 
         Assert.Equal(endpoint.Allowed, response.StatusCode);
-        if (endpoint.ShowsOwnJob)
+        if (endpoint.ShowsOwn is { } own)
         {
-            Assert.Contains(_tenants.A1.JobTitle, body, StringComparison.Ordinal);
+            Assert.Contains(own(_tenants.A1), body, StringComparison.Ordinal);
         }
 
         foreach (var other in new[] { _tenants.A2, _tenants.B1, _tenants.B2 })
         {
             Assert.DoesNotContain(other.JobTitle, body, StringComparison.Ordinal);
             Assert.DoesNotContain(other.ContactEmail, body, StringComparison.Ordinal);
+            Assert.DoesNotContain(other.RequestTitle, body, StringComparison.Ordinal);
         }
 
         Assert.Equal(before, await _tenants.SnapshotExceptAsync(_tenants.A1));

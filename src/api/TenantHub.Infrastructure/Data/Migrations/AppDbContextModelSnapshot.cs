@@ -507,6 +507,93 @@ namespace TenantHub.Infrastructure.Data.Migrations
                     b.ToTable("portal_sign_in_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("TenantHub.Domain.Clients.WorkRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_id");
+
+                    b.Property<Guid>("ContactId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contact_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<Guid?>("DecidedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decided_by_user_id");
+
+                    b.Property<string>("DeclineReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("decline_reason");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("description");
+
+                    b.Property<Guid?>("JobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_id");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<DateOnly?>("PreferredOn")
+                        .HasColumnType("date")
+                        .HasColumnName("preferred_on");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("title");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_work_requests");
+
+                    b.HasIndex("DecidedByUserId")
+                        .HasDatabaseName("ix_work_requests_decided_by_user_id");
+
+                    b.HasIndex("OrganizationId", "ClientId")
+                        .HasDatabaseName("ix_work_requests_organization_id_client_id");
+
+                    b.HasIndex("OrganizationId", "ContactId")
+                        .HasDatabaseName("ix_work_requests_organization_id_contact_id");
+
+                    b.HasIndex("OrganizationId", "JobId")
+                        .HasDatabaseName("ix_work_requests_organization_id_job_id");
+
+                    b.HasIndex("OrganizationId", "Status", "CreatedAt")
+                        .HasDatabaseName("ix_work_requests_status_created");
+
+                    b.ToTable("work_requests", (string)null);
+                });
+
             modelBuilder.Entity("TenantHub.Domain.Invitations.Invitation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -713,6 +800,9 @@ namespace TenantHub.Infrastructure.Data.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_jobs");
+
+                    b.HasAlternateKey("OrganizationId", "Id")
+                        .HasName("ak_jobs_organization_id_id");
 
                     b.HasIndex("ApprovalSentByUserId")
                         .HasDatabaseName("ix_jobs_approval_sent_by_user_id");
@@ -1180,6 +1270,45 @@ namespace TenantHub.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_portal_sign_in_tokens_client_contacts_organization_id_conta");
+                });
+
+            modelBuilder.Entity("TenantHub.Domain.Clients.WorkRequest", b =>
+                {
+                    b.HasOne("TenantHub.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("DecidedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_work_requests_users_decided_by_user_id");
+
+                    b.HasOne("TenantHub.Domain.Organizations.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_work_requests_organizations_organization_id");
+
+                    b.HasOne("TenantHub.Domain.Clients.Client", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "ClientId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_work_requests_clients_organization_id_client_id");
+
+                    b.HasOne("TenantHub.Domain.Clients.ClientContact", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "ContactId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_work_requests_client_contacts_organization_id_contact_id");
+
+                    b.HasOne("TenantHub.Domain.Jobs.Job", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "JobId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_work_requests_jobs_organization_id_job_id");
                 });
 
             modelBuilder.Entity("TenantHub.Domain.Invitations.Invitation", b =>

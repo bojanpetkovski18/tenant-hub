@@ -6,6 +6,11 @@ using TenantHub.Application.Portal;
 
 namespace TenantHub.Api.Features.Portal;
 
+public sealed record PortalWorkRequest(
+    [property: MaxLength(500)] string? Title,
+    [property: MaxLength(10000)] string? Description,
+    DateOnly? PreferredOn);
+
 public sealed record PortalDecisionRequest([property: MaxLength(5000)] string? Comment);
 
 public sealed record PortalSignInRequest(
@@ -75,6 +80,15 @@ public static class PortalEndpoints
 
         portal.MapGet("/visits/{id:guid}", async (Guid id, PortalVisits visits, CancellationToken ct) =>
             TypedResults.Ok(await visits.GetAsync(id, ct)));
+
+        portal.MapGet("/requests", async (PortalRequests requests, CancellationToken ct) =>
+            TypedResults.Ok(await requests.ListAsync(ct)));
+
+        portal.MapPost("/requests", async (PortalWorkRequest request, PortalRequests requests, CancellationToken ct) =>
+        {
+            var created = await requests.SubmitAsync(request.Title, request.Description, request.PreferredOn, ct);
+            return TypedResults.Created($"{PortalAuth.ApiPath}/requests/{created.Id}", created);
+        });
 
         portal.MapGet("/quotes", async (PortalQuotes quotes, CancellationToken ct) =>
             TypedResults.Ok(await quotes.ListAsync(ct)));

@@ -46,6 +46,9 @@ public enum CaseResource
     /// <summary>A portal contact created just for this request, at a new client (removals use it up).</summary>
     FreshContact,
 
+    /// <summary>An open work request created just for this request (converting and declining use it up).</summary>
+    FreshRequest,
+
     /// <summary>
     /// A new organization standing in for the requested one (for deletes, which use it up): like A (A's role users,
     /// same roles) when A is requested, owned by B's Owner when B is, and a random id otherwise.
@@ -93,6 +96,7 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         CaseResource.Job or CaseResource.FreshJob or CaseResource.FreshVisit => "job-not-found",
         CaseResource.Agreement or CaseResource.FreshAgreement => "agreement-not-found",
         CaseResource.FreshContact => "contact-not-found",
+        CaseResource.FreshRequest => "request-not-found",
         _ => throw new InvalidOperationException($"{Key} takes no id."),
     };
 
@@ -106,6 +110,7 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         CaseResource.FreshVisit => tenants.VisitB,
         CaseResource.Agreement or CaseResource.FreshAgreement => tenants.AgreementB,
         CaseResource.FreshContact => tenants.ContactB,
+        CaseResource.FreshRequest => tenants.RequestB,
         _ => throw new InvalidOperationException($"{Key} takes no id."),
     };
 
@@ -349,6 +354,22 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
             Audited = true,
         },
 
+        // The Requests inbox (M18).
+        new("GET", "/requests/", Permissions.PortalManage),
+        new("GET", "/requests/open-count", Permissions.PortalManage),
+        new("POST", "/requests/{id:guid}/convert", Permissions.PortalManage)
+        {
+            Resource = CaseResource.FreshRequest,
+            Audited = true,
+            Body = input => Task.FromResult<object>(new { title = $"From a request {Guid.NewGuid():N}", clientId = input.Tenants.ClientIn(input.OrganizationId), priority = "normal" }),
+        },
+        new("POST", "/requests/{id:guid}/decline", Permissions.PortalManage)
+        {
+            Resource = CaseResource.FreshRequest,
+            Audited = true,
+            Body = _ => Task.FromResult<object>(new { reason = "Not a service we offer" }),
+        },
+
         new("GET", "/audit/", Permissions.AuditRead),
         new("GET", "/dashboard", Permissions.OrgRead),
 
@@ -381,6 +402,7 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
             CaseResource.FreshAgreement => await tenants.CreateAgreementAsync(organizationId),
             CaseResource.FreshVisit => await tenants.CreateVisitAsync(organizationId),
             CaseResource.FreshContact => await tenants.CreateContactAsync(organizationId),
+            CaseResource.FreshRequest => await tenants.CreateRequestAsync(organizationId),
             _ => null,
         };
         var input = new CaseInput(tenants, organizationId, resourceId);

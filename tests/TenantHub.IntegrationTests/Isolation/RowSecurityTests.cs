@@ -89,10 +89,10 @@ public sealed class RowSecurityTests(PostgresFixture postgres)
     [Fact]
     public async Task With_a_client_set_each_client_owned_table_shows_and_takes_only_that_clients_rows()
     {
-        // Two clients of A, each with a job, an agreement and a contact; the portal session is the second one's.
+        // Two clients of A, each with a job, an agreement, a contact and a request; the portal session is the second one's.
         var tenants = await SharedApiTenants.GetAsync<RowSecurityTests>(postgres);
         var mine = await tenants.CreateClientAsync(tenants.OrgA, $"Portal Client {Guid.NewGuid():N}");
-        await tenants.CreateContactAsync(tenants.OrgA, mine);
+        await tenants.CreateRequestAsync(tenants.OrgA, await tenants.CreateContactAsync(tenants.OrgA, mine));
         await tenants.CreateJobAsync(tenants.OrgA, clientId: mine);
         await tenants.CreateAgreementAsync(tenants.OrgA, clientId: mine);
         await tenants.CreateContactAsync(tenants.OrgA, tenants.ClientA);
