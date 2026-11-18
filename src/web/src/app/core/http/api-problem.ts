@@ -14,7 +14,7 @@ export interface ApiProblem {
   readonly blocking?: readonly PlanLimitDetail[];
 }
 
-export type LimitName = 'seats' | 'activeClients' | 'openJobs';
+export type LimitName = 'seats' | 'activeClients' | 'openJobs' | 'activeAgreements';
 
 export interface PlanLimitDetail {
   readonly limit: LimitName;

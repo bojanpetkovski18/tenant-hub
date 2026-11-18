@@ -54,6 +54,7 @@ export interface JobListItem {
   readonly dueOn: string | null;
   readonly isOverdue: boolean;
   readonly updatedAt: string;
+  readonly agreementId: string | null;
 }
 
 /** A move the caller may make; `blockedReason` says what is still missing (the button is then disabled). */
@@ -79,6 +80,13 @@ export interface Job {
   readonly scheduledOn: string | null;
   readonly dueOn: string | null;
   readonly quotedAmount: number | null;
+  readonly estimatedMinutes: number | null;
+  /** Set for visits of an agreement (SPEC-V2 4.2): its id and title, and the occurrence the visit is. */
+  readonly agreementId: string | null;
+  readonly agreementTitle: string | null;
+  readonly occurrenceOn: string | null;
+  /** Someone edited this visit, so changes to its agreement no longer reach it. */
+  readonly changedByHand: boolean;
   readonly isOverdue: boolean;
   readonly createdAt: string;
   readonly createdByName: string;
@@ -88,6 +96,7 @@ export interface Job {
   readonly canEdit: boolean;
   readonly canAssign: boolean;
   readonly canDelete: boolean;
+  readonly canSkip: boolean;
   readonly transitions: readonly JobTransitionOption[];
 }
 
@@ -100,6 +109,7 @@ export interface JobInput {
   readonly scheduledOn: string | null;
   readonly dueOn: string | null;
   readonly quotedAmount: number | null;
+  readonly estimatedMinutes: number | null;
 }
 
 export interface FieldChange {
@@ -165,5 +175,10 @@ export class JobsApi {
 
   delete(organizationId: string, id: string): Promise<void> {
     return firstValueFrom(this.http.delete<void>(`${jobsUrl(organizationId)}/${id}`));
+  }
+
+  /** Skips one visit of an agreement (SPEC-V2 5.1): cancelled as "Skipped", never generated again. */
+  skip(organizationId: string, id: string): Promise<Job> {
+    return firstValueFrom(this.http.post<Job>(`${jobsUrl(organizationId)}/${id}/skip`, {}));
   }
 }

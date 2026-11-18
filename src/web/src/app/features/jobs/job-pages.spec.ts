@@ -37,6 +37,7 @@ const item = (overrides: Partial<JobListItem> = {}): JobListItem => ({
   dueOn: '2026-10-21',
   isOverdue: true,
   updatedAt: '2026-10-22T09:00:00Z',
+  agreementId: null,
   ...overrides,
 });
 
@@ -55,6 +56,11 @@ const job = (overrides: Partial<Job> = {}): Job => ({
   scheduledOn: '2026-10-20',
   dueOn: null,
   quotedAmount: 240.5,
+  estimatedMinutes: null,
+  agreementId: null,
+  agreementTitle: null,
+  occurrenceOn: null,
+  changedByHand: false,
   isOverdue: false,
   createdAt: '2026-10-01T09:00:00Z',
   createdByName: 'Olivia Bennett',
@@ -64,6 +70,7 @@ const job = (overrides: Partial<Job> = {}): Job => ({
   canEdit: true,
   canAssign: true,
   canDelete: false,
+  canSkip: false,
   transitions: [
     { to: 'inProgress', needsReason: false, blockedReason: null },
     { to: 'cancelled', needsReason: true, blockedReason: null },
@@ -308,6 +315,36 @@ describe('job pages', () => {
     it('confirms the save that led here, and only then', async () => {
       const created = await openJob(job(), olivia, '?notice=created');
       expect(text(created.querySelector('[role="status"]'))).toContain('Job created.');
+    });
+
+    it('links a visit to its agreement and skips it after confirming', async () => {
+      const visit = job({
+        agreementId: 'a1',
+        agreementTitle: 'Weekly office cleaning',
+        occurrenceOn: '2026-10-20',
+        canSkip: true,
+      });
+      const element = await openJob(visit);
+
+      const link = main(element).querySelector<HTMLAnchorElement>(
+        'a[href="/o/brightline/agreements/a1"]',
+      );
+      expect(text(link)).toBe('Weekly office cleaning');
+      const skip = [...main(element).querySelectorAll<HTMLButtonElement>('button')].find(
+        (b) => text(b) === 'Skip this visit',
+      )!;
+      skip.click();
+      await settle(harness.fixture);
+      [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')]
+        .find((b) => text(b) === 'Skip visit')!
+        .click();
+      await settle(harness.fixture);
+      http
+        .expectOne(`${jobsUrl}/j1/skip`)
+        .flush({ ...visit, status: 'cancelled', canSkip: false, transitions: [] });
+      await settle(harness.fixture);
+
+      expect(text(element.querySelector('[role="status"]'))).toContain('JOB-0042 is skipped.');
     });
 
     it('shows no notice when opened directly', async () => {

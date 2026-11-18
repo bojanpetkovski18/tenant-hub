@@ -123,6 +123,30 @@ export const routes: Routes = [
           import('./features/clients/client-form-page').then((m) => m.ClientFormPage),
       },
       {
+        path: 'agreements',
+        title: 'Agreements',
+        loadComponent: () =>
+          import('./features/agreements/agreements-list-page').then((m) => m.AgreementsListPage),
+      },
+      {
+        path: 'agreements/new',
+        title: 'New agreement',
+        loadComponent: () =>
+          import('./features/agreements/agreement-form-page').then((m) => m.AgreementFormPage),
+      },
+      {
+        path: 'agreements/:id',
+        title: 'Agreement',
+        loadComponent: () =>
+          import('./features/agreements/agreement-detail-page').then((m) => m.AgreementDetailPage),
+      },
+      {
+        path: 'agreements/:id/edit',
+        title: 'Edit agreement',
+        loadComponent: () =>
+          import('./features/agreements/agreement-form-page').then((m) => m.AgreementFormPage),
+      },
+      {
         path: 'members',
         title: 'Members',
         loadComponent: () => import('./features/members/members-page').then((m) => m.MembersPage),

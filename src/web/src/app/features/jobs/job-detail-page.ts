@@ -88,10 +88,20 @@ const fieldLabels: Readonly<Record<string, string>> = {
             }
           </div>
         </div>
-        @if (job.canEdit || job.canDelete) {
+        @if (job.canEdit || job.canDelete || job.canSkip) {
           <div class="flex flex-wrap gap-2">
             @if (job.canEdit) {
               <a routerLink="edit" class="th-button-secondary">Edit</a>
+            }
+            @if (job.canSkip) {
+              <button
+                type="button"
+                class="th-button-secondary"
+                [disabled]="busy()"
+                (click)="skip(job)"
+              >
+                Skip this visit
+              </button>
             }
             @if (job.canDelete) {
               <button
@@ -190,6 +200,24 @@ const fieldLabels: Readonly<Record<string, string>> = {
             <div>
               <dt class="text-xs font-medium uppercase text-muted">Completed</dt>
               <dd class="mt-1">{{ job.completedAt | date: 'medium' }}</dd>
+            </div>
+          }
+          @if (job.agreementId) {
+            <div class="sm:col-span-2">
+              <dt class="text-xs font-medium uppercase text-muted">Agreement</dt>
+              <dd class="mt-1">
+                The visit of {{ job.occurrenceOn | date: 'fullDate' }} for
+                <a
+                  [routerLink]="['/o', slug(), 'agreements', job.agreementId]"
+                  class="font-medium text-accent hover:underline"
+                  >{{ job.agreementTitle }}</a
+                >.
+                {{
+                  job.changedByHand
+                    ? 'Changed by hand, so edits to the agreement no longer reach it.'
+                    : 'Edits to the agreement update it until someone changes it here.'
+                }}
+              </dd>
             </div>
           }
           <div class="sm:col-span-2">
@@ -361,6 +389,29 @@ export class JobDetailPage {
       if (problem.code === 'invalid-transition') {
         await this.load();
       }
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /** Skipping cancels the visit as "Skipped"; its date is never generated again (SPEC-V2 5.1). */
+  protected async skip(job: Job): Promise<void> {
+    const confirmed = await this.confirm.ask({
+      title: `Skip ${job.label}?`,
+      message:
+        'This visit is cancelled with the reason "Skipped". The agreement does not add it again.',
+      confirmLabel: 'Skip visit',
+    });
+    if (!confirmed) {
+      return;
+    }
+    this.busy.set(true);
+    this.actionError.set(null);
+    try {
+      this.job.set(await this.api.skip(this.membership()!.organizationId, job.id));
+      this.actionDone.set(`${job.label} is skipped.`);
+    } catch (error) {
+      this.actionError.set(toApiProblem(error).title);
     } finally {
       this.busy.set(false);
     }

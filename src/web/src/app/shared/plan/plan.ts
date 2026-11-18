@@ -7,12 +7,14 @@ export interface PlanLimits {
   readonly seats: number | null;
   readonly activeClients: number | null;
   readonly openJobs: number | null;
+  readonly activeAgreements: number | null;
 }
 
 export interface PlanUsage {
   readonly seats: number;
   readonly activeClients: number;
   readonly openJobs: number;
+  readonly activeAgreements: number;
 }
 
 export const planLabels: Readonly<Record<PlanName, string>> = {
@@ -30,9 +32,18 @@ export const limitLabels: Readonly<
     unit: (n) => (n === 1 ? 'active client' : 'active clients'),
   },
   openJobs: { title: 'Open jobs', unit: (n) => (n === 1 ? 'open job' : 'open jobs') },
+  activeAgreements: {
+    title: 'Active agreements',
+    unit: (n) => (n === 1 ? 'active agreement' : 'active agreements'),
+  },
 };
 
-export const limitNames: readonly LimitName[] = ['seats', 'activeClients', 'openJobs'];
+export const limitNames: readonly LimitName[] = [
+  'seats',
+  'activeClients',
+  'openJobs',
+  'activeAgreements',
+];
 
 /** "3 of 3 seats", or "12 active clients, no limit". */
 export function usageText(limit: LimitName, used: number, allowed: number | null): string {
