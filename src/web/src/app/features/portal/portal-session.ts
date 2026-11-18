@@ -13,6 +13,7 @@ export class PortalSessionStore {
   private readonly api = inject(PortalApi);
   private pending: Promise<void> | null = null;
   private loadedFor: string | null = null;
+  private generation = 0;
 
   /** The portal's slug, the business and (when signed in) the contact. */
   readonly slug = signal<string | null>(null);
@@ -31,18 +32,28 @@ export class PortalSessionStore {
     this.loadedFor = slug;
     this.slug.set(slug);
     this.failed.set(false);
+    // Only the latest question may answer: a session asked for before a sign-in (the layout asks as the link opens)
+    // would otherwise arrive after it and put "signed out" back.
+    const asked = ++this.generation;
     this.pending = this.api
       .session(slug)
-      .then((session) => this.session.set(session))
+      .then((session) => {
+        if (asked === this.generation) {
+          this.session.set(session);
+        }
+      })
       .catch(() => {
-        this.failed.set(true);
-        this.session.set(null);
+        if (asked === this.generation) {
+          this.failed.set(true);
+          this.session.set(null);
+        }
       });
     return this.pending;
   }
 
-  /** After a sign-in: the answer already is the session. */
+  /** After a sign-in: the answer already is the session, and any older question no longer counts. */
   signedIn(slug: string, session: PortalSession): void {
+    this.generation++;
     this.loadedFor = slug;
     this.slug.set(slug);
     this.session.set(session);

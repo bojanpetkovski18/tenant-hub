@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DemoStore } from '../../core/demo/demo.store';
 import { toApiProblem } from '../../core/http/api-problem';
@@ -136,6 +137,7 @@ export class PortalSignInPage {
   private readonly demo = inject(DemoStore);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly fragment = toSignal(this.route.fragment);
 
   protected readonly stage = signal<Stage>('loading');
   protected readonly busy = signal(false);
@@ -161,7 +163,8 @@ export class PortalSignInPage {
   });
 
   constructor() {
-    effect(() => void this.start(this.slug()));
+    // The fragment too: following a link over this page, already open, changes only the fragment (no new page).
+    effect(() => void this.start(this.slug(), this.fragment() ?? ''));
   }
 
   protected emailError(): string | null {
@@ -211,8 +214,7 @@ export class PortalSignInPage {
   }
 
   /** A link with a token signs in at once; otherwise the form (or straight on, when already signed in). */
-  private async start(slug: string): Promise<void> {
-    const token = this.route.snapshot.fragment ?? '';
+  private async start(slug: string, token: string): Promise<void> {
     if (token) {
       this.stage.set('confirming');
       // The token leaves the address bar (and the history) before anything else happens.

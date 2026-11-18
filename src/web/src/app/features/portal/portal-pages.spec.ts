@@ -126,6 +126,59 @@ describe('portal pages', () => {
       expect(TestBed.inject(Router).url).toBe('/portal/brightline/visits');
     });
 
+    // Regression (found in the browser pass): the layout asks for the session as the link opens; when that "signed out"
+    // answer arrived after the link was spent, it overwrote the new session and the guard sent the contact back here.
+    it('keeps the new session when an older session answer arrives late', async () => {
+      TestBed.configureTestingModule({
+        providers: [
+          provideHttpClient(withInterceptors([authInterceptor, portalSessionInterceptor])),
+          provideHttpClientTesting(),
+          provideRouter(
+            routes,
+            withComponentInputBinding(),
+            withRouterConfig({ paramsInheritanceStrategy: 'always' }),
+          ),
+          provideCspSafeCdkStyles(),
+        ],
+      });
+      http = TestBed.inject(HttpTestingController);
+      await loadSession(null);
+      harness = await RouterTestingHarness.create();
+      await harness.navigateByUrl('/portal/brightline/sign-in#a-token-from-the-email');
+      await settle(harness.fixture);
+
+      const stale = http.match((r) => r.url === '/api/portal/session');
+      http.expectOne('/api/portal/sign-in/confirm').flush(signedIn);
+      await settle(harness.fixture);
+      stale.forEach((r) => r.flush(signedOut));
+      await settle(harness.fixture);
+      http
+        .match((r) => r.url === '/api/portal/visits')
+        .forEach((r) => r.flush({ items: [], page: 1, pageSize: 20, total: 0 }));
+      await settle(harness.fixture);
+
+      expect(stale.length).toBeGreaterThan(0);
+      expect(TestBed.inject(Router).url).toBe('/portal/brightline/visits');
+      expect(text(harness.routeNativeElement?.closest('body')?.querySelector('header'))).toContain(
+        'Dana Reyes',
+      );
+    });
+
+    // Regression (found in the browser pass): with the sign-in page already open, following the link changes only the
+    // fragment, a same-document navigation, and the page never read the token.
+    it('spends a link opened over the sign-in page that is already showing', async () => {
+      await open('/portal/brightline/sign-in', signedOut);
+
+      await harness.navigateByUrl('/portal/brightline/sign-in#a-token-pasted-later');
+      await settle(harness.fixture);
+
+      const confirm = http.expectOne('/api/portal/sign-in/confirm');
+      expect(confirm.request.body).toEqual({
+        orgSlug: 'brightline',
+        token: 'a-token-pasted-later',
+      });
+    });
+
     it('says when a link has expired and offers a new one', async () => {
       const page = await open('/portal/brightline/sign-in#an-old-token', signedOut);
 
