@@ -1,10 +1,11 @@
-// Jobs list API under load (SPEC 9: p95 < 200 ms locally with 10,000 jobs across 20 organizations).
+// Jobs list API under load (SPEC 9: p95 < 200 ms locally with 10,000 jobs across 20 organizations), and with
+// `--target board` the dispatch board week (SPEC-V2 9, M17) on the same data.
 //
 // Seeds through the API like real users (so the data passes every rule and limit): 4 owners with 5 organizations
 // each (the five-owned limit), moved to Business, 25 clients and 500 jobs per organization in a status mix, then
 // times the list queries the SPA makes, from several concurrent clients. No dependencies beyond Node 24.
 //
-//   node tools/load-jobs.mjs [--base http://localhost:5090] [--orgs 20] [--jobs 500] [--requests 2000] [--concurrency 10]
+//   node tools/load-jobs.mjs [--base http://localhost:5090] [--orgs 20] [--jobs 500] [--requests 2000] [--concurrency 10] [--target jobs|board]
 //
 // Run the API with request logging quiet, or the console becomes the bottleneck, for example
 //   Logging__LogLevel__Default=Warning dotnet run --project src/api/TenantHub.Api
@@ -18,6 +19,7 @@ const orgCount = Number(args.orgs ?? 20);
 const jobsPerOrg = Number(args.jobs ?? 500);
 const requests = Number(args.requests ?? 2000);
 const concurrency = Number(args.concurrency ?? 10);
+const target = args.target ?? 'jobs';
 const clientsPerOrg = 25;
 const password = 'Load-Test-Pass-42!';
 const run = Date.now().toString(36);
@@ -93,10 +95,10 @@ const steps = { new: [], scheduled: ['scheduled'], inProgress: ['inProgress'], c
 const jobs = orgs.flatMap((org) => Array.from({ length: jobsPerOrg }, (_, i) => ({ org, i })));
 let created = 0;
 await pool(jobs, concurrency * 2, async ({ org, i }) => {
-  const target = plan(i);
+  const status = plan(i);
   const api = `/api/orgs/${org.id}`;
   // Due on or after the scheduled day (a domain rule); some due dates are past, so "overdue" has rows.
-  const scheduledOffset = target === 'new' && i % 2 ? null : (i % 40) - 10;
+  const scheduledOffset = status === 'new' && i % 2 ? null : (i % 40) - 10;
   const job = await org.session.request('POST', `${api}/jobs`, {
     title: `${words[i % words.length]} clean ${i + 1}`,
     clientId: org.clients[i % org.clients.length],
@@ -105,8 +107,9 @@ await pool(jobs, concurrency * 2, async ({ org, i }) => {
     scheduledOn: scheduledOffset === null ? null : day(scheduledOffset),
     dueOn: day(scheduledOffset === null ? (i % 90) - 30 : scheduledOffset + (i % 15)),
     quotedAmount: 50 + (i % 20) * 12.5,
+    estimatedMinutes: 30 + (i % 8) * 30,
   });
-  for (const to of steps[target]) {
+  for (const to of steps[status]) {
     await org.session.request('POST', `${api}/jobs/${job.id}/transitions`, to === 'cancelled' ? { to, reason: 'Client cancelled' } : { to });
   }
   if (++created % 1000 === 0) console.log(`  ${created} jobs`);
@@ -115,23 +118,32 @@ const seedSeconds = ((performance.now() - seedStart) / 1000).toFixed(0);
 console.log(`Seeded ${orgs.length} organizations, ${orgs.length * clientsPerOrg} clients and ${created} jobs in ${seedSeconds} s.`);
 
 // --- Measure ------------------------------------------------------------------------------------------------
-const scenarios = {
-  'default page': '',
-  'status new+scheduled': '&status=new&status=scheduled',
-  'overdue': '&overdue=true',
-  'search "window"': '&q=window',
-  'sort by due': '&sort=due',
-  'page 10': '&page=10',
-  'my jobs, urgent': '&assignee=me&priority=urgent',
-};
+// Each scenario gives the request path for an organization.
+const scenarios = target === 'board'
+  ? {
+      'this week': (org) => `/api/orgs/${org.id}/board`,
+      'next week': (org) => `/api/orgs/${org.id}/board?week=${day(7)}`,
+      'last week': (org) => `/api/orgs/${org.id}/board?week=${day(-7)}`,
+      'one client': (org) => `/api/orgs/${org.id}/board?clientId=${org.clients[0]}`,
+      'scheduled only': (org) => `/api/orgs/${org.id}/board?status=scheduled`,
+    }
+  : Object.fromEntries(Object.entries({
+      'default page': '',
+      'status new+scheduled': '&status=new&status=scheduled',
+      'overdue': '&overdue=true',
+      'search "window"': '&q=window',
+      'sort by due': '&sort=due',
+      'page 10': '&page=10',
+      'my jobs, urgent': '&assignee=me&priority=urgent',
+    }).map(([name, query]) => [name, (org) => `/api/orgs/${org.id}/jobs?pageSize=25${query}`]));
 const names = Object.keys(scenarios);
 const timings = Object.fromEntries(names.map((n) => [n, []]));
 const call = async (k) => {
   const org = orgs[k % orgs.length];
   const name = names[k % names.length];
   const started = performance.now();
-  const page = await org.session.request('GET', `/api/orgs/${org.id}/jobs?pageSize=25${scenarios[name]}`);
-  return { name, ms: performance.now() - started, total: page.total };
+  await org.session.request('GET', scenarios[name](org));
+  return { name, ms: performance.now() - started };
 };
 
 await pool(Array.from({ length: 100 }, (_, k) => k), concurrency, call); // warm-up: JIT, connection pool, caches
@@ -146,7 +158,7 @@ const percentile = (values, p) => {
 };
 const row = (name, values) =>
   `| ${name} | ${values.length} | ${percentile(values, 50).toFixed(1)} | ${percentile(values, 95).toFixed(1)} | ${percentile(values, 99).toFixed(1)} | ${Math.max(...values).toFixed(1)} |`;
-console.log(`\n${requests} requests, ${concurrency} concurrent, ${orgs.length} organizations × ${jobsPerOrg} jobs (run ${run})\n`);
+console.log(`\n${target}: ${requests} requests, ${concurrency} concurrent, ${orgs.length} organizations × ${jobsPerOrg} jobs (run ${run})\n`);
 console.log('| Query | n | p50 ms | p95 ms | p99 ms | max ms |\n|---|---|---|---|---|---|');
 for (const name of names) console.log(row(name, timings[name]));
 const all = Object.values(timings).flat();
