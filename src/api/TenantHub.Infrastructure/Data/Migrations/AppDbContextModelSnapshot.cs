@@ -798,6 +798,9 @@ namespace TenantHub.Infrastructure.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_scheduled_tasks");
 
+                    b.HasIndex("DueAt")
+                        .HasDatabaseName("ix_scheduled_tasks_due");
+
                     b.HasIndex("OrganizationId")
                         .HasDatabaseName("ix_scheduled_tasks_organization_id");
 
