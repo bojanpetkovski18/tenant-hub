@@ -72,6 +72,22 @@ public sealed class Job : AggregateRoot, IClientOwned
 
     public DateTimeOffset? CompletedAt { get; private set; }
 
+    /// <summary>The quote's approval by the client (SPEC-V2 5.4); jobs never sent stay NotRequested and work as in v1.</summary>
+    public JobApprovalStatus ApprovalStatus { get; private set; }
+
+    public DateTimeOffset? ApprovalSentAt { get; private set; }
+
+    public Guid? ApprovalSentByUserId { get; private set; }
+
+    /// <summary>The amount the client approved: the quoted amount at that moment.</summary>
+    public decimal? ApprovedAmount { get; private set; }
+
+    public DateTimeOffset? ApprovalDecidedAt { get; private set; }
+
+    public Guid? ApprovalDecidedByContactId { get; private set; }
+
+    public string? ApprovalComment { get; private set; }
+
     /// <summary>Optimistic-concurrency token; the database bumps it on every update.</summary>
     public uint Version { get; private set; }
 
@@ -245,6 +261,71 @@ public sealed class Job : AggregateRoot, IClientOwned
     }
 
     /// <summary>
+    /// Sends the quote to the client for approval (SPEC-V2 5.4): a New or Scheduled job with a quoted amount, for a client
+    /// with at least one active contact. A declined quote can be sent again (after changing it, typically).
+    /// </summary>
+    public void SendForApproval(Guid userId, int activeContacts, DateTimeOffset now)
+    {
+        if (JobQuotes.WhyNotSend(Status, QuotedAmount, ApprovalStatus) is { } why)
+        {
+            throw new DomainException("quote-not-sendable", why);
+        }
+
+        if (activeContacts == 0)
+        {
+            throw new DomainException("client-has-no-contacts", "Add a portal contact to the client first: they are the ones who approve.");
+        }
+
+        var from = ApprovalStatus;
+        ApprovalStatus = JobApprovalStatus.Pending;
+        ApprovalSentAt = now;
+        ApprovalSentByUserId = userId;
+        ClearDecision();
+        UpdatedAt = now;
+        Raise(new JobEvent(
+            this,
+            "job.quote_sent",
+            $"Sent the quote for {Label} ({JobQuotes.Amount(QuotedAmount!.Value)}) for approval",
+            [new FieldChange("approval", from.ToString(), ApprovalStatus.ToString())]));
+    }
+
+    /// <summary>
+    /// The contact's decision (SPEC-V2 5.4): once, while the quote is pending, with an optional comment. The audit names
+    /// the contact (their portal session is the scope). Two contacts deciding at once: the version check lets one win.
+    /// </summary>
+    public void Decide(bool approve, Guid contactId, string? comment, DateTimeOffset now)
+    {
+        if (ApprovalStatus != JobApprovalStatus.Pending)
+        {
+            throw new DomainException("quote-already-decided", "This quote is no longer waiting for a decision.");
+        }
+
+        var normalized = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
+        if (normalized is { Length: > JobQuotes.CommentMaxLength })
+        {
+            throw new DomainValidationException(new Dictionary<string, string[]> { ["comment"] = [$"Use at most {JobQuotes.CommentMaxLength} characters."] });
+        }
+
+        ApprovalStatus = approve ? JobApprovalStatus.Approved : JobApprovalStatus.Declined;
+        ApprovedAmount = approve ? QuotedAmount : null;
+        ApprovalDecidedAt = now;
+        ApprovalDecidedByContactId = contactId;
+        ApprovalComment = normalized;
+        UpdatedAt = now;
+        var changes = new List<FieldChange> { new("approval", JobApprovalStatus.Pending.ToString(), ApprovalStatus.ToString()) };
+        if (normalized is not null)
+        {
+            changes.Add(new FieldChange("comment", null, normalized));
+        }
+
+        Raise(new JobEvent(
+            this,
+            approve ? "job.quote_approved" : "job.quote_declined",
+            approve ? $"Approved the quote for {Label} ({JobQuotes.Amount(QuotedAmount!.Value)})" : $"Declined the quote for {Label}",
+            changes));
+    }
+
+    /// <summary>
     /// Whether a change to the agreement reaches this visit (SPEC-V2 5.1): it is the agreement's, today or later, New or
     /// Scheduled, and nobody has edited it.
     /// </summary>
@@ -312,6 +393,12 @@ public sealed class Job : AggregateRoot, IClientOwned
                 : ManagersOnly("this status change");
         }
 
+        // SPEC-V2 5.4 adds one condition to the v1 table: work does not start on a quote the client has not approved.
+        if (target == JobStatus.InProgress && JobQuotes.WhyNotStart(ApprovalStatus) is { } why)
+        {
+            throw new DomainException("quote-not-approved", why);
+        }
+
         var missing = MissingFor(transition, reason, checkReason: true);
         if (missing.Count > 0)
         {
@@ -347,7 +434,11 @@ public sealed class Job : AggregateRoot, IClientOwned
     public IReadOnlyList<JobTransitionOption> OptionsFor(JobActor actor) =>
     [
         .. JobWorkflow.From(Status).Where(t => MayPerform(t, actor)).Select(t =>
-            new JobTransitionOption(t.To, t.NeedsReason, MissingFor(t, reason: null, checkReason: false).Values.FirstOrDefault()?[0])),
+            new JobTransitionOption(
+                t.To,
+                t.NeedsReason,
+                (t.To == JobStatus.InProgress ? JobQuotes.WhyNotStart(ApprovalStatus) : null)
+                    ?? MissingFor(t, reason: null, checkReason: false).Values.FirstOrDefault()?[0])),
     ];
 
     /// <summary>Whether the actor may edit this job (not whether the edit is valid).</summary>
@@ -444,8 +535,31 @@ public sealed class Job : AggregateRoot, IClientOwned
         return missing;
     }
 
+    private void ClearDecision()
+    {
+        ApprovedAmount = null;
+        ApprovalDecidedAt = null;
+        ApprovalDecidedByContactId = null;
+        ApprovalComment = null;
+    }
+
     private void Apply(JobDetails details)
     {
+        // A quote is approved for an amount and a client: changing either asks again (SPEC-V2 5.4). Applies to a pending
+        // quote too, since the client would otherwise approve terms they never saw.
+        if (ApprovalStatus is JobApprovalStatus.Pending or JobApprovalStatus.Approved
+            && (details.QuotedAmount != QuotedAmount || details.ClientId != ClientId))
+        {
+            var from = ApprovalStatus;
+            ApprovalStatus = JobApprovalStatus.NotRequested;
+            ClearDecision();
+            Raise(new JobEvent(
+                this,
+                "job.quote_reset",
+                $"The quote for {Label} needs a new decision: its {(details.ClientId != ClientId ? "client" : "amount")} changed",
+                [new FieldChange("approval", from.ToString(), ApprovalStatus.ToString())]));
+        }
+
         Title = details.Title;
         Description = details.Description;
         ClientId = details.ClientId;

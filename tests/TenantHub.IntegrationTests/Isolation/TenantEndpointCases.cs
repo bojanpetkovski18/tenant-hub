@@ -273,6 +273,13 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         },
 
         // Visits of agreements (SPEC-V2 7, M16).
+        new("POST", "/jobs/{id:guid}/quote", Permissions.PortalManage)
+        {
+            // The job's client (the standing one) has an active contact; the quote needs an amount.
+            Resource = CaseResource.FreshJob,
+            Audited = true,
+            Arrange = input => input.Tenants.SetQuotedAmountAsync(input.ResourceId!.Value, 180m),
+        },
         new("POST", "/jobs/{id:guid}/skip", Permissions.AgreementsManage)
         {
             Resource = CaseResource.FreshVisit,

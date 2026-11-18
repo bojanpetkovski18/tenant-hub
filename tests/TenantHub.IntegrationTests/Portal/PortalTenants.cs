@@ -29,6 +29,7 @@ public sealed record PortalClient(
 public sealed class PortalTenants : IAsyncDisposable
 {
     private readonly Dictionary<Guid, BrowserClient> _owners = [];
+    private readonly Dictionary<Guid, Guid> _ownerIds = [];
 
     private PortalTenants(ApiFactory factory, CapturedEmails emails, string connectionString)
     {
@@ -147,7 +148,9 @@ public sealed class PortalTenants : IAsyncDisposable
         var email = BrowserClient.NewEmail();
         (await owner.SignUpAsync(email, organizationName: name)).EnsureSuccessStatusCode();
         await EmailLinks.VerifyAsync(Factory, Emails, owner, email);
-        var membership = (await owner.SessionAsync()).User!.Memberships.Single();
+        var user = (await owner.SessionAsync()).User!;
+        var membership = user.Memberships.Single();
+        _ownerIds[membership.OrganizationId] = user.Id;
         (await owner.SendJsonAsync(HttpMethod.Put, $"/api/orgs/{membership.OrganizationId}/plan", new { plan = "team" })).EnsureSuccessStatusCode();
         _owners[membership.OrganizationId] = owner;
         return (membership.OrganizationId, membership.Slug, membership.Name);
@@ -164,9 +167,12 @@ public sealed class PortalTenants : IAsyncDisposable
         {
             title = jobTitle,
             clientId = client,
+            assigneeUserId = _ownerIds[organizationId],
             scheduledOn = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(3),
             quotedAmount = 180m,
         }));
+        // The standing job's quote waits for the contact's decision.
+        (await owner.PostJsonAsync($"{url}/jobs/{job}/quote", new { })).EnsureSuccessStatusCode();
         return new PortalClient(name, organizationId, organizationName, slug, client, contact, email, job, jobTitle);
     }
 

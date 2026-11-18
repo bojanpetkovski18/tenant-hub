@@ -6,6 +6,8 @@ using TenantHub.Application.Portal;
 
 namespace TenantHub.Api.Features.Portal;
 
+public sealed record PortalDecisionRequest([property: MaxLength(5000)] string? Comment);
+
 public sealed record PortalSignInRequest(
     [property: MaxLength(100)] string? OrgSlug,
     [property: MaxLength(500)] string? Email);
@@ -73,6 +75,15 @@ public static class PortalEndpoints
 
         portal.MapGet("/visits/{id:guid}", async (Guid id, PortalVisits visits, CancellationToken ct) =>
             TypedResults.Ok(await visits.GetAsync(id, ct)));
+
+        portal.MapGet("/quotes", async (PortalQuotes quotes, CancellationToken ct) =>
+            TypedResults.Ok(await quotes.ListAsync(ct)));
+
+        portal.MapPost("/quotes/{id:guid}/approve", async (Guid id, PortalDecisionRequest request, PortalQuotes quotes, CancellationToken ct) =>
+            TypedResults.Ok(await quotes.DecideAsync(id, approve: true, request.Comment, ct)));
+
+        portal.MapPost("/quotes/{id:guid}/decline", async (Guid id, PortalDecisionRequest request, PortalQuotes quotes, CancellationToken ct) =>
+            TypedResults.Ok(await quotes.DecideAsync(id, approve: false, request.Comment, ct)));
 
         return app;
     }

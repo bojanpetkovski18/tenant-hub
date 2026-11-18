@@ -61,6 +61,17 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<Job>
             .OnDelete(DeleteBehavior.NoAction);
         job.HasOne<AppUser>().WithMany().HasForeignKey(j => j.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
 
+        // The quote's approval (SPEC-V2 5.4). The deciding contact is one of the job's organization (composite key);
+        // contacts are never deleted while their client has jobs, so NO ACTION never blocks anything but a bug.
+        job.Property(j => j.ApprovalStatus).HasConversion<string>().HasMaxLength(20);
+        job.Property(j => j.ApprovedAmount).HasColumnType("numeric(12,2)");
+        job.Property(j => j.ApprovalComment).HasMaxLength(JobQuotes.CommentMaxLength);
+        job.HasOne<AppUser>().WithMany().HasForeignKey(j => j.ApprovalSentByUserId).OnDelete(DeleteBehavior.Restrict);
+        job.HasOne<ClientContact>().WithMany()
+            .HasForeignKey(j => new { j.OrganizationId, j.ApprovalDecidedByContactId })
+            .HasPrincipalKey(c => new { c.OrganizationId, c.Id })
+            .OnDelete(DeleteBehavior.NoAction);
+
         // Visits of agreements (SPEC-V2 8): each occurrence once per agreement, whatever runs generation and however
         // often (the backstop under the organization lock, D041). Also the index of the composite foreign key.
         job.Property(j => j.OccurrenceOn).HasColumnType("date");

@@ -128,6 +128,17 @@ public sealed class JobCommands(
         return await views.ForAsync(job, cancellationToken);
     }
 
+    /// <summary>Sends the job's quote to the client's contacts for approval (US-83, SPEC-V2 5.4); a portal feature.</summary>
+    public async Task<JobView> SendQuoteAsync(Guid id, CancellationToken cancellationToken)
+    {
+        await limits.EnsureFeatureAsync(PlanFeature.Portal, cancellationToken);
+        var job = await LoadAsync(id, cancellationToken);
+        var contacts = await db.ClientContacts.CountAsync(c => c.ClientId == job.ClientId && c.RemovedAt == null, cancellationToken);
+        job.SendForApproval(tenant.UserId!.Value, contacts, time.GetUtcNow());
+        await SaveAsync(cancellationToken);
+        return await views.ForAsync(job, cancellationToken);
+    }
+
     /// <summary>Skips one visit of an agreement (SPEC-V2 5.1): cancelled as "Skipped", and its date is never generated again.</summary>
     public async Task<JobView> SkipAsync(Guid id, CancellationToken cancellationToken)
     {

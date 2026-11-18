@@ -595,6 +595,37 @@ namespace TenantHub.Infrastructure.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("agreement_id");
 
+                    b.Property<string>("ApprovalComment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("approval_comment");
+
+                    b.Property<DateTimeOffset?>("ApprovalDecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("approval_decided_at");
+
+                    b.Property<Guid?>("ApprovalDecidedByContactId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("approval_decided_by_contact_id");
+
+                    b.Property<DateTimeOffset?>("ApprovalSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("approval_sent_at");
+
+                    b.Property<Guid?>("ApprovalSentByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("approval_sent_by_user_id");
+
+                    b.Property<string>("ApprovalStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("approval_status");
+
+                    b.Property<decimal?>("ApprovedAmount")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("approved_amount");
+
                     b.Property<Guid?>("AssigneeUserId")
                         .HasColumnType("uuid")
                         .HasColumnName("assignee_user_id");
@@ -683,8 +714,14 @@ namespace TenantHub.Infrastructure.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_jobs");
 
+                    b.HasIndex("ApprovalSentByUserId")
+                        .HasDatabaseName("ix_jobs_approval_sent_by_user_id");
+
                     b.HasIndex("CreatedByUserId")
                         .HasDatabaseName("ix_jobs_created_by_user_id");
+
+                    b.HasIndex("OrganizationId", "ApprovalDecidedByContactId")
+                        .HasDatabaseName("ix_jobs_organization_id_approval_decided_by_contact_id");
 
                     b.HasIndex("OrganizationId", "AssigneeUserId")
                         .HasDatabaseName("ix_jobs_organization_id_assignee_user_id");
@@ -1172,6 +1209,12 @@ namespace TenantHub.Infrastructure.Data.Migrations
                 {
                     b.HasOne("TenantHub.Infrastructure.Identity.AppUser", null)
                         .WithMany()
+                        .HasForeignKey("ApprovalSentByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_jobs_users_approval_sent_by_user_id");
+
+                    b.HasOne("TenantHub.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
                         .HasForeignKey("CreatedByUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
@@ -1190,6 +1233,13 @@ namespace TenantHub.Infrastructure.Data.Migrations
                         .HasPrincipalKey("OrganizationId", "Id")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_jobs_agreements_organization_id_agreement_id");
+
+                    b.HasOne("TenantHub.Domain.Clients.ClientContact", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "ApprovalDecidedByContactId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_jobs_client_contacts_organization_id_approval_decided_by_co");
 
                     b.HasOne("TenantHub.Domain.Memberships.Membership", null)
                         .WithMany()

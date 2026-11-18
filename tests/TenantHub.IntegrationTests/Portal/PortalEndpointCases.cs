@@ -12,6 +12,9 @@ public enum PortalResource
 
     /// <summary>The client's standing job, seen as a visit.</summary>
     Visit,
+
+    /// <summary>The client's standing job, whose quote waits for a decision.</summary>
+    Quote,
 }
 
 /// <summary>
@@ -29,12 +32,16 @@ public sealed partial record PortalEndpointCase(string Method, string Pattern)
     /// <summary>The answer includes the caller's own standing job: proves the endpoint shows data at all.</summary>
     public bool ShowsOwnJob { get; init; }
 
+    /// <summary>A successful call changes data and must write an audit entry naming the contact (SPEC-V2 5.9).</summary>
+    public bool Audited { get; init; }
+
     /// <summary>The route as the route table shows it, e.g. <c>GET /api/portal/visits/{id:guid}</c>.</summary>
     public string Key => $"{Method} {PortalAuth.ApiPath}{Pattern}";
 
     public string NotFoundCode => Resource switch
     {
         PortalResource.Visit => "visit-not-found",
+        PortalResource.Quote => "quote-not-found",
         _ => throw new InvalidOperationException($"{Key} takes no id."),
     };
 
@@ -44,12 +51,15 @@ public sealed partial record PortalEndpointCase(string Method, string Pattern)
     [
         new("GET", "/visits") { ShowsOwnJob = true },
         new("GET", "/visits/{id:guid}") { Resource = PortalResource.Visit, ShowsOwnJob = true },
+        new("GET", "/quotes") { ShowsOwnJob = true },
+        new("POST", "/quotes/{id:guid}/approve") { Resource = PortalResource.Quote, ShowsOwnJob = true, Audited = true, Body = _ => new { comment = "Go ahead" } },
+        new("POST", "/quotes/{id:guid}/decline") { Resource = PortalResource.Quote, ShowsOwnJob = true, Audited = true, Body = _ => new { comment = "Too dear" } },
     ];
 
     /// <summary>This client's resource of the case's kind.</summary>
     public static Guid ResourceOf(PortalResource resource, PortalClient client) => resource switch
     {
-        PortalResource.Visit => client.JobId,
+        PortalResource.Visit or PortalResource.Quote => client.JobId,
         _ => throw new InvalidOperationException("No resource."),
     };
 

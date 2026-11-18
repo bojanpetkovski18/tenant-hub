@@ -1,5 +1,8 @@
 using System.Net;
+using Microsoft.EntityFrameworkCore;
 using TenantHub.Api.Common.Auth;
+using TenantHub.Application.Tenancy;
+using TenantHub.Domain;
 using TenantHub.IntegrationTests.Infrastructure;
 
 namespace TenantHub.IntegrationTests.Portal;
@@ -70,6 +73,30 @@ public sealed class PortalMatrixTests(PostgresFixture postgres) : IAsyncLifetime
         }
 
         Assert.Equal(before, await _tenants.SnapshotExceptAsync(_tenants.A1));
+    }
+
+    public static TheoryData<string> AuditedCases() => new(PortalEndpointCase.All.Where(c => c.Audited).Select(c => c.Key));
+
+    [Fact]
+    public void Every_portal_write_is_marked_audited() =>
+        Assert.All(PortalEndpointCase.All.Where(c => c.Method != "GET"), c => Assert.True(c.Audited, $"{c.Key} changes data and must be Audited."));
+
+    [Theory]
+    [MemberData(nameof(AuditedCases))]
+    public async Task A_portal_write_is_audited_as_the_contact(string key)
+    {
+        var endpoint = PortalEndpointCase.All.Single(c => c.Key == key);
+        using var contact = await _tenants.SignInAsync(_tenants.A1);
+
+        var response = await endpoint.SendAsync(contact, _tenants.A1, _tenants.A1);
+
+        Assert.Equal(endpoint.Allowed, response.StatusCode);
+        await using var db = PostgresFixture.CreateDbContext(_tenants.ConnectionString);
+        var entries = await db.AuditEntries.AcrossTenants()
+            .Where(a => a.OrganizationId == _tenants.A1.OrganizationId && a.ActorRef == _tenants.A1.ContactId)
+            .ToListAsync(Ct);
+        Assert.NotEmpty(entries);
+        Assert.All(entries, e => Assert.Equal((ActorKind.Contact, (Guid?)null, $"{_tenants.A1.Name} Contact"), (e.ActorKind, e.ActorUserId, e.ActorName)));
     }
 
     [Theory]

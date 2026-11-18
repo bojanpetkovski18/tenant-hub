@@ -46,6 +46,7 @@ public static class ApplicationSetup
         .AddScoped<Portal.PortalSessions>()
         .AddScoped<Portal.PortalContext>()
         .AddScoped<Portal.PortalVisits>()
+        .AddScoped<Portal.PortalQuotes>()
         .AddScoped<JobViews>()
         .AddScoped<ListJobsQuery>()
         .AddScoped<GetJobQuery>()

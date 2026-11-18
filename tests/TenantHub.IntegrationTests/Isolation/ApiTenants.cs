@@ -483,6 +483,23 @@ public sealed class ApiTenants : IAsyncDisposable
         await CreateSignInLinkAsync(OrgB, ContactB);
     }
 
+    /// <summary>Gives a job of A or B a quoted amount (written as the Owner); unknown ids are left alone.</summary>
+    public async Task SetQuotedAmountAsync(Guid jobId, decimal amount)
+    {
+        await using var lookup = PostgresFixture.CreateDbContext(ConnectionString);
+        var organizationId = await lookup.Jobs.AcrossTenants().Where(j => j.Id == jobId).Select(j => (Guid?)j.OrganizationId).SingleOrDefaultAsync(Ct);
+        if (organizationId is not { } organization || (organization != OrgA && organization != OrgB))
+        {
+            return;
+        }
+
+        var ownerId = await OwnerIdAsync(organization);
+        await using var db = ContextAs(organization, ownerId);
+        var job = await db.Jobs.SingleAsync(j => j.Id == jobId, Ct);
+        job.Update(job.Details with { QuotedAmount = amount }, JobActor.From(ownerId, Role.Owner), new Dictionary<Guid, string>(), DateTimeOffset.UtcNow);
+        await db.SaveChangesAsync(Ct);
+    }
+
     /// <summary>An unused portal sign-in link for the contact; the token itself is thrown away.</summary>
     public async Task CreateSignInLinkAsync(Guid organizationId, Guid contactId)
     {

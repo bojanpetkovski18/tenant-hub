@@ -111,6 +111,11 @@ public static class JobEndpoints
                 TypedResults.Ok(await commands.ScheduleAsync(id, new ScheduleInput(request.AssigneeUserId, request.ScheduledOn, request.Version, request.MoveDueDate), ct)))
             .RequirePermission(Permissions.JobsManage);
 
+        // Sending the quote to the client's contacts for approval (SPEC-V2 5.4): a portal action.
+        jobs.MapPost("/{id:guid}/quote", async (Guid id, JobCommands commands, CancellationToken ct) =>
+                TypedResults.Ok(await commands.SendQuoteAsync(id, ct)))
+            .RequirePermission(Permissions.PortalManage);
+
         // Skipping one visit of an agreement is an agreement decision (SPEC-V2 2.2, 7).
         jobs.MapPost("/{id:guid}/skip", async (Guid id, JobCommands commands, CancellationToken ct) =>
                 TypedResults.Ok(await commands.SkipAsync(id, ct)))
