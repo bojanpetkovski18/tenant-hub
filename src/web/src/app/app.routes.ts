@@ -25,6 +25,25 @@ export const routes: Routes = [
         loadComponent: () => import('./features/auth/sign-up-page').then((m) => m.SignUpPage),
       },
       {
+        path: 'forgot-password',
+        title: 'Reset your password',
+        loadComponent: () =>
+          import('./features/auth/forgot-password-page').then((m) => m.ForgotPasswordPage),
+      },
+      {
+        // Like the invitation links below, the token is in the fragment (D028). Open whoever is signed in.
+        path: 'reset-password',
+        title: 'Choose a new password',
+        loadComponent: () =>
+          import('./features/auth/reset-password-page').then((m) => m.ResetPasswordPage),
+      },
+      {
+        path: 'verify-email',
+        title: 'Confirm your email address',
+        loadComponent: () =>
+          import('./features/auth/verify-email-page').then((m) => m.VerifyEmailPage),
+      },
+      {
         // The token is in the fragment (/invite#…), never in the path (D028). Open to guests and signed-in users.
         path: 'invite',
         title: 'Accept invitation',

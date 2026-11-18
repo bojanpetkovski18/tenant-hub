@@ -24,6 +24,11 @@ internal sealed partial class SmtpEmailSender(EmailOptions options, ILogger<Smtp
             IsBodyHtml = false,
         };
         mail.To.Add(message.To);
+        if (message.MessageId is { } messageId)
+        {
+            mail.Headers.Add("Message-ID", messageId);
+        }
+
         mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(message.HtmlBody, null, MediaTypeNames.Text.Html));
 
         using var client = new SmtpClient(options.SmtpHost, options.SmtpPort)
@@ -50,7 +55,8 @@ internal sealed partial class SmtpEmailSender(EmailOptions options, ILogger<Smtp
 
     private static string Domain(string address) => address[(address.IndexOf('@', StringComparison.Ordinal) + 1)..];
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Email to a recipient at {Domain} failed ({Status}); the inviter gets the link instead.")]
+    // The caller decides what happens next: an invitation hands the link to the inviter, the outbox retries.
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Email to a recipient at {Domain} failed ({Status}).")]
     private static partial void LogFailed(ILogger logger, string domain, SmtpStatusCode status);
 }
 
@@ -69,4 +75,8 @@ internal sealed class AppLinks(AppOptions options) : IAppLinks
     // The token goes in the fragment, which browsers never send: it stays out of server, proxy and access logs and
     // out of Referer headers (D028).
     public string Invitation(string token) => new Uri(_baseUrl, $"invite#{Uri.EscapeDataString(token)}").ToString();
+
+    public string PasswordReset(string token) => new Uri(_baseUrl, $"reset-password#{Uri.EscapeDataString(token)}").ToString();
+
+    public string VerifyEmail(string token) => new Uri(_baseUrl, $"verify-email#{Uri.EscapeDataString(token)}").ToString();
 }

@@ -49,10 +49,8 @@ builder.Services.AddApplication();
 builder.AddAppAuth();
 builder.Services.AddAppForwardedHeaders(builder.Configuration);
 builder.Services.AddAppRateLimiting(builder.Configuration);
-if (builder.Configuration.GetValue("DEMO_MODE", false))
-{
-    builder.Services.AddHostedService<DemoResetService>();
-}
+// The outbox dispatcher and the scheduler; the demo reset is one of the scheduler's tasks in demo mode (D039).
+builder.Services.AddBackgroundWorkers(builder.Configuration);
 
 builder.Services.AddHealthChecks().AddDbContextCheck<AppDbContext>("database", tags: ["ready"]);
 

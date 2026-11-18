@@ -14,7 +14,10 @@ public sealed class RateLimitOptions
 
     public int AuthWindowSeconds { get; init; } = 60;
 
-    /// <summary>Invitation sends (per user) and invitation look-ups and acceptances (per client IP) per window.</summary>
+    /// <summary>
+    /// Invitation sends (per user), and invitation look-ups and acceptances and email verifications (per client IP:
+    /// links that carry a token) per window.
+    /// </summary>
     public int InvitationPermitLimit { get; init; } = 20;
 
     public int InvitationWindowSeconds { get; init; } = 60;
@@ -23,12 +26,21 @@ public sealed class RateLimitOptions
     public int DemoAuthPermitLimit { get; init; } = 5;
 
     public int DemoInvitationPermitLimit { get; init; } = 5;
+
+    /// <summary>
+    /// Password reset requests (per client IP) and verification emails sent again (per user) per window: each one
+    /// sends an email, so the limit is low and the window long.
+    /// </summary>
+    public int AccountEmailPermitLimit { get; init; } = 5;
+
+    public int AccountEmailWindowSeconds { get; init; } = 600;
 }
 
 public static class RateLimiting
 {
     public const string AuthPolicy = "auth";
     public const string InvitationPolicy = "invitations";
+    public const string AccountEmailPolicy = "account-email";
 
     public static IServiceCollection AddAppRateLimiting(this IServiceCollection services, IConfiguration configuration)
     {
@@ -41,6 +53,8 @@ public static class RateLimiting
                 AuthWindowSeconds = options.AuthWindowSeconds,
                 InvitationPermitLimit = options.DemoInvitationPermitLimit,
                 InvitationWindowSeconds = options.InvitationWindowSeconds,
+                AccountEmailPermitLimit = options.AccountEmailPermitLimit,
+                AccountEmailWindowSeconds = options.AccountEmailWindowSeconds,
             };
         }
 
@@ -81,17 +95,30 @@ public static class RateLimiting
 
             // Signed in: per user, so one account cannot flood inboxes from many addresses. Otherwise per client IP.
             limiter.AddPolicy(InvitationPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
-                context.User.Identity?.IsAuthenticated == true
-                    ? "user:" + context.User.GetUserId()
-                    : "ip:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+                UserOrAddress(context),
                 _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = options.InvitationPermitLimit,
                     Window = TimeSpan.FromSeconds(options.InvitationWindowSeconds),
                     QueueLimit = 0,
                 }));
+
+            // Every request may send an email; the reset request is also limited per account by its cooldown.
+            limiter.AddPolicy(AccountEmailPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
+                UserOrAddress(context),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = options.AccountEmailPermitLimit,
+                    Window = TimeSpan.FromSeconds(options.AccountEmailWindowSeconds),
+                    QueueLimit = 0,
+                }));
         });
 
         return services;
     }
+
+    private static string UserOrAddress(HttpContext context) =>
+        context.User.Identity?.IsAuthenticated == true
+            ? "user:" + context.User.GetUserId()
+            : "ip:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown");
 }

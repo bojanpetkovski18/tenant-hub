@@ -1,6 +1,7 @@
 namespace TenantHub.Application.Abstractions;
 
-public sealed record EmailMessage(string To, string Subject, string TextBody, string HtmlBody);
+/// <summary>An email to one recipient. <c>MessageId</c> (an RFC 5322 Message-ID) is set when a repeat must be recognizable.</summary>
+public sealed record EmailMessage(string To, string Subject, string TextBody, string HtmlBody, string? MessageId = null);
 
 /// <summary>
 /// Outgoing email (D011). SMTP in development (Mailpit) and wherever configured; disabled on the public demo,
@@ -18,4 +19,8 @@ public interface IEmailSender
 public interface IAppLinks
 {
     string Invitation(string token);
+
+    string PasswordReset(string token);
+
+    string VerifyEmail(string token);
 }

@@ -204,8 +204,10 @@ Results are in `PROGRESS.md` → Measured results.
 - **Authentication:**
   - ASP.NET Core Identity with an `HttpOnly`, `SameSite=Strict` session cookie, `Secure` outside development;
   - antiforgery on every unsafe request;
-  - rate limits on sign-up, sign-in and invitations;
-  - lockout after repeated failures.
+  - rate limits on sign-up, sign-in, invitations and account emails;
+  - lockout after repeated failures;
+  - password reset and email verification by emailed link (30 minutes and 7 days, single use through the security
+    stamp; D039). Verification is asked only while email is on, and inviting needs it.
 - **Errors:** RFC 7807 problem details with a `traceId`, and a stable `code` for business-rule errors.
 - **Security headers:** a strict CSP with no inline scripts or styles (the SPA has no component styles, D023), HSTS in
   production, `nosniff`, a referrer policy, a permissions policy and `frame-ancestors 'none'`.
@@ -214,10 +216,17 @@ Results are in `PROGRESS.md` → Measured results.
   a whole-organization view.
 - **Invitations:** 32-byte random tokens, stored as SHA-256 hashes, compared in constant time, single use. The token
   travels in the URL fragment, so it never reaches server logs (D028).
+- **Background work** (D039):
+  - side effects that leave the request (account emails now; notifications and webhooks later) are rows in
+    `outbox_messages`, written by the same `SaveChanges` as the change, so a rolled-back command sends nothing;
+  - a dispatcher on every instance claims due rows with `FOR UPDATE SKIP LOCKED` and a lease, retries with backoff
+    (dead after six attempts) and deletes a secret payload once it is delivered;
+  - recurring work (outbox retention, the demo reset) is a row in `scheduled_tasks` with a due time and a lease, so a
+    restart neither skips nor repeats a run, and a host that slept runs a task once on waking.
 - **Demo mode** (`DEMO_MODE=true`):
   - one-click sign-in per role;
   - protections for the shared accounts;
-  - a scheduled reset that also removes visitors' organizations and accounts after a day;
+  - a reset, on the scheduler, that also removes visitors' organizations and accounts after a day;
   - email off and lower rate limits (D032, D033).
 
 ## Testing

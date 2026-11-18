@@ -47,6 +47,8 @@ export interface SessionUser {
   readonly id: string;
   readonly email: string;
   readonly displayName: string;
+  /** False only while the account must still confirm its address (SPEC-V2 4.1): it cannot invite until then. */
+  readonly emailVerified: boolean;
   readonly memberships: readonly Membership[];
 }
 

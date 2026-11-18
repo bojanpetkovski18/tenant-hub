@@ -97,6 +97,7 @@ public sealed class InvitationAcceptance(
     /// <summary>
     /// A new account for the invited email, and its membership, in one transaction: the account is not created if
     /// the invitation cannot be accepted, and the invitation is not used if the account cannot be created.
+    /// The link went to that address (or the inviter passed it on and vouches for it), so the email counts as verified.
     /// </summary>
     public async Task<AcceptInvitationResult> SignUpAsync(InvitationSignUpCommand command, CancellationToken cancellationToken)
     {
@@ -104,7 +105,7 @@ public sealed class InvitationAcceptance(
         var invitation = await FindLockedAsync(command.Token, cancellationToken);
         invitation.EnsureAcceptable(time.GetUtcNow());
 
-        var user = await identity.CreateUserAsync(invitation.Email, command.DisplayName, command.Password, cancellationToken);
+        var user = await identity.CreateUserAsync(invitation.Email, command.DisplayName, command.Password, emailVerified: true, cancellationToken);
         if (user.UserId is not { } userId)
         {
             throw new RequestValidationException(user.Errors);

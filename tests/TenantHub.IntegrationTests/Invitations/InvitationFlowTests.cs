@@ -256,12 +256,14 @@ public sealed class InvitationFlowTests(PostgresFixture postgres)
             new Dictionary<string, string?> { ["Logging:LogLevel:Default"] = "Trace", ["Logging:LogLevel:Microsoft.AspNetCore"] = "Trace" },
             services => services.AddSingleton<IEmailSender>(emails));
         using var owner = new BrowserClient(factory);
-        (await owner.SignUpAsync(BrowserClient.NewEmail(), "Harbor & Pine Landscaping", displayName: "Hana Okafor")).EnsureSuccessStatusCode();
+        var ownerEmail = BrowserClient.NewEmail();
+        (await owner.SignUpAsync(ownerEmail, "Harbor & Pine Landscaping", displayName: "Hana Okafor")).EnsureSuccessStatusCode();
+        await EmailLinks.VerifyAsync(factory, emails, owner, ownerEmail); // with email on, inviting needs it (SPEC-V2 4.1)
         var org = (await owner.SessionAsync()).User!.Memberships.Single().OrganizationId;
         var email = BrowserClient.NewEmail();
 
         var sent = await InviteAsync(owner, org, email, "admin");
-        var message = Assert.Single(emails.Sent);
+        var message = Assert.Single(emails.Sent, m => m.To == email);
         var token = TokenOf(message.TextBody.Split(' ', '\n', '\r').Single(w => w.StartsWith(PublicUrl, StringComparison.Ordinal)));
         using var invitee = new BrowserClient(factory);
         await ReadAsync<InvitationPreview>(await PreviewAsync(invitee, token));
@@ -282,10 +284,13 @@ public sealed class InvitationFlowTests(PostgresFixture postgres)
     public async Task When_sending_fails_the_inviter_gets_the_link()
     {
         var connectionString = await postgres.CreateDatabaseAsync();
-        var emails = new CapturedEmails { Fail = true };
+        var emails = new CapturedEmails();
         await using var factory = new ApiFactory(connectionString, services: services => services.AddSingleton<IEmailSender>(emails));
         using var owner = new BrowserClient(factory);
-        (await owner.SignUpAsync(BrowserClient.NewEmail(), "Failing Mail Co")).EnsureSuccessStatusCode();
+        var ownerEmail = BrowserClient.NewEmail();
+        (await owner.SignUpAsync(ownerEmail, "Failing Mail Co")).EnsureSuccessStatusCode();
+        await EmailLinks.VerifyAsync(factory, emails, owner, ownerEmail);
+        emails.Fail = true;
         var org = (await owner.SessionAsync()).User!.Memberships.Single().OrganizationId;
 
         var sent = await InviteAsync(owner, org, BrowserClient.NewEmail());

@@ -34,6 +34,34 @@ public static class AuthEndpoints
             .Public()
             .RequireRateLimiting(RateLimiting.AuthPolicy);
 
+        // Always 202 with no body: the answer must not tell whether the email has an account (SPEC-V2 4.1).
+        auth.MapPost("/password-reset/request", async (PasswordResetRequest request, RequestPasswordResetHandler handler, CancellationToken ct) =>
+            {
+                await handler.HandleAsync(request.Email, ct);
+                return TypedResults.Accepted((string?)null);
+            })
+            .Public()
+            .RequireRateLimiting(RateLimiting.AccountEmailPolicy);
+
+        // The token in the body is the credential, as for invitations (D028). It ends every session of the account.
+        auth.MapPost("/password-reset/confirm", async (PasswordResetConfirmRequest request, ResetPasswordHandler handler, CancellationToken ct) =>
+            {
+                await handler.HandleAsync(request.Token, request.Password, ct);
+                return TypedResults.NoContent();
+            })
+            .Public()
+            .RequireRateLimiting(RateLimiting.AuthPolicy);
+
+        // Public: the link may be opened in a browser where nobody, or somebody else, is signed in. Limited like the
+        // other links that carry a token (invitations), not like sign-in: no password is checked and nothing is sent.
+        auth.MapPost("/verify-email", async (VerifyEmailRequest request, EmailVerification verification, CancellationToken ct) =>
+            {
+                await verification.VerifyAsync(request.Token, ct);
+                return TypedResults.NoContent();
+            })
+            .Public()
+            .RequireRateLimiting(RateLimiting.InvitationPolicy);
+
         auth.MapPost("/sign-out", async (HttpContext context, SignInManager<AppUser> signIn, XsrfCookie xsrf) =>
         {
             await signIn.SignOutAsync();

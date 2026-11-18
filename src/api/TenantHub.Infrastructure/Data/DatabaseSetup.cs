@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using TenantHub.Application.Abstractions;
+using TenantHub.Infrastructure.Background;
 using TenantHub.Infrastructure.Tenancy;
 
 namespace TenantHub.Infrastructure.Data;
@@ -46,7 +47,9 @@ public static partial class DatabaseSetup
     }
 
     public static DbContextOptionsBuilder Configure(DbContextOptionsBuilder options, string connectionString) =>
-        options.UseNpgsql(connectionString).UseSnakeCaseNamingConvention().AddInterceptors(RowSecurityInterceptor.Instance);
+        options.UseNpgsql(connectionString)
+            .UseSnakeCaseNamingConvention()
+            .AddInterceptors(RowSecurityInterceptor.Instance, OutboxCommitInterceptor.Instance);
 
     /// <summary>
     /// Startup. With <see cref="DatabaseOptions.MigrateOnStartup"/>, migrates as the owner and provisions the API's

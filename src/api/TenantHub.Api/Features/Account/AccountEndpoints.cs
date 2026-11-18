@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Identity;
+using TenantHub.Api.Common;
 using TenantHub.Api.Common.Auth;
 using TenantHub.Api.Common.Tenancy;
 using TenantHub.Api.Features.Auth;
@@ -42,6 +43,14 @@ public static class AccountEndpoints
             await signIn.RefreshSignInAsync(user);
             return TypedResults.NoContent();
         });
+
+        // The verification email again (SPEC-V2 4.1, the banner's "Send it again"). Nothing is sent once verified.
+        me.MapPost("/verification-email", async (HttpContext context, EmailVerification verification, CancellationToken ct) =>
+            {
+                await verification.ResendAsync(context.User.GetUserId(), ct);
+                return TypedResults.Accepted((string?)null);
+            })
+            .RequireRateLimiting(RateLimiting.AccountEmailPolicy);
 
         return app;
     }

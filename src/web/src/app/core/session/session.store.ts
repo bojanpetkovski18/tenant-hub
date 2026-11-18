@@ -103,6 +103,34 @@ export const SessionStore = signalStore(
         await firstValueFrom(http.post<void>('/api/me/password', { currentPassword, newPassword }));
       },
 
+      /** Always succeeds the same way, whether or not the email has an account (SPEC-V2 4.1). */
+      async requestPasswordReset(email: string): Promise<void> {
+        await firstValueFrom(http.post<void>('/api/auth/password-reset/request', { email }));
+      },
+
+      /** Ends every session of the account, this browser's too: the caller sends the user to sign in. */
+      async resetPassword(token: string, password: string): Promise<void> {
+        await firstValueFrom(
+          http.post<void>('/api/auth/password-reset/confirm', { token, password }),
+        );
+        setUser(null);
+      },
+
+      /**
+       * Confirms the address. A signed-in session is read again, so the banner goes away; the link may belong to
+       * another account than the one signed in here, so nothing is assumed.
+       */
+      async verifyEmail(token: string): Promise<void> {
+        await firstValueFrom(http.post<void>('/api/auth/verify-email', { token }));
+        if (store.user()) {
+          setUser((await firstValueFrom(http.get<SessionResponse>('/api/auth/session'))).user);
+        }
+      },
+
+      async resendVerification(): Promise<void> {
+        await firstValueFrom(http.post<void>('/api/me/verification-email', null));
+      },
+
       /** A session the API returned from another call (accepting an invitation signs in and joins). */
       apply(session: SessionResponse): void {
         setUser(session.user);

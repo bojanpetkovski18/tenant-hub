@@ -43,6 +43,7 @@ public sealed class DemoSeederTests(PostgresFixture postgres)
         Assert.Equal(2, await db.Organizations.CountAsync(Ct));
         Assert.True(await db.Organizations.AllAsync(o => o.IsDemoSeed, Ct));
         Assert.Equal(8, await db.Users.CountAsync(Ct));
+        Assert.Equal(8, await db.Users.CountAsync(u => u.EmailConfirmed, Ct)); // demo accounts count as verified (SPEC-V2 4.1)
         Assert.All(DemoSeeder.Emails, email => Assert.EndsWith(".example", email, StringComparison.Ordinal));
 
         // Brightline: Team, six members, forty clients (five archived), 150 jobs in every status.

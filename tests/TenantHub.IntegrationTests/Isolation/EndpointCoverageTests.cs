@@ -21,6 +21,9 @@ public sealed class EndpointCoverageTests(OfflineApiFactory factory) : IClassFix
         "GET /api/auth/session",
         "POST /api/auth/sign-up",
         "POST /api/auth/sign-in",
+        "POST /api/auth/password-reset/request", // always 202; the answer reveals nothing (SPEC-V2 7)
+        "POST /api/auth/password-reset/confirm", // the token in the body is the credential
+        "POST /api/auth/verify-email",
         "GET /api/demo/accounts", // 404 outside demo mode
         "POST /api/demo/sign-in",
         "POST /api/invitations/preview", // the token in the body is the credential (D028)
