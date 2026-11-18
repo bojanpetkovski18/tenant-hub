@@ -1,6 +1,6 @@
 # TenantHub v2: Specification
 
-Status: proposed on 2026-11-16 (M13) for the owner's approval; implementation starts at M14 once it is approved. This document extends `SPEC.md`, which describes v1.0.0 as built. Where v2 changes a v1 rule, it says so and names the `SPEC.md` section. At v2.0.0 (M23) the two are merged into one `SPEC.md` describing the product as built. Decisions are D037–D045 in `DECISIONS.md`.
+Status: proposed on 2026-11-16 (M13) for the owner's approval; implementation starts at M14 once it is approved. This document extends `SPEC.md`, which describes v1.0.0 as built. Where v2 changes a v1 rule, it says so and names the `SPEC.md` section. At v2.0.0 (M23) the two are merged into one `SPEC.md` describing the product as built. Decisions are D037–D046 in `DECISIONS.md`.
 
 ## 1. Purpose and positioning
 
@@ -96,11 +96,11 @@ Fixed, not role-based. A contact sees their own client's visits (upcoming, and t
 - The client page gains an Agreements tab; the jobs list gains an "agreement" filter.
 
 ### 4.3 Dispatch board (M17)
-- A week view in the organization's time zone, Monday to Sunday. Rows are the active members plus "Unassigned"; cells are days. A side column lists open jobs with no scheduled date.
+- A week view in the organization's time zone, Monday to Sunday. Rows are the active members who can work on jobs plus "Unassigned" (and a former member who still has work that week); cells are days. A "Not scheduled" area lists open jobs with no scheduled date, the nearest due first (the 50 nearest, with the total).
 - Cards show number, client, title, status, priority and estimated duration.
-- Managers move a card by dragging it, or by keyboard: select the card, then "Move to…" (person and day) or arrow keys. Each move goes through the same domain rules as the job form.
+- Managers move a card by dragging it (into a cell, or onto "Not scheduled"), or by keyboard: each card's "Move to…" asks for a person and a day (an empty day is "Not scheduled"). Arrow-key moves were left out (D046). Each move goes through the same domain rules as the job form, and is announced to screen readers.
 - Each cell shows the person's planned hours against the organization's daily capacity; an over-capacity cell is marked with an icon and text, never colour alone.
-- Below 768 px the board becomes a day-by-day list per person, with the "Move to…" action and no dragging.
+- Below 1024 px the board becomes a day-by-day list per person, with the "Move to…" action and no dragging (the seven-day grid needs about 900 px; D046).
 
 ### 4.4 Client portal (M18)
 - Staff add contacts (name, email) on the client page; the contact receives an invitation email. Contacts sign in at `/portal/{orgSlug}` by entering their email and following the one-time link.
@@ -166,8 +166,8 @@ Custom roles; real billing with Stripe; a platform-admin console; SSO; a Kanban 
 
 ### 5.2 Dispatch
 - Moving a card sets the assignee and `scheduled_on` with the job's concurrency token. A newer version gives `409 concurrency-conflict`: the card returns to its place and the board reloads.
-- Moving a job to a day before its due date is allowed; to a day after its due date asks for confirmation and moves the due date too (the v1 rule `due_on ≥ scheduled_on` stays).
-- A New job moved to a person and a day becomes Scheduled (the v1 transition, `SPEC.md` 5.4). A move to "Unassigned" or "Unscheduled" follows the job form's rules: where the form would refuse (for example, a Scheduled job without an assignee), the board refuses with the same reason. Completed and Cancelled jobs are shown but cannot be moved.
+- Moving a job to a day before its due date is allowed; to a day after its due date asks for confirmation and moves the due date too (the v1 rule `due_on ≥ scheduled_on` stays): the API answers `409 after-due-date` until the move says `moveDueDate`.
+- A New job moved to a person and a day becomes Scheduled (the v1 transition, `SPEC.md` 5.4). A move to "Unassigned" or "Unscheduled" follows the job form's rules: where the form would refuse, the board refuses with the same reason. As built, the form checks an assignee and a day when a job changes status, not afterwards, so it allows a Scheduled job to lose either; the board allows the same moves, and a job taken off the plan keeps its status (D046). Completed and Cancelled jobs are shown but cannot be moved (`409 job-closed`).
 - Jobs gain an optional `estimated_minutes` (15–1440). Organizations gain a daily capacity (60–1440 minutes, default 480), edited in Settings → General.
 
 ### 5.3 Contacts and portal sessions
@@ -268,7 +268,8 @@ Conventions as in `SPEC.md` 7: problem details with `traceId` and stable codes; 
 | POST | `/agreements/{id}/pause`, `/resume`, `/end` | `agreements.manage` |
 | POST | `/agreements/preview` | `agreements.read`: the next occurrences of a recurrence, without saving |
 | POST | `/jobs/{id}/skip` | `agreements.manage`: generated visits only |
-| GET | `/board` | `jobs.read`: `week` (a Monday in the organization's zone), `clientId`, `status[]` |
+| GET | `/board` | `jobs.read`: `week` (any day of the week, in the organization's zone; this week when left out), `clientId`, `status[]` |
+| POST | `/jobs/{id}/schedule` | `jobs.manage`: a board move, `{ assigneeUserId, scheduledOn (null: not scheduled), version, moveDueDate }` (5.2, D046) |
 | POST | `/jobs/{id}/quote` | `portal.manage`: send for approval |
 | GET, POST | `/jobs/{id}/checklist` | `jobs.read` / `jobs.work` (domain rules as for edits) |
 | PUT, DELETE | `/jobs/{id}/checklist/{itemId}` | `jobs.work` |
