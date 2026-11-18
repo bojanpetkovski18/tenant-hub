@@ -1,6 +1,6 @@
 # TenantHub v2: Specification
 
-Status: proposed on 2026-11-16 (M13) for the owner's approval; implementation starts at M14 once it is approved. This document extends `SPEC.md`, which describes v1.0.0 as built. Where v2 changes a v1 rule, it says so and names the `SPEC.md` section. At v2.0.0 (M23) the two are merged into one `SPEC.md` describing the product as built. Decisions are D037–D046 in `DECISIONS.md`.
+Status: proposed on 2026-11-16 (M13) for the owner's approval; implementation starts at M14 once it is approved. This document extends `SPEC.md`, which describes v1.0.0 as built. Where v2 changes a v1 rule, it says so and names the `SPEC.md` section. At v2.0.0 (M23) the two are merged into one `SPEC.md` describing the product as built. Decisions are D037–D047 in `DECISIONS.md`.
 
 ## 1. Purpose and positioning
 
@@ -180,7 +180,7 @@ Custom roles; real billing with Stripe; a platform-admin console; SSO; a Kanban 
 - Staff with `portal.manage` may send a quote for a job that is New or Scheduled, has a quoted amount, and whose client has at least one active contact. The job's approval becomes Pending.
 - **While Pending or Declined, the job cannot move to In progress** (`409 quote-not-approved`). This adds a condition to the v1 transition table (`SPEC.md` 5.4).
 - The contact approves or declines once, with an optional comment (up to 1,000 characters). The approval records the amount approved, who and when.
-- Changing the quoted amount of an approved job resets the approval to Not requested; the audit log shows both events. Jobs that were never sent behave exactly as in v1.
+- Changing the quoted amount of an approved job resets the approval to Not requested; the audit log shows both events. As built, so does changing the amount or the client of a pending quote, or the client of an approved one (D047). Jobs that were never sent behave exactly as in v1.
 
 ### 5.5 Work requests
 - A contact may have at most 10 open requests. Title 3–120 characters, description up to 2,000, preferred date optional (not in the past).
@@ -248,7 +248,8 @@ Conventions as in `SPEC.md` 7: problem details with `traceId` and stable codes; 
 | POST | `/api/auth/password-reset/confirm` | `{ token, password }`; ends every session |
 | POST | `/api/auth/verify-email` | `{ token }` |
 | POST | `/api/portal/sign-in/request` | `{ orgSlug, email }`; always `202`; rate-limited |
-| POST | `/api/portal/sign-in/confirm` | `{ token }`; starts a portal session |
+| POST | `/api/portal/sign-in/confirm` | `{ orgSlug, token }` (the slug from the link's URL; D040); starts a portal session |
+| POST | `/api/portal/demo/sign-in` | `{ email }`: demo mode only (404 otherwise), the seeded contacts only (D040) |
 
 **User-scoped**
 
@@ -277,8 +278,9 @@ Conventions as in `SPEC.md` 7: problem details with `traceId` and stable codes; 
 | GET | `/jobs/{id}/photos/{photoId}`, `/thumbnail` | `jobs.read` |
 | DELETE | `/jobs/{id}/photos/{photoId}` | `jobs.work` |
 | GET, POST | `/clients/{id}/contacts` | `clients.read` / `portal.manage` |
-| DELETE | `/clients/{id}/contacts/{contactId}` | `portal.manage` |
+| DELETE | `/contacts/{id}` | `portal.manage` (one id: a contact belongs to one client; D040) |
 | GET | `/requests` | `portal.manage`: status, client, paging |
+| GET | `/requests/open-count` | `portal.manage`: the sidebar's count (0 on a plan without the portal) |
 | POST | `/requests/{id}/convert`, `/decline` | `portal.manage` (`jobs.create` also required to convert) |
 | GET | `/notifications` | `org.read`: the caller's, newest first, with the unread count |
 | POST | `/notifications/read` | `org.read`: `{ ids }` or `{ all: true }` |
@@ -330,7 +332,7 @@ Tenant-owned tables get a query filter, an index starting with `organization_id`
 
 **Allow-list entries this specification asks the owner to approve** (CLAUDE.md: never added without approval):
 - `outbox_messages`, `scheduled_tasks` and `notification_preferences` as not tenant-owned. The first two are infrastructure that only the dispatcher and scheduler read; the third belongs to a user, not an organization.
-- Tenant bypasses for the outbox dispatcher and the scheduler (they work across organizations by design, then act inside one tenant context per message or task), for portal sign-in (it finds the contact by organization slug and email before any session exists), and for API-key authentication (it finds the key by hash before the tenant is known).
+- Tenant bypasses for the outbox dispatcher and the scheduler (they work across organizations by design, then act inside one tenant context per message or task), for portal sign-in (it finds the contact by organization slug and email before any session exists; **as built none was needed**: sign-in enters the one organization the slug names and stays inside the filter and the policies, D040), and for API-key authentication (it finds the key by hash before the tenant is known).
 
 ## 9. Non-functional additions
 - **Isolation:** sections 3.1–3.3; any failure blocks merging, as in v1.
