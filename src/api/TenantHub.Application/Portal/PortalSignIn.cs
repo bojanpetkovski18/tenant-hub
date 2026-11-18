@@ -102,13 +102,61 @@ public sealed class PortalSignIn(
             new PortalSessionView(new PortalOrganizationView(organization.Name, organization.Slug), new PortalContactView(contact.Id, contact.Name, contact.Email, clientName)));
     }
 
+    /// <summary>
+    /// The public demo's "Try as a client" (D040): signs in a seeded contact without a link, since the demo sends no
+    /// email. The caller has checked demo mode; only contacts that existed when the organization was seeded qualify.
+    /// </summary>
+    public async Task<(PortalIdentity Identity, PortalSessionView Session)?> SignInDemoContactAsync(string organizationSlug, string emailAddress, CancellationToken cancellationToken)
+    {
+        if (await EnterAsync(organizationSlug, cancellationToken) is not { } organization)
+        {
+            return null;
+        }
+
+        var normalized = EmailAddress.Normalize(emailAddress);
+        var found = await db.ClientContacts
+            .Where(c => c.NormalizedEmail == normalized && c.RemovedAt == null && c.CreatedAt < organization.CreatedAt)
+            .Join(db.Clients.Where(c => c.Status == ClientStatus.Active), c => c.ClientId, c => c.Id, (contact, client) => new { contact, client.Name })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (found is null)
+        {
+            return null;
+        }
+
+        found.contact.SignedIn(time.GetUtcNow());
+        await db.SaveChangesAsync(cancellationToken);
+        var contact = found.contact;
+        return (
+            new PortalIdentity(contact.OrganizationId, contact.ClientId, contact.Id),
+            new PortalSessionView(new PortalOrganizationView(organization.Name, organization.Slug), new PortalContactView(contact.Id, contact.Name, contact.Email, found.Name)));
+    }
+
+    /// <summary>
+    /// The demo's portal contacts: those that existed when the organization was seeded (the seed dates them before it),
+    /// active, at an active client. A contact a demo visitor added later is never offered or accepted.
+    /// </summary>
+    public async Task<IReadOnlyList<PortalContactView>> DemoContactsAsync(string organizationSlug, CancellationToken cancellationToken)
+    {
+        if (await EnterAsync(organizationSlug, cancellationToken) is not { } organization)
+        {
+            return [];
+        }
+
+        return await db.ClientContacts.AsNoTracking()
+            .Where(c => c.RemovedAt == null && c.CreatedAt < organization.CreatedAt)
+            .Join(db.Clients.Where(c => c.Status == ClientStatus.Active), c => c.ClientId, c => c.Id, (c, client) => new { c.Id, c.Name, c.Email, ClientName = client.Name })
+            .OrderBy(c => c.ClientName)
+            .Select(c => new PortalContactView(c.Id, c.Name, c.Email, c.ClientName))
+            .ToListAsync(cancellationToken);
+    }
+
     /// <summary>The organization with this slug, entered, when it exists and its plan has the portal.</summary>
-    private async Task<(string Name, string Slug)?> EnterAsync(string? organizationSlug, CancellationToken cancellationToken)
+    private async Task<(string Name, string Slug, DateTimeOffset CreatedAt)?> EnterAsync(string? organizationSlug, CancellationToken cancellationToken)
     {
         var slug = (organizationSlug ?? "").Trim().ToLowerInvariant();
         var organization = await db.Organizations.AsNoTracking()
             .Where(o => o.Slug == slug)
-            .Select(o => new { o.Id, o.Name, o.Slug, o.Plan })
+            .Select(o => new { o.Id, o.Name, o.Slug, o.Plan, o.CreatedAt })
             .SingleOrDefaultAsync(cancellationToken);
         if (organization is null || !PlanFeatures.Includes(organization.Plan, PlanFeature.Portal))
         {
@@ -116,7 +164,7 @@ public sealed class PortalSignIn(
         }
 
         tenant.EnterAsSystem(organization.Id);
-        return (organization.Name, organization.Slug);
+        return (organization.Name, organization.Slug, organization.CreatedAt);
     }
 
     private static DomainException InvalidLink() => new(

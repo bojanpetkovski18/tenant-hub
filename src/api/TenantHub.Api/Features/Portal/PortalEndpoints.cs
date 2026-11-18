@@ -2,9 +2,13 @@ using System.ComponentModel.DataAnnotations;
 using TenantHub.Api.Common;
 using TenantHub.Api.Common.Auth;
 using TenantHub.Api.Common.Tenancy;
+using TenantHub.Application.Demo;
 using TenantHub.Application.Portal;
+using TenantHub.Infrastructure.Seed;
 
 namespace TenantHub.Api.Features.Portal;
+
+public sealed record PortalDemoSignInRequest([property: MaxLength(500)] string? Email);
 
 public sealed record PortalWorkRequest(
     [property: MaxLength(500)] string? Title,
@@ -62,6 +66,30 @@ public static class PortalEndpoints
             })
             .WithTags("Portal")
             .Public();
+
+        // The public demo only (404 otherwise, as if it did not exist): sign in as one of the seeded contacts without a
+        // link, since the demo sends no email (D040). Any other address is refused, so a contact a visitor added is safe.
+        app.MapPost($"{PortalAuth.ApiPath}/demo/sign-in", async Task<IResult> (
+                PortalDemoSignInRequest request, HttpContext context, DemoMode mode, PortalSignIn signIn, XsrfCookie xsrf, CancellationToken ct) =>
+            {
+                if (!mode.Enabled)
+                {
+                    return TypedResults.Problem(statusCode: StatusCodes.Status404NotFound);
+                }
+
+                if (string.IsNullOrWhiteSpace(request.Email)
+                    || await signIn.SignInDemoContactAsync(DemoSeeder.BrightlineSlug, request.Email, ct) is not { } signedIn)
+                {
+                    return TypedResults.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Choose one of the demo clients.");
+                }
+
+                await PortalAuth.SignInAsync(context, signedIn.Identity);
+                xsrf.Issue(context, PortalAuth.PagesPath);
+                return TypedResults.Ok(signedIn.Session);
+            })
+            .WithTags("Portal")
+            .Public()
+            .RequireRateLimiting(RateLimiting.AuthPolicy);
 
         app.MapPost($"{PortalAuth.ApiPath}/sign-out", async (HttpContext context, XsrfCookie xsrf) =>
             {

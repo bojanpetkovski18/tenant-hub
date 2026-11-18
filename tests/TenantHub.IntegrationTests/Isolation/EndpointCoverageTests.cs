@@ -32,6 +32,7 @@ public sealed class EndpointCoverageTests(OfflineApiFactory factory) : IClassFix
         "POST /api/portal/sign-in/confirm", // the token in the body is the credential (D028)
         "GET /api/portal/session", // like the staff session: who is signed in, or which portal this is
         "POST /api/portal/sign-out",
+        "POST /api/portal/demo/sign-in", // 404 outside demo mode; only the seeded contacts (D040)
         "* /health", // MapHealthChecks answers any method; read-only
         "* /health/live",
         "* {**path}",

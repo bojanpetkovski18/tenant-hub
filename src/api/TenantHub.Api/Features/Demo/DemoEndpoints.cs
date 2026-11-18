@@ -6,6 +6,7 @@ using TenantHub.Api.Common.Tenancy;
 using TenantHub.Api.Features.Auth;
 using TenantHub.Application.Accounts;
 using TenantHub.Application.Demo;
+using TenantHub.Application.Portal;
 using TenantHub.Domain.Memberships;
 using TenantHub.Infrastructure.Identity;
 using TenantHub.Infrastructure.Seed;
@@ -14,8 +15,16 @@ namespace TenantHub.Api.Features.Demo;
 
 public sealed record DemoAccountResponse(Role Role, string DisplayName, string Email);
 
-/// <summary>What the sign-in page and the demo banner show (US-61).</summary>
-public sealed record DemoInfoResponse(int ResetIntervalHours, DateTimeOffset? NextResetAt, IReadOnlyList<DemoAccountResponse> Accounts);
+/// <summary>A seeded portal contact the demo's "Try as a client" signs in as (D040).</summary>
+public sealed record DemoContactResponse(string Name, string Email, string ClientName);
+
+/// <summary>What the sign-in pages and the demo banner show (US-61); the portal's demo contacts are Brightline's.</summary>
+public sealed record DemoInfoResponse(
+    int ResetIntervalHours,
+    DateTimeOffset? NextResetAt,
+    IReadOnlyList<DemoAccountResponse> Accounts,
+    string PortalSlug,
+    IReadOnlyList<DemoContactResponse> PortalContacts);
 
 public sealed record DemoSignInRequest(Role? Role);
 
@@ -30,12 +39,14 @@ public static class DemoEndpoints
     {
         var demo = app.MapGroup("/api/demo").WithTags("Demo");
 
-        demo.MapGet("/accounts", async Task<Results<Ok<DemoInfoResponse>, ProblemHttpResult>> (DemoMode mode, DemoReset reset, CancellationToken ct) =>
+        demo.MapGet("/accounts", async Task<Results<Ok<DemoInfoResponse>, ProblemHttpResult>> (DemoMode mode, DemoReset reset, PortalSignIn portal, CancellationToken ct) =>
             mode.Enabled
                 ? TypedResults.Ok(new DemoInfoResponse(
                     mode.ResetIntervalHours,
                     await reset.NextResetAtAsync(ct),
-                    [.. DemoSeeder.DemoAccounts.Select(a => new DemoAccountResponse(a.Role, a.DisplayName, a.Email))]))
+                    [.. DemoSeeder.DemoAccounts.Select(a => new DemoAccountResponse(a.Role, a.DisplayName, a.Email))],
+                    DemoSeeder.BrightlineSlug,
+                    [.. (mode.Enabled ? await portal.DemoContactsAsync(DemoSeeder.BrightlineSlug, ct) : []).Select(c => new DemoContactResponse(c.Name, c.Email, c.ClientName))]))
                 : NotFound())
             .Public();
 
