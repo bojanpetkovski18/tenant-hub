@@ -85,7 +85,8 @@ public sealed class AgreementTests
         var plan = VisitGeneration.Plan([(mondays, new HashSet<DateOnly>()), (fridays, new HashSet<DateOnly>())], Today, room: 3);
 
         Assert.Equal([new DateOnly(2027, 1, 4), new DateOnly(2027, 1, 8), new DateOnly(2027, 1, 11)], plan.Visits.Select(v => v.Date));
-        Assert.Equal(new HashSet<Guid> { mondays.Id, fridays.Id }, plan.CutShort);
+        // Each is cut at its first date left out: Friday 15 and Monday 18 January.
+        Assert.Equal(new Dictionary<Guid, DateOnly> { [mondays.Id] = new(2027, 1, 18), [fridays.Id] = new(2027, 1, 15) }, plan.LeftOut);
         Assert.Empty(VisitGeneration.Plan([(mondays, new HashSet<DateOnly>())], Today, room: 0).Visits);
     }
 
@@ -155,6 +156,16 @@ public sealed class AgreementTests
 
         Assert.Equal((JobStatus.Cancelled, Today), (visit.Status, visit.OccurrenceOn!.Value));
         Assert.Contains(((JobEvent)visit.DomainEvents[^1]).Changes, c => c is { Field: "reason", To: "Skipped" });
+    }
+
+    [Fact]
+    public void A_visit_is_never_deleted_whatever_its_status()
+    {
+        var visits = Generate(Create());
+        visits[1].Skip(Manager, Now);
+
+        Assert.Equal("visit-not-deletable", Assert.Throws<DomainException>(() => visits[0].MarkDeleted(Manager)).Code);
+        Assert.Equal("visit-not-deletable", Assert.Throws<DomainException>(() => visits[1].MarkDeleted(Manager)).Code);
     }
 
     [Fact]

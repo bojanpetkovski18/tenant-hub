@@ -318,6 +318,15 @@ public sealed class Job : AggregateRoot, ITenantOwned
             throw ManagersOnly("deleting a job");
         }
 
+        // A visit's row is what keeps its date from being generated again (SPEC-V2 5.1): it is skipped or cancelled,
+        // never deleted. Edits to the agreement withdraw untouched visits through WithdrawFromAgreement instead.
+        if (AgreementId is not null)
+        {
+            throw new DomainException(
+                "visit-not-deletable",
+                $"{Label} is a visit of an agreement and would be generated again. Skip it or cancel it instead.");
+        }
+
         if (Status is not (JobStatus.New or JobStatus.Cancelled))
         {
             throw new DomainException("job-not-deletable", "Only New or Cancelled jobs can be deleted. Cancel the job first.");

@@ -16,6 +16,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { ApiProblem, toApiProblem } from '../../core/http/api-problem';
+import { CurrentOrganizationStore } from '../../core/session/current-organization.store';
 import { SessionStore } from '../../core/session/session.store';
 import { focusFirstInvalid } from '../../shared/forms/focus-first-invalid';
 import { applyProblem, controlError } from '../../shared/forms/server-errors';
@@ -59,10 +60,18 @@ const messages = {
   },
 } as const;
 
-/** Today in the browser, as a date; the API checks against the organization's own today. */
-function localToday(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+/**
+ * Today as a date (YYYY-MM-DD) in the organization's time zone, which is what the API checks the start against; the
+ * browser's own zone until the organization has loaded. A manager far from the organization would otherwise get a
+ * default the API refuses (found in the M16 review).
+ */
+function todayIn(timeZone?: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }
 
 /**
@@ -432,6 +441,7 @@ export class AgreementFormPage {
   private readonly clientsApi = inject(ClientsApi);
   private readonly membersApi = inject(MembersApi);
   private readonly session = inject(SessionStore);
+  private readonly currentOrganization = inject(CurrentOrganizationStore);
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
   private readonly formEl = viewChild<ElementRef<HTMLElement>>('formEl');
@@ -479,7 +489,7 @@ export class AgreementFormPage {
       week: ['first' as WeekOfMonth],
       weekday: ['monday' as Weekday],
     }),
-    startsOn: [localToday(), Validators.required],
+    startsOn: [todayIn(), Validators.required],
     endKind: ['none' as EndKind],
     endsOn: [''],
     maxVisits: [null as number | null],
@@ -490,6 +500,11 @@ export class AgreementFormPage {
   });
   protected readonly kind = computed(() => this.value().recurrence?.kind ?? 'weekly');
   protected readonly endKind = computed(() => this.value().endKind ?? 'none');
+  /** Only these fields change the dates; the preview follows them and nothing else (not the title, for example). */
+  private readonly scheduleKey = computed(() => {
+    const v = this.value();
+    return JSON.stringify([v.recurrence, v.startsOn, v.endKind, v.endsOn, v.maxVisits]);
+  });
   private version = 0;
   private previewTimer: ReturnType<typeof setTimeout> | undefined;
   private previewRequest = 0;
@@ -512,9 +527,23 @@ export class AgreementFormPage {
       }
     });
 
+    // A new agreement starts on the organization's today, unless the user already chose a date.
+    effect(() => {
+      const organization = this.currentOrganization.organization();
+      const startsOn = this.form.controls.startsOn;
+      if (
+        organization &&
+        organization.id === this.membership()?.organizationId &&
+        !this.id() &&
+        !startsOn.dirty
+      ) {
+        startsOn.setValue(todayIn(organization.timeZone));
+      }
+    });
+
     // The live preview follows the schedule fields, after a short pause in typing.
     effect(() => {
-      this.value();
+      this.scheduleKey();
       if (!this.membership()) {
         return;
       }

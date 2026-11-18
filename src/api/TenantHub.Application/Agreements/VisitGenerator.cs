@@ -73,7 +73,10 @@ public sealed class VisitGenerator(IAppDbContext db, PlanLimitsCheck limits, Job
 
         foreach (var agreement in agreements.Where(a => a.Status == AgreementStatus.Active))
         {
-            agreement.RecordGeneration(VisitGeneration.HorizonEnd(today), plan.CutShort.Contains(agreement.Id), now);
+            // Covered up to the day before the first date the limit left out; the nearest dates go first, so every date
+            // before it exists.
+            var cut = plan.LeftOut.TryGetValue(agreement.Id, out var firstLeftOut);
+            agreement.RecordGeneration(cut ? firstLeftOut.AddDays(-1) : VisitGeneration.HorizonEnd(today), cut, now);
         }
 
         return plan.Visits.Count;

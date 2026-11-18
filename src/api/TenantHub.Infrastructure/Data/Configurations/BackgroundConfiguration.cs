@@ -43,6 +43,10 @@ internal sealed class ScheduledTaskConfiguration : IEntityTypeConfiguration<Sche
             .AreNullsDistinct(false)
             .HasDatabaseName("ux_scheduled_tasks_name_organization");
 
+        // The claim takes the earliest due row: with one row per organization that has agreements (M16), an index keeps
+        // each claim an index scan instead of a scan of the whole table (measured in PROGRESS: 0.96 ms → 0.07 ms at 10,000 rows).
+        task.HasIndex(t => t.DueAt).HasDatabaseName("ix_scheduled_tasks_due");
+
         task.HasOne<Organization>().WithMany().HasForeignKey(t => t.OrganizationId).OnDelete(DeleteBehavior.Cascade);
     }
 }

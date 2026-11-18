@@ -95,7 +95,8 @@ public sealed class AgreementQueries(IAppDbContext db, ITenantContext tenant, II
 
         var total = await agreements.CountAsync(cancellationToken);
         var rows = await agreements
-            .OrderBy(a => a.Status)
+            // Active, then paused, then ended (the status is stored as text, which would sort ended before paused).
+            .OrderBy(a => a.Status == AgreementStatus.Active ? 0 : a.Status == AgreementStatus.Paused ? 1 : 2)
             .ThenBy(a => a.Title)
             .ThenBy(a => a.Id)
             .Skip(request.Paging.Skip)
