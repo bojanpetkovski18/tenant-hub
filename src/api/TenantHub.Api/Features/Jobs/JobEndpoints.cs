@@ -40,6 +40,9 @@ public sealed record UpdateJobRequest(
 
 public sealed record TransitionRequest(JobStatus To, [property: MaxLength(2000)] string? Reason);
 
+/// <summary>A board move: <c>Version</c> is what the board showed; <c>MoveDueDate</c> answers "move the due date too?".</summary>
+public sealed record ScheduleRequest(Guid? AssigneeUserId, DateOnly? ScheduledOn, uint Version, bool MoveDueDate = false);
+
 public static class JobEndpoints
 {
     public static IEndpointRouteBuilder MapJobEndpoints(this IEndpointRouteBuilder app)
@@ -102,6 +105,11 @@ public static class JobEndpoints
         jobs.MapPost("/{id:guid}/transitions", async (Guid id, TransitionRequest request, JobCommands commands, CancellationToken ct) =>
                 TypedResults.Ok(await commands.TransitionAsync(id, request.To, request.Reason, ct)))
             .RequirePermission(Permissions.JobsWork);
+
+        // A board move (SPEC-V2 5.2): assignee and day in one transaction; managers only, like assigning anywhere.
+        jobs.MapPost("/{id:guid}/schedule", async (Guid id, ScheduleRequest request, JobCommands commands, CancellationToken ct) =>
+                TypedResults.Ok(await commands.ScheduleAsync(id, new ScheduleInput(request.AssigneeUserId, request.ScheduledOn, request.Version, request.MoveDueDate), ct)))
+            .RequirePermission(Permissions.JobsManage);
 
         // Skipping one visit of an agreement is an agreement decision (SPEC-V2 2.2, 7).
         jobs.MapPost("/{id:guid}/skip", async (Guid id, JobCommands commands, CancellationToken ct) =>

@@ -652,6 +652,10 @@ namespace TenantHub.Infrastructure.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by_user_id");
 
+                    b.Property<int>("DailyCapacityMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("daily_capacity_minutes");
+
                     b.Property<bool>("IsDemoSeed")
                         .HasColumnType("boolean")
                         .HasColumnName("is_demo_seed");

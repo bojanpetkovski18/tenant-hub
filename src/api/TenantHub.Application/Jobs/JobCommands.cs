@@ -23,6 +23,9 @@ public sealed record JobInput(
         JobDetails.Validate(Title, Description, ClientId, AssigneeUserId, Priority, ScheduledOn, DueOn, QuotedAmount, EstimatedMinutes);
 }
 
+/// <summary>A board move: who and which day, the version the board showed, and whether the due date may move along.</summary>
+public sealed record ScheduleInput(Guid? AssigneeUserId, DateOnly? ScheduledOn, uint Version, bool MoveDueDate);
+
 /// <summary>
 /// Job commands (US-30 to US-32). Each loads the job through the tenant filter (another organization's id is simply
 /// "not found"), applies one domain method, which decides who may do what, and saves once; the audit entry is
@@ -95,6 +98,38 @@ public sealed class JobCommands(
         job.TransitionTo(to, views.Actor(), reason, time.GetUtcNow());
         await SaveAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        return await views.ForAsync(job, cancellationToken);
+    }
+
+    /// <summary>
+    /// A board move (US-75, SPEC-V2 5.2): assignee and day in one transaction, with the version the board showed, so
+    /// a move made meanwhile by someone else is a 409 and nothing changes. The assignee must be an active member.
+    /// </summary>
+    public async Task<JobView> ScheduleAsync(Guid id, ScheduleInput input, CancellationToken cancellationToken)
+    {
+        if (input.ScheduledOn is not { } day)
+        {
+            throw new RequestValidationException(FieldErrors.From([("scheduledOn", "Choose a day.")]));
+        }
+
+        var job = await LoadAsync(id, cancellationToken);
+        db.Entry(job).Property(j => j.Version).OriginalValue = input.Version;
+        if (input.AssigneeUserId is { } assignee && assignee != job.AssigneeUserId
+            && !await db.Memberships.AnyAsync(m => m.UserId == assignee && m.RemovedAt == null, cancellationToken))
+        {
+            throw new RequestValidationException(FieldErrors.From([("assigneeUserId", "Choose an active member of this organization.")]));
+        }
+
+        var names = await views.NamesAsync([job.ClientId], [job.AssigneeUserId, input.AssigneeUserId], cancellationToken);
+        if (job.Schedule(input.AssigneeUserId, day, input.MoveDueDate, views.Actor(), names, time.GetUtcNow()))
+        {
+            await SaveAsync(cancellationToken);
+        }
+        else if (job.Version != input.Version)
+        {
+            throw JobErrors.ConcurrencyConflict();
+        }
+
         return await views.ForAsync(job, cancellationToken);
     }
 

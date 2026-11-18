@@ -5,7 +5,7 @@ using TenantHub.Domain.Organizations;
 
 namespace TenantHub.Application.Organizations;
 
-public sealed record OrganizationDetails(Guid Id, string Name, string Slug, Plan Plan, string TimeZone, DateTimeOffset CreatedAt);
+public sealed record OrganizationDetails(Guid Id, string Name, string Slug, Plan Plan, string TimeZone, int DailyCapacityMinutes, DateTimeOffset CreatedAt);
 
 /// <summary>A plan and its limits, for the plan cards (SPEC 6, Settings → Plan and usage).</summary>
 public sealed record PlanOption(Plan Plan, PlanLimits Limits);
@@ -17,6 +17,7 @@ public sealed record OrganizationOverview(
     string Slug,
     Plan Plan,
     string TimeZone,
+    int DailyCapacityMinutes,
     DateTimeOffset CreatedAt,
     PlanUsage Usage,
     PlanLimits Limits,
@@ -42,10 +43,10 @@ public sealed class GetOrganizationQuery(IAppDbContext db, ITenantContext tenant
         var o = await db.Organizations
             .AsNoTracking()
             .Where(o => o.Id == tenant.OrganizationId)
-            .Select(o => new OrganizationDetails(o.Id, o.Name, o.Slug, o.Plan, o.TimeZone, o.CreatedAt))
+            .Select(o => new OrganizationDetails(o.Id, o.Name, o.Slug, o.Plan, o.TimeZone, o.DailyCapacityMinutes, o.CreatedAt))
             .SingleAsync(cancellationToken);
         var usage = await limits.UsageAsync(cancellationToken);
-        return new OrganizationOverview(o.Id, o.Name, o.Slug, o.Plan, o.TimeZone, o.CreatedAt, usage, PlanLimits.For(o.Plan), OrganizationOverview.AllPlans);
+        return new OrganizationOverview(o.Id, o.Name, o.Slug, o.Plan, o.TimeZone, o.DailyCapacityMinutes, o.CreatedAt, usage, PlanLimits.For(o.Plan), OrganizationOverview.AllPlans);
     }
 }
 

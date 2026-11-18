@@ -3,6 +3,7 @@ using TenantHub.Application.Abstractions;
 using TenantHub.Application.Accounts;
 using TenantHub.Application.Agreements;
 using TenantHub.Application.Audit;
+using TenantHub.Application.Board;
 using TenantHub.Application.Clients;
 using TenantHub.Application.Dashboard;
 using TenantHub.Application.Demo;
@@ -45,6 +46,7 @@ public static class ApplicationSetup
         .AddScoped<GetJobQuery>()
         .AddScoped<JobHistoryQuery>()
         .AddScoped<JobCommands>()
+        .AddScoped<BoardQuery>()
         .AddScoped<VisitGenerator>()
         .AddScoped<AgreementCommands>()
         .AddScoped<AgreementQueries>()

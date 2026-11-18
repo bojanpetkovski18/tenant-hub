@@ -249,6 +249,24 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
             Audited = true,
         },
 
+        // The board (SPEC-V2 7, M17): reading it, and a move.
+        new("GET", "/board", Permissions.JobsRead),
+        new("POST", "/jobs/{id:guid}/schedule", Permissions.JobsManage)
+        {
+            Resource = CaseResource.FreshJob,
+            Audited = true,
+            Body = async input =>
+            {
+                var details = await input.Tenants.JobDetailsAsync(input.ResourceId!.Value);
+                return new
+                {
+                    assigneeUserId = details.AssigneeUserId,
+                    scheduledOn = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(3),
+                    version = await input.Tenants.JobVersionAsync(input.ResourceId!.Value),
+                };
+            },
+        },
+
         // Visits of agreements (SPEC-V2 7, M16).
         new("POST", "/jobs/{id:guid}/skip", Permissions.AgreementsManage)
         {

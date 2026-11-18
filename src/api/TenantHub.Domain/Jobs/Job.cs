@@ -154,6 +154,68 @@ public sealed class Job : AggregateRoot, ITenantOwned
     }
 
     /// <summary>
+    /// A move on the board (SPEC-V2 5.2): to a person (or nobody) and a day, in one step. Managers only, as for
+    /// assigning and scheduling anywhere else; closed jobs stay where they are. A New job that ends up with an
+    /// assignee and a day becomes Scheduled through the ordinary workflow move. A day after the due date is refused
+    /// unless <paramref name="moveDueDate"/> moves the due date along. Returns false when nothing changed.
+    /// </summary>
+    public bool Schedule(
+        Guid? assigneeUserId,
+        DateOnly scheduledOn,
+        bool moveDueDate,
+        JobActor actor,
+        IReadOnlyDictionary<Guid, string> names,
+        DateTimeOffset now)
+    {
+        if (!actor.CanManage)
+        {
+            throw ManagersOnly("planning jobs on the board");
+        }
+
+        if (!Status.IsOpen())
+        {
+            throw new DomainException("job-closed", $"{Label} is {JobLabels.Of(Status)}, so it stays where it is.");
+        }
+
+        var dueOn = DueOn;
+        if (dueOn is { } due && scheduledOn > due)
+        {
+            if (!moveDueDate)
+            {
+                throw new DomainException(
+                    "after-due-date",
+                    $"{Label} is due on {JobDetails.Date(due)}. Move the due date too, or choose an earlier day.");
+            }
+
+            dueOn = scheduledOn;
+        }
+
+        var details = Details with { AssigneeUserId = assigneeUserId, ScheduledOn = scheduledOn, DueOn = dueOn };
+        var changes = Details.ChangesTo(details, names);
+        var becomesScheduled = Status == JobStatus.New && assigneeUserId is not null;
+        if (changes.Count == 0 && !becomesScheduled)
+        {
+            return false;
+        }
+
+        if (changes.Count > 0)
+        {
+            Apply(details);
+            UpdatedAt = now;
+            ChangedByHand |= AgreementId is not null;
+            var fields = string.Join(", ", changes.Select(c => FieldLabels.GetValueOrDefault(c.Field, c.Field)));
+            Raise(new JobEvent(this, "job.updated", $"Moved {Label} on the board: {fields}", changes));
+        }
+
+        if (becomesScheduled)
+        {
+            TransitionTo(JobStatus.Scheduled, actor, null, now);
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// A visit of <paramref name="agreement"/> on <paramref name="occurrence"/> (SPEC-V2 5.1): the template's fields,
     /// scheduled and due that day, Scheduled when the template has an assignee and otherwise New. The agreement's
     /// creator is its creator; the audit names the system.
