@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TenantHub.Application.Tenancy;
+using TenantHub.Domain.Agreements;
 using TenantHub.Domain.Clients;
 using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
@@ -46,16 +47,27 @@ public sealed class DemoSeederTests(PostgresFixture postgres)
         Assert.Equal(8, await db.Users.CountAsync(u => u.EmailConfirmed, Ct)); // demo accounts count as verified (SPEC-V2 4.1)
         Assert.All(DemoSeeder.Emails, email => Assert.EndsWith(".example", email, StringComparison.Ordinal));
 
-        // Brightline: Team, six members, forty clients (five archived), 150 jobs in every status.
+        // Brightline: Team, six members, forty clients (five archived), 150 planned jobs in every status, and three
+        // agreements whose visits are numbered in the same sequence (M16).
         Assert.Equal((Plan.Team, 6), (brightline.Plan, await Members(db, brightline.Id)));
         Assert.Equal((40, 5), (await Clients(db, brightline.Id, null), await Clients(db, brightline.Id, ClientStatus.Archived)));
         var brightJobs = await db.Jobs.AcrossTenants().AsNoTracking().Where(j => j.OrganizationId == brightline.Id).ToListAsync(Ct);
-        Assert.Equal(Enumerable.Range(1, 150), brightJobs.Select(j => j.Number).Order());
+        Assert.Equal(Enumerable.Range(1, brightJobs.Count), brightJobs.Select(j => j.Number).Order());
+        Assert.Equal(150, brightJobs.Count(j => j.AgreementId is null));
         Assert.All(Enum.GetValues<JobStatus>(), status => Assert.Contains(brightJobs, j => j.Status == status));
         var today = Organization.TodayIn(brightline.TimeZone, Today);
         Assert.Contains(brightJobs, j => j.IsOverdue(today));
         Assert.Contains(brightJobs, j => j.DueOn > today.AddDays(14) && j.Status.IsOpen());
         Assert.Contains(brightJobs, j => j.ScheduledOn < today.AddDays(-100));
+
+        // Agreements: past visits done by their assignee, the rest scheduled up to 60 days ahead, by the system.
+        var agreements = await db.Agreements.AcrossTenants().AsNoTracking().Where(a => a.OrganizationId == brightline.Id).ToListAsync(Ct);
+        Assert.Equal(3, agreements.Count);
+        Assert.All(agreements, a => Assert.Equal((AgreementStatus.Active, today.AddDays(60)), (a.Status, a.GeneratedThrough!.Value)));
+        var visits = brightJobs.Where(j => j.AgreementId is not null).ToList();
+        Assert.All(visits.Where(v => v.OccurrenceOn < today), v => Assert.Equal(JobStatus.Completed, v.Status));
+        Assert.All(visits.Where(v => v.OccurrenceOn >= today), v => Assert.Equal(JobStatus.Scheduled, v.Status));
+        Assert.Contains(visits, v => v.OccurrenceOn > today.AddDays(50));
 
         // Harbor & Pine: Free and close to every limit (SPEC 8.3, "to show limit handling").
         var harborJobs = await db.Jobs.AcrossTenants().AsNoTracking().Where(j => j.OrganizationId == harbor.Id).ToListAsync(Ct);
@@ -64,6 +76,9 @@ public sealed class DemoSeederTests(PostgresFixture postgres)
         Assert.Equal(22, await Clients(db, harbor.Id, ClientStatus.Active));
         Assert.InRange(open, 40, 50);
         Assert.Equal(Enumerable.Range(1, harborJobs.Count), harborJobs.Select(j => j.Number).Order());
+        // Its agreement, created last, filled the room that was left and is held at the limit (shown on its page).
+        var lawnCare = await db.Agreements.AcrossTenants().AsNoTracking().SingleAsync(a => a.OrganizationId == harbor.Id, Ct);
+        Assert.Equal((50, GenerationHold.PlanLimit), (open, lawnCare.PausedReason!.Value));
 
         // The one person in both organizations, and no audit entries beyond the seed's own history.
         var sam = await db.Users.SingleAsync(u => u.Email == "sam@tenanthub.example", Ct);
