@@ -3,11 +3,15 @@ import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
+  Injector,
+  afterNextRender,
   computed,
   effect,
   inject,
   input,
   signal,
+  viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ApiProblem, toApiProblem } from '../../core/http/api-problem';
@@ -15,7 +19,6 @@ import { SessionStore } from '../../core/session/session.store';
 import { Confirm } from '../../shared/ui/confirm-dialog';
 import { ErrorState } from '../../shared/ui/states';
 import { ClientOption, ClientsApi } from '../clients/clients.api';
-import { JobStatusBadge } from '../jobs/job-badges';
 import { jobStatuses, statusLabels } from '../jobs/jobs.api';
 import {
   BoardApi,
@@ -26,6 +29,7 @@ import {
   dayText,
   hoursText,
 } from './board.api';
+import { BoardCardView, isMovable } from './board-card';
 import { AskMove } from './move-dialog';
 
 /** Where a card can be dropped: a person (or nobody) on a day. */
@@ -58,13 +62,19 @@ const unassigned: Row = { userId: null, name: 'Unassigned', active: true };
     CdkDropList,
     CdkDrag,
     ErrorState,
-    JobStatusBadge,
+    BoardCardView,
   ],
   template: `
     <div class="space-y-5">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 class="text-2xl font-semibold tracking-tight">Board</h1>
+          <h1
+            #heading
+            tabindex="-1"
+            class="text-2xl font-semibold tracking-tight focus:outline-none"
+          >
+            Board
+          </h1>
           <p class="mt-1 text-sm text-muted">
             {{ weekLabel() }}
             @if (board(); as b) {
@@ -135,7 +145,8 @@ const unassigned: Row = { userId: null, name: 'Unassigned', active: true };
 
         <div cdkDropListGroup class="space-y-5" [attr.aria-busy]="busy()">
           <!-- Wide screens: people by days. -->
-          <div class="th-card hidden overflow-x-auto p-0 md:block">
+          <!-- relative: the sr-only text in the cells is absolutely positioned and must stay inside this scroll area. -->
+          <div class="th-card relative hidden overflow-x-auto p-0 lg:block">
             <table class="w-full min-w-[56rem] table-fixed border-collapse text-sm">
               <caption class="sr-only">
                 Planned work, people by days,
@@ -176,6 +187,7 @@ const unassigned: Row = { userId: null, name: 'Unassigned', active: true };
                       <td class="border-l border-border p-1.5">
                         <div
                           cdkDropList
+                          role="group"
                           [cdkDropListData]="cell(row, day)"
                           [cdkDropListDisabled]="!b.canPlan"
                           (cdkDropListDropped)="dropped($event)"
@@ -183,9 +195,16 @@ const unassigned: Row = { userId: null, name: 'Unassigned', active: true };
                           [attr.aria-label]="row.name + ', ' + dayText(day)"
                         >
                           @for (card of cardsIn(row, day); track card.id) {
-                            <ng-container
-                              [ngTemplateOutlet]="cardTemplate"
-                              [ngTemplateOutletContext]="{ $implicit: card, day }"
+                            <app-board-card
+                              cdkDrag
+                              [cdkDragData]="card"
+                              [cdkDragDisabled]="!b.canPlan || !isMovable(card)"
+                              [class.cursor-grab]="b.canPlan && isMovable(card)"
+                              [card]="card"
+                              [slug]="slug()"
+                              [canPlan]="b.canPlan"
+                              [busy]="busy()"
+                              (move)="openMove(card, day)"
                             />
                           }
                         </div>
@@ -204,7 +223,7 @@ const unassigned: Row = { userId: null, name: 'Unassigned', active: true };
           </div>
 
           <!-- Narrow screens: day by day, person by person. -->
-          <div class="space-y-4 md:hidden">
+          <div class="space-y-4 lg:hidden">
             @for (day of days(); track day) {
               <section class="th-card" [attr.aria-labelledby]="'day-' + day">
                 <h2 [id]="'day-' + day" class="font-semibold" [class.text-accent]="day === b.today">
@@ -223,10 +242,14 @@ const unassigned: Row = { userId: null, name: 'Unassigned', active: true };
                     />
                   }
                   <div class="mt-1 space-y-1.5">
+                    <!-- No dragging here: on a phone "Move to…" is the way. -->
                     @for (card of cardsIn(row, day); track card.id) {
-                      <ng-container
-                        [ngTemplateOutlet]="cardTemplate"
-                        [ngTemplateOutletContext]="{ $implicit: card, day, phone: true }"
+                      <app-board-card
+                        [card]="card"
+                        [slug]="slug()"
+                        [canPlan]="b.canPlan"
+                        [busy]="busy()"
+                        (move)="openMove(card, day)"
                       />
                     }
                   </div>
@@ -256,61 +279,28 @@ const unassigned: Row = { userId: null, name: 'Unassigned', active: true };
             }
             <div
               cdkDropList
+              role="group"
               [cdkDropListEnterPredicate]="noDrop"
               [cdkDropListDisabled]="!b.canPlan"
               class="mt-3 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4"
               aria-label="Not scheduled"
             >
               @for (card of b.unscheduled; track card.id) {
-                <ng-container
-                  [ngTemplateOutlet]="cardTemplate"
-                  [ngTemplateOutletContext]="{ $implicit: card, day: null }"
+                <app-board-card
+                  cdkDrag
+                  [cdkDragData]="card"
+                  [cdkDragDisabled]="!b.canPlan"
+                  [class.cursor-grab]="b.canPlan"
+                  [card]="card"
+                  [slug]="slug()"
+                  [canPlan]="b.canPlan"
+                  [busy]="busy()"
+                  (move)="openMove(card, null)"
                 />
               }
             </div>
           </section>
         </div>
-
-        <ng-template #cardTemplate let-card let-day="day" let-phone="phone">
-          <div
-            cdkDrag
-            [cdkDragData]="card"
-            [cdkDragDisabled]="!b.canPlan || phone"
-            class="rounded-md border border-border bg-surface p-2 text-sm shadow-sm"
-            [class.cursor-grab]="b.canPlan && !phone"
-          >
-            <div class="flex items-start justify-between gap-2">
-              <a
-                [routerLink]="['/o', slug(), 'jobs', card.id]"
-                class="min-w-0 font-medium hover:underline"
-              >
-                <span class="font-mono text-xs text-muted">{{ card.label }}</span>
-                {{ card.title }}
-              </a>
-              <app-job-status-badge [status]="card.status" />
-            </div>
-            <p class="mt-1 text-xs text-muted">
-              {{ card.clientName }}
-              @if (card.estimatedMinutes) {
-                · {{ hoursText(card.estimatedMinutes) }}
-              }
-              @if (card.isVisit) {
-                · visit
-              }
-            </p>
-            @if (b.canPlan && card.status !== 'completed' && card.status !== 'cancelled') {
-              <button
-                type="button"
-                class="mt-1 text-xs font-medium text-accent hover:underline"
-                [disabled]="busy()"
-                [attr.aria-label]="'Move ' + card.label + ' to another person or day'"
-                (click)="openMove(card, day)"
-              >
-                Move to…
-              </button>
-            }
-          </div>
-        </ng-template>
 
         <ng-template #loadTemplate let-minutes>
           @let capacity = b.dailyCapacityMinutes;
@@ -361,12 +351,16 @@ export class BoardPage {
   private readonly confirm = inject(Confirm);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly injector = inject(Injector);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly heading = viewChild<ElementRef<HTMLElement>>('heading');
   private readonly membership = computed(() => this.session.membershipBySlug(this.slug()));
 
   protected readonly statuses = jobStatuses;
   protected readonly statusLabels = statusLabels;
   protected readonly hoursText = hoursText;
   protected readonly dayText = dayText;
+  protected readonly isMovable = isMovable;
   protected readonly board = signal<BoardView | null>(null);
   protected readonly error = signal<ApiProblem | null>(null);
   protected readonly busy = signal(false);
@@ -520,7 +514,25 @@ export class BoardPage {
     });
     if (choice) {
       await this.move(card, choice.assigneeUserId, choice.scheduledOn);
+      this.focusAfterMove(card);
     }
+  }
+
+  /**
+   * After a keyboard move the card is drawn again in its new place, so the focus the dialog gave back would be lost:
+   * it goes to the card's own "Move to…" in the layout shown, or to the heading when the card left the week.
+   */
+  private focusAfterMove(card: BoardCard): void {
+    afterNextRender(
+      () => {
+        const host = this.host.nativeElement;
+        const button = [
+          ...host.querySelectorAll<HTMLElement>(`button[data-move="${card.id}"]`),
+        ].find((b) => b.offsetParent !== null);
+        (button ?? this.heading()?.nativeElement)?.focus();
+      },
+      { injector: this.injector },
+    );
   }
 
   /**

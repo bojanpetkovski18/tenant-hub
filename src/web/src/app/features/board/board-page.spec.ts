@@ -1,6 +1,8 @@
+import { CdkDrag, CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
 import { _CdkPrivateStyleLoader } from '@angular/cdk/private';
 import { HttpTestingController, TestRequest } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../../app.routes';
@@ -132,7 +134,7 @@ describe('board page', () => {
     day: string,
   ): Promise<TestRequest> {
     buttons(page)
-      .find((b) => b.getAttribute('aria-label') === 'Move JOB-0042 to another person or day')!
+      .find((b) => text(b) === 'Move to… JOB-0042')!
       .click();
     await settle(harness.fixture);
     const person = document.querySelector<HTMLSelectElement>('#move-person')!;
@@ -200,6 +202,8 @@ describe('board page', () => {
     await settle(harness.fixture);
 
     expect(announcement(page)).toBe('JOB-0042 moved to Noah Kim, Thursday 19 November.');
+    // Focus is not left on <body> once the card is drawn in its new place (jsdom lays nothing out: the heading).
+    expect(document.activeElement).toBe(page.querySelector('h1'));
     expect(text(page.querySelector('[aria-label="Noah Kim, Thursday 19 November"]'))).toContain(
       'JOB-0042',
     );
@@ -209,7 +213,7 @@ describe('board page', () => {
     const page = await openLoaded();
 
     buttons(page)
-      .find((b) => b.getAttribute('aria-label') === 'Move JOB-0042 to another person or day')!
+      .find((b) => text(b) === 'Move to… JOB-0042')!
       .click();
     await settle(harness.fixture);
 
@@ -286,21 +290,21 @@ describe('board page', () => {
     const page = await openLoaded(board({ canPlan: false }), member);
 
     expect(text(page)).toContain('Admins and Owners move the work.');
-    expect(buttons(page).filter((b) => text(b) === 'Move to…')).toEqual([]);
+    expect(buttons(page).filter((b) => text(b).startsWith('Move to…'))).toEqual([]);
     expect(page.querySelectorAll('.cdk-drag:not(.cdk-drag-disabled)').length).toBe(0);
   });
 
   it('lists the week day by day on a phone, with "Move to…" and no dragging', async () => {
     const page = await openLoaded();
 
-    const phone = page.querySelector('.md\\:hidden')!;
+    const phone = page.querySelector('app-board-page div.space-y-4.lg\\:hidden')!;
     const tuesday = [...phone.querySelectorAll('section')].find(
       (s) => text(s.querySelector('h2')) === dayText('2026-11-17'),
     )!;
     expect(text(tuesday.querySelector('h3'))).toBe('Maya Torres');
     expect(text(tuesday)).toContain('JOB-0042');
     expect(text(tuesday)).toContain('Move to…');
-    expect(tuesday.querySelector('.cdk-drag')?.classList.contains('cdk-drag-disabled')).toBe(true);
+    expect(tuesday.querySelector('.cdk-drag')).toBeNull();
     const monday = [...phone.querySelectorAll('section')].find(
       (s) => text(s.querySelector('h2')) === dayText('2026-11-16'),
     )!;
@@ -331,6 +335,48 @@ describe('board page', () => {
 
   // Regression guard (D023): picking up a card makes the CDK load its drag-and-drop resets, which would become an
   // inline <style> that the strict CSP blocks; the loader skips them and the rules live in styles.css instead.
+  // Regression (found in the browser): rendered through a template outlet, a card's cdkDrag could not find the
+  // cdkDropList around it (DI follows where a template is declared), so a dragged card never dropped into a cell.
+  it('puts every card in the drop list of its cell, and a drop there moves it', async () => {
+    const page = await openLoaded();
+    const drags = harness.fixture.debugElement
+      .queryAll(By.directive(CdkDrag))
+      .map((d) => d.injector.get(CdkDrag));
+    const lists = harness.fixture.debugElement
+      .queryAll(By.directive(CdkDropList))
+      .map((d) => d.injector.get(CdkDropList));
+
+    expect(
+      drags.filter((d) => d.dropContainer === undefined || !lists.includes(d.dropContainer)),
+    ).toEqual([]);
+    expect(drags.length).toBe(2); // the planned card and the unscheduled one; phones have no drags
+    const planned = drags.find((d) => (d.data as BoardCard).id === 'j42')!;
+    expect(planned.dropContainer.data).toEqual({ assigneeUserId: maya, day: '2026-11-17' });
+
+    const target = lists.find(
+      (l) => l.data?.assigneeUserId === noah && l.data.day === '2026-11-20',
+    )!;
+    target.dropped.emit({
+      item: planned,
+      container: target,
+      previousContainer: planned.dropContainer,
+    } as CdkDragDrop<unknown>);
+    await settle(harness.fixture);
+
+    const request = http.expectOne(`${jobsUrl}/j42/schedule`);
+    expect(request.request.body).toEqual({
+      assigneeUserId: noah,
+      scheduledOn: '2026-11-20',
+      version: 7,
+      moveDueDate: false,
+    });
+    request.flush({});
+    await settle(harness.fixture);
+    boardRequest().flush(board());
+    await settle(harness.fixture);
+    expect(announcement(page)).toBe('JOB-0042 moved to Noah Kim, Friday 20 November.');
+  });
+
   it('picks up a card without adding an inline style element', async () => {
     const page = await openLoaded();
     const load = vi.spyOn(TestBed.inject(_CdkPrivateStyleLoader), 'load');
