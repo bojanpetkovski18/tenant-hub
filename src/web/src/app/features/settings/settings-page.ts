@@ -40,7 +40,7 @@ const messages = {
   timeZone: { required: 'Choose a time zone.' },
   dailyCapacityHours: {
     required: 'Enter the hours of a working day.',
-    min: 'Use at least half an hour.',
+    min: 'Use at least an hour.',
     max: 'Use at most 24 hours.',
   },
 } as const;
@@ -128,7 +128,7 @@ export function blockingText(detail: PlanLimitDetail, target: string): string {
                   class="th-input max-w-32"
                   type="number"
                   inputmode="decimal"
-                  min="0.5"
+                  min="1"
                   max="24"
                   step="0.25"
                   formControlName="dailyCapacityHours"
@@ -297,8 +297,8 @@ export class SettingsPage {
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(80)]],
     timeZone: ['', Validators.required],
-    // Hours here, minutes in the API (30 to 1440).
-    dailyCapacityHours: [8, [Validators.required, Validators.min(0.5), Validators.max(24)]],
+    // Hours here, minutes in the API (60 to 1440, SPEC-V2 5).
+    dailyCapacityHours: [8, [Validators.required, Validators.min(1), Validators.max(24)]],
   });
 
   constructor() {

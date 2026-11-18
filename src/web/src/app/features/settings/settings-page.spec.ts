@@ -126,9 +126,7 @@ describe('settings page', () => {
     main(element).querySelector('form')!.dispatchEvent(new Event('submit'));
     await settle(harness.fixture);
     http.expectNone((r) => r.method === 'PATCH');
-    expect(text(main(element).querySelector('#org-capacity-error'))).toBe(
-      'Use at least half an hour.',
-    );
+    expect(text(main(element).querySelector('#org-capacity-error'))).toBe('Use at least an hour.');
 
     hours.value = '6.5';
     hours.dispatchEvent(new Event('input'));

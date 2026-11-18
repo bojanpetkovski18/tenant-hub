@@ -14,7 +14,7 @@ public sealed class Organization : AggregateRoot
     /// <summary>How many organizations one user may own (SPEC 5.1); limits abuse of open sign-up.</summary>
     public const int MaxOwnedPerUser = 5;
     public const int DefaultDailyCapacityMinutes = 480;
-    public const int MinDailyCapacityMinutes = 30;
+    public const int MinDailyCapacityMinutes = 60;
     public const int MaxDailyCapacityMinutes = 1440;
 
     private Organization()

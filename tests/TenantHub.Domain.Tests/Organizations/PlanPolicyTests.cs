@@ -125,4 +125,24 @@ public sealed class PlanPolicyTests
         Assert.Equal("Updated the organization: renamed it to “Harbor & Pine Landscaping” and set the time zone to America/New_York", recorded.Summary);
         Assert.Equal([new FieldChange("name", "Harbor & Pine", "Harbor & Pine Landscaping"), new FieldChange("timeZone", "UTC", "America/New_York")], recorded.Changes);
     }
+
+    // SPEC-V2 5: a working day of 60 to 1440 minutes.
+    [Theory]
+    [InlineData(59, false)]
+    [InlineData(60, true)]
+    [InlineData(1440, true)]
+    [InlineData(1441, false)]
+    public void The_daily_capacity_is_an_hour_to_a_day(int minutes, bool valid)
+    {
+        var organization = Organization.Create("Harbor & Pine", "harbor-pine", "UTC", Guid.NewGuid(), Now);
+
+        var error = Record.Exception(() => organization.UpdateSettings("Harbor & Pine", "UTC", minutes));
+
+        Assert.Equal(valid, error is null);
+        Assert.Equal(valid ? minutes : Organization.DefaultDailyCapacityMinutes, organization.DailyCapacityMinutes);
+        if (!valid)
+        {
+            Assert.Equal(["dailyCapacityMinutes"], Assert.IsType<DomainValidationException>(error).Errors.Keys);
+        }
+    }
 }
