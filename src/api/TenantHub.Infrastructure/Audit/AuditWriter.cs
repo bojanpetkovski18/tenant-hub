@@ -52,7 +52,11 @@ internal sealed class AuditWriter(AppDbContext db, ITenantContext tenant, TimePr
         {
             foreach (var change in aggregate.DomainEvents.OfType<IAuditableEvent>())
             {
-                db.AuditEntries.Add(AuditEntry.From(change, tenant.UserId, _actorName!, now, traceId));
+                // A portal session acts as its contact (SPEC-V2 5.9), unless the event names its own actor.
+                var named = change.Actor is null && tenant.ContactId is { } contact
+                    ? new ContactActorEvent(change, new AuditActor(ActorKind.Contact, null, contact, _actorName!))
+                    : change;
+                db.AuditEntries.Add(AuditEntry.From(named, tenant.UserId, _actorName!, now, traceId));
             }
 
             aggregate.ClearDomainEvents();
@@ -62,6 +66,25 @@ internal sealed class AuditWriter(AppDbContext db, ITenantContext tenant, TimePr
     private async Task<string> ActorNameAsync(CancellationToken cancellationToken) =>
         await ActorNameQuery().FirstOrDefaultAsync(cancellationToken) ?? SystemActor;
 
-    private IQueryable<string> ActorNameQuery() =>
-        db.Users.AsNoTracking().Where(u => u.Id == tenant.UserId).Select(u => u.DisplayName);
+    private IQueryable<string> ActorNameQuery() => tenant.ContactId is { } contact
+        ? db.ClientContacts.AsNoTracking().Where(c => c.Id == contact).Select(c => c.Name)
+        : db.Users.AsNoTracking().Where(u => u.Id == tenant.UserId).Select(u => u.DisplayName);
+
+    /// <summary>The same change, with the portal contact as its actor.</summary>
+    private sealed record ContactActorEvent(IAuditableEvent Inner, AuditActor ContactActor) : IAuditableEvent
+    {
+        public Guid OrganizationId => Inner.OrganizationId;
+
+        public string Action => Inner.Action;
+
+        public string EntityType => Inner.EntityType;
+
+        public Guid EntityId => Inner.EntityId;
+
+        public string Summary => Inner.Summary;
+
+        public IReadOnlyList<FieldChange> Changes => Inner.Changes;
+
+        public AuditActor? Actor => ContactActor;
+    }
 }

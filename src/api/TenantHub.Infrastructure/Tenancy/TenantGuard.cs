@@ -40,6 +40,36 @@ internal static class TenantGuard
                 case EntityState.Modified when organizationId.CurrentValue != organizationId.OriginalValue:
                     throw new TenantIsolationException($"Moving {entity} to another organization.");
             }
+
+            if (tenant.ClientId is { } client)
+            {
+                CheckClient(entry, entity, client);
+            }
+        }
+    }
+
+    /// <summary>
+    /// In a portal session (SPEC-V2 3.2) a write may touch only the session's client: its own row and its client-owned
+    /// rows, never moved to another client.
+    /// </summary>
+    private static void CheckClient(EntityEntry<ITenantOwned> entry, string entity, Guid client)
+    {
+        var property = entry.Entity switch
+        {
+            IClientOwned => entry.Property(nameof(IClientOwned.ClientId)),
+            Domain.Clients.Client => entry.Property(nameof(Domain.Clients.Client.Id)),
+            _ => null,
+        };
+        if (property is null)
+        {
+            return;
+        }
+
+        var current = (Guid)property.CurrentValue!;
+        var original = entry.State == EntityState.Added ? current : (Guid)property.OriginalValue!;
+        if (current != client || original != client)
+        {
+            throw new TenantIsolationException($"{entry.State} {entity} of another client in a portal session.");
         }
     }
 }

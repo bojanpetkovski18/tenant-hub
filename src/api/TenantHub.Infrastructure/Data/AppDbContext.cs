@@ -71,10 +71,11 @@ public sealed class AppDbContext(
     internal Guid? CurrentOrganizationId => _tenant.OrganizationId;
 
     /// <summary>What <see cref="RowSecurityInterceptor"/> gives the database session; empty strings match no row.</summary>
-    internal (string Organization, string User, string Invitation) RowSecuritySettings => (
+    internal (string Organization, string User, string Invitation, string Client) RowSecuritySettings => (
         _tenant.OrganizationId?.ToString() ?? "",
         _rowSecurity.UserId?.ToString() ?? "",
-        _rowSecurity.InvitationTokenHash is { } hash ? Convert.ToHexStringLower(hash) : "");
+        _rowSecurity.InvitationTokenHash is { } hash ? Convert.ToHexStringLower(hash) : "",
+        _tenant.ClientId?.ToString() ?? "");
 
     /// <summary>The settings this context's connection last received; null when they must be applied again.</summary>
     internal string? AppliedRowSecurity { get; set; }

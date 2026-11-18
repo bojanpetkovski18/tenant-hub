@@ -159,7 +159,7 @@ public sealed class ApiTenants : IAsyncDisposable
         organizationId == OrgA ? AgreementA : organizationId == OrgB ? AgreementB : Guid.NewGuid();
 
     /// <summary>A weekly agreement in A or B starting next week, written as its Owner, without visits.</summary>
-    public async Task<Guid> CreateAgreementAsync(Guid organizationId, string? title = null)
+    public async Task<Guid> CreateAgreementAsync(Guid organizationId, string? title = null, Guid? clientId = null)
     {
         if (organizationId != OrgA && organizationId != OrgB)
         {
@@ -171,7 +171,7 @@ public sealed class ApiTenants : IAsyncDisposable
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var agreement = Agreement.Create(
             organizationId,
-            ClientIn(organizationId),
+            clientId ?? ClientIn(organizationId),
             AgreementTemplate.Validate(title ?? $"Agreement {Guid.NewGuid():N}", null, null, JobPriority.Normal, null, 60),
             new Schedule(Recurrence.Weekly([DayOfWeek.Monday]), today.AddDays(7), null, null),
             today,
@@ -271,7 +271,7 @@ public sealed class ApiTenants : IAsyncDisposable
     /// A new New job in A or B, created like a manager would (numbered from the organization's counter). Assigned to
     /// A's member with <paramref name="assignTo"/> when given, otherwise to the organization's Owner.
     /// </summary>
-    public async Task<Guid> CreateJobAsync(Guid organizationId, Role? assignTo = null, string? title = null)
+    public async Task<Guid> CreateJobAsync(Guid organizationId, Role? assignTo = null, string? title = null, Guid? clientId = null)
     {
         if (organizationId != OrgA && organizationId != OrgB)
         {
@@ -282,7 +282,7 @@ public sealed class ApiTenants : IAsyncDisposable
         var assignee = organizationId == OrgA && assignTo is { } role ? await UserIdOfAsync(role) : ownerId;
         await using var db = ContextAs(organizationId, ownerId);
         var organization = await db.Organizations.SingleAsync(o => o.Id == organizationId, Ct);
-        var clientId = ClientIn(organizationId);
+        clientId ??= ClientIn(organizationId);
         var details = JobDetails.Validate(title ?? $"Job {Guid.NewGuid():N}", null, clientId, assignee, JobPriority.Normal, null, null, null);
         var job = Job.Create(
             organizationId,
