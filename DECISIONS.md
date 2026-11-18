@@ -549,6 +549,7 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
     - A failed run is retried in 5 minutes, with its error class recorded.
     - Rows of tasks this build does not know are left alone.
     - Application-wide tasks get their row at start (`ON CONFLICT DO NOTHING`, so two instances make one row).
+  - **Index (2026-11-18, review after M16):** with a row per organization that has agreements, the claim (`ORDER BY due_at LIMIT 1 FOR UPDATE SKIP LOCKED`) scanned the whole table; `ix_scheduled_tasks_due` makes it an index scan (PROGRESS, Measured results).
   - **Retention** is the first task: every hour, it deletes delivered messages after 7 days and dead ones after 30.
   - **The demo reset moved onto the scheduler,** as the brief allowed if the change was small.
     - `DemoResetService` is gone. `DemoResetTask` (demo mode only) asks `DemoReset` whether a reset is due, and returns when the next one is.
@@ -638,6 +639,12 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
     - Brightline's three agreements started weeks ago: created that morning, the daily runs of each past visit day replayed, and each past visit done by its assignee.
     - Harbor & Pine's agreement is created last, today. It fills the room left under the Free plan's 50 open jobs and shows the plan-limit hold, the "near its limits" story of SPEC 8.3. Created earlier in the replay, the planned jobs created after it pushed the organization to 51.
   - **Measured:** see PROGRESS, Measured results. The first generation for 200 agreements takes 1.8–3.5 s while holding the organization lock; that happens once, when they are created together. A daily run adding 100 visits takes 144–299 ms.
+- **Review after M16 (2026-11-18, `#0016a`):**
+  - A visit can no longer be deleted (`409 visit-not-deletable`, `canDelete` false): its row is what keeps its date from being generated again, so a deleted New or skipped visit came back with the next daily run. Visits are skipped or cancelled; only an edit of the agreement withdraws untouched ones.
+  - When the open-jobs limit cuts a run short, `generated_through` is the day before the first date left out, not the horizon, so "visits exist up to" is true.
+  - The agreements list orders active, paused, ended.
+  - The form starts a new agreement on the organization's today (its time zone, from the loaded organization), not the browser's, and previews only when a schedule field changes.
+  - `scheduled_tasks` is indexed on `due_at` for the claim (D039).
 
 ## D042: Plan entitlements next to numeric limits (pending M18)
 - **Date:** 2026-11-16
