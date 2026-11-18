@@ -221,8 +221,11 @@ Results are in `PROGRESS.md` → Measured results.
     `outbox_messages`, written by the same `SaveChanges` as the change, so a rolled-back command sends nothing;
   - a dispatcher on every instance claims due rows with `FOR UPDATE SKIP LOCKED` and a lease, retries with backoff
     (dead after six attempts) and deletes a secret payload once it is delivered;
-  - recurring work (outbox retention, the demo reset) is a row in `scheduled_tasks` with a due time and a lease, so a
+  - recurring work (outbox retention, the demo reset, and each organization's daily visit generation) is a row in `scheduled_tasks` with a due time and a lease, so a
     restart neither skips nor repeats a run, and a host that slept runs a task once on waking.
+- **Agreements** (D041): repeating work for a client generates ordinary jobs ("visits") up to 60 days ahead, in the
+  command that creates or changes the agreement and daily per organization, under the organization lock and unique on
+  `(organization_id, agreement_id, occurrence_on)`. Visits are audited as "System (agreement …)" (`actor_kind`).
 - **Demo mode** (`DEMO_MODE=true`):
   - one-click sign-in per role;
   - protections for the shared accounts;
