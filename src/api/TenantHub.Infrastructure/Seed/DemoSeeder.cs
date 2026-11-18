@@ -268,7 +268,8 @@ public sealed partial class DemoSeeder(
                             plan.Priority,
                             plan.ScheduledOn,
                             plan.DueOn,
-                            plan.QuotedAmount);
+                            plan.QuotedAmount,
+                            plan.EstimatedMinutes);
                         var job = Job.Create(organization.Id, tracked.TakeJobNumber(), details, JobActor.From(actorId, role), names, step.At);
                         context.Jobs.Add(job);
                         jobIds[plan.Job] = job.Id;

@@ -123,6 +123,11 @@ export const routes: Routes = [
           import('./features/clients/client-form-page').then((m) => m.ClientFormPage),
       },
       {
+        path: 'board',
+        title: 'Board',
+        loadComponent: () => import('./features/board/board-page').then((m) => m.BoardPage),
+      },
+      {
         path: 'agreements',
         title: 'Agreements',
         loadComponent: () =>

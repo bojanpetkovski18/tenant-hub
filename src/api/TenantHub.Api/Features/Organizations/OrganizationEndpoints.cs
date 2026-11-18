@@ -15,7 +15,8 @@ public sealed record CreateOrganizationRequest(
 // Shape only; the domain checks the name and the IANA time zone and reports both at once.
 public sealed record UpdateOrganizationRequest(
     [property: Required(AllowEmptyStrings = true), MaxLength(200)] string Name,
-    [property: Required(AllowEmptyStrings = true), MaxLength(64)] string TimeZone);
+    [property: Required(AllowEmptyStrings = true), MaxLength(64)] string TimeZone,
+    int? DailyCapacityMinutes = null);
 
 public sealed record ChangePlanRequest(Plan? Plan);
 
@@ -53,7 +54,7 @@ public static partial class OrganizationEndpoints
             .RequirePermission(Permissions.OrgRead);
 
         organization.MapPatch("/", async (UpdateOrganizationRequest request, OrganizationCommands commands, CancellationToken ct) =>
-                TypedResults.Ok(await commands.UpdateSettingsAsync(request.Name, request.TimeZone, ct)))
+                TypedResults.Ok(await commands.UpdateSettingsAsync(request.Name, request.TimeZone, request.DailyCapacityMinutes, ct)))
             .RequirePermission(Permissions.OrgManage);
 
         // Demo billing (SPEC 4.1): no payment; a downgrade that does not fit is 409 with the blocking limits.

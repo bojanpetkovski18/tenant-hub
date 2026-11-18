@@ -670,3 +670,34 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
 - **Decision:** v2 continues the milestone numbers (M13 is this plan, M14–M23 the work) and the branch rule `#00nn-…`, so the CI branch-name check and the history stay uniform. `docs/SPEC-V2.md` holds the v2 specification while it is being built; `SPEC.md` stays the v1 contract until M23 merges the two. Story ids continue in `docs/USER-STORIES.md`.
 - **Why:** a separate document keeps what is built apart from what is planned while the work is in progress, without rewriting `SPEC.md` up front.
 - **Trade-offs:** two specifications for about ten milestones; SPEC-V2 names the `SPEC.md` section wherever it changes a v1 rule.
+
+## D046: The dispatch board: one week query, one move command, Move to for keyboards (M17)
+- **Date:** 2026-11-18
+- **Decision:**
+  - **Reading.** `GET /board` returns one week, Monday to Sunday in the organization's zone. `week` may be any day of it; the default is the current week. It returns:
+    - the week's cards, filtered by client and status;
+    - the open jobs with no day, nearest due first, capped at 50 with the total (the jobs list has the rest);
+    - the load per person and day, a SQL `GROUP BY` of estimates over jobs that are not cancelled, ignoring the filters so that a filter never hides how full a day is;
+    - the people: active members whose role can work on jobs, plus a former member who still has a card that week;
+    - `canPlan` (`jobs.manage`), so the page never re-derives permissions (D008).
+  - **Moving.** `POST /jobs/{id}/schedule` (`jobs.manage`) takes the assignee, the day (or none), the version shown and `moveDueDate`. One domain method, `Job.Schedule`, applies it:
+    - closed jobs are refused (`409 job-closed`);
+    - a day after the due date is refused (`409 after-due-date`) unless the due date moves along;
+    - a New job given a person and a day becomes Scheduled through the ordinary transition;
+    - no day keeps the person and the status, as the job form allows (SPEC-V2 5.2 as built);
+    - a visit moved by hand is marked `changed_by_hand`;
+    - the audit entry reads "Moved JOB-0042 on the board: assignee, scheduled date".
+  - **Why a command and not `PUT /jobs/{id}`:** a PUT replaces every field, so the board would have to send fields it does not show, and an edit made meanwhile to the title would conflict with a move. The board changes two fields, so it gets its own audited step with the same version check.
+  - **Capacity.** `organizations.daily_capacity_minutes`, 60–1440 minutes, default 480 (SPEC-V2 5). `PATCH /orgs/{id}` takes it as an optional field, so an older client that sends only the name and time zone keeps it. Settings asks for hours.
+  - **No optimistic moves.** A card stays where it is until the API answers; then the board reloads (new versions, new load). A refused move needs no rollback, and a conflict shows what the other person did.
+- **Deviations from SPEC-V2 4.3, logged here:**
+  - **Arrow-key moves are left out.** "Move to…" on every card gives the keyboard path WCAG 2.5.7 asks for: any person, any day, any week, or back to "Not scheduled". Arrow keys on the grid would need a roving focus that competes with the screen reader's own table navigation (the grid is a table with row and column headers). They can be added later without changing the API.
+  - **The day-by-day list is used below 1024 px, not 768.** The seven columns need about 900 px; at 768 they squeezed each card to about 90 px. Measured in the browser pass at 375/768/1024/1280.
+- **Findings in the browser pass (production image, real CSP):**
+  - **CSP.** CDK drag-and-drop loads its "resets" as a runtime `<style>` on the first pickup. `CspSafeStyleLoader` (D023) skips it, so the rules (`.cdk-drag-preview` in `@layer cdk-resets`, and `pointer-events: none` inside the preview and placeholder) are in `styles.css`. The layer is declared before Tailwind's, so it ranks below every utility, as the CDK intends. A spec fails if picking up a card inserts a `<style>`, and was seen to fail without the loader. Re-check on every CDK upgrade.
+  - **DI.** Cards first rendered through `ngTemplateOutlet`, whose embedded views take their injector from where the template is declared. Each `cdkDrag` therefore found no `cdkDropList`, became a free drag and never dropped. Cards are now a component placed inside each list. A spec checks every drag's container, and was seen to fail on the previous page.
+  - **Date field.** Binding the day input's `[value]` to a signal its own input handler set made Chrome wipe the whole date when one part was cleared, because a half-typed date reads as `""`. The value is now written once and read on submit. "Half-typed" is asked of `validity.badInput` at that moment, because clearing the last part fires no input event. This is checked in Chromium by a script, since jsdom has no date segments.
+  - **Overflow and focus.** Screen-reader text inside the scrolling grid escaped it, because absolutely positioned elements use the nearest positioned ancestor, and widened the page at 1024 px; the scroll area is now `relative`. After a keyboard move, focus goes to the moved card's "Move to…", or to the heading when the card left the week.
+- **Indexes:** none added. EXPLAIN as `tenant_hub_app` with 500 jobs per organization: week cards 0.48 ms, queue 0.14 ms, load 0.22 ms, each through `ix_jobs_organization_id_client_id` (PROGRESS, Measured results). An `(organization_id, scheduled_on)` index is the change to make if one organization reaches tens of thousands of jobs.
+- **Seed:** one-off demo jobs get estimates (60–210 minutes, none on every seventh), taken from the job's index rather than the seeded random sequence so the rest of the demo data is unchanged.
+- **Alternatives:** a client-side week assembled from `GET /jobs` (one request per filter combination and the load computed in the browser); optimistic moves with rollback (more state, and a conflict would first show the wrong place); a separate "capacity per member" (SPEC-V2 out of scope).

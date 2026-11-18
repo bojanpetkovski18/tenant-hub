@@ -38,6 +38,11 @@ const messages = {
     maxlength: 'Use at most 80 characters.',
   },
   timeZone: { required: 'Choose a time zone.' },
+  dailyCapacityHours: {
+    required: 'Enter the hours of a working day.',
+    min: 'Use at least an hour.',
+    max: 'Use at most 24 hours.',
+  },
 } as const;
 
 export { usageText } from '../../shared/plan/plan';
@@ -114,6 +119,29 @@ export function blockingText(detail: PlanLimitDetail, target: string): string {
                 </p>
                 @if (error('timeZone'); as message) {
                   <p id="org-zone-error" class="th-field-error">{{ message }}</p>
+                }
+              </div>
+              <div>
+                <label class="th-label" for="org-capacity">Hours in a working day</label>
+                <input
+                  id="org-capacity"
+                  class="th-input max-w-32"
+                  type="number"
+                  inputmode="decimal"
+                  min="1"
+                  max="24"
+                  step="0.25"
+                  formControlName="dailyCapacityHours"
+                  [attr.aria-invalid]="!!error('dailyCapacityHours')"
+                  [attr.aria-describedby]="
+                    error('dailyCapacityHours') ? 'org-capacity-error' : 'org-capacity-hint'
+                  "
+                />
+                <p id="org-capacity-hint" class="th-hint">
+                  The board marks a person's day when its planned work is more than this.
+                </p>
+                @if (error('dailyCapacityHours'); as message) {
+                  <p id="org-capacity-error" class="th-field-error">{{ message }}</p>
                 }
               </div>
               <button type="submit" class="th-button" [disabled]="saving()">
@@ -269,6 +297,8 @@ export class SettingsPage {
   protected readonly form = inject(NonNullableFormBuilder).group({
     name: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(80)]],
     timeZone: ['', Validators.required],
+    // Hours here, minutes in the API (60 to 1440, SPEC-V2 5).
+    dailyCapacityHours: [8, [Validators.required, Validators.min(1), Validators.max(24)]],
   });
 
   constructor() {
@@ -318,8 +348,14 @@ export class SettingsPage {
     }
     this.saving.set(true);
     try {
-      const { name, timeZone } = this.form.getRawValue();
-      this.show(await this.api.update(this.membership()!.organizationId, name, timeZone));
+      const { name, timeZone, dailyCapacityHours } = this.form.getRawValue();
+      this.show(
+        await this.api.update(this.membership()!.organizationId, {
+          name,
+          timeZone,
+          dailyCapacityMinutes: Math.round(dailyCapacityHours * 60),
+        }),
+      );
       this.saved.set(true);
       // The switcher and the picker show the name from the session.
       await this.session.load();
@@ -386,7 +422,11 @@ export class SettingsPage {
   private show(overview: OrganizationOverview): void {
     this.overview.set(overview);
     if (!this.form.dirty || this.saved()) {
-      this.form.reset({ name: overview.name, timeZone: overview.timeZone });
+      this.form.reset({
+        name: overview.name,
+        timeZone: overview.timeZone,
+        dailyCapacityHours: overview.dailyCapacityMinutes / 60,
+      });
     }
   }
 

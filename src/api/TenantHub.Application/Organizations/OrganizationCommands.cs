@@ -21,10 +21,10 @@ public sealed class OrganizationCommands(
     GetOrganizationQuery overview,
     DemoProtection demo)
 {
-    public async Task<OrganizationOverview> UpdateSettingsAsync(string? name, string? timeZone, CancellationToken cancellationToken)
+    public async Task<OrganizationOverview> UpdateSettingsAsync(string? name, string? timeZone, int? dailyCapacityMinutes, CancellationToken cancellationToken)
     {
         var organization = await LoadAsync(cancellationToken);
-        if (organization.UpdateSettings(name, timeZone))
+        if (organization.UpdateSettings(name, timeZone, dailyCapacityMinutes))
         {
             await db.SaveChangesAsync(cancellationToken);
         }

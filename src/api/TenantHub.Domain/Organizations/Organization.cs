@@ -13,6 +13,9 @@ public sealed class Organization : AggregateRoot
 
     /// <summary>How many organizations one user may own (SPEC 5.1); limits abuse of open sign-up.</summary>
     public const int MaxOwnedPerUser = 5;
+    public const int DefaultDailyCapacityMinutes = 480;
+    public const int MinDailyCapacityMinutes = 60;
+    public const int MaxDailyCapacityMinutes = 1440;
 
     private Organization()
     {
@@ -28,6 +31,12 @@ public sealed class Organization : AggregateRoot
 
     /// <summary>IANA time-zone name; "today", "overdue" and "this month" are computed in it.</summary>
     public string TimeZone { get; private set; } = "";
+
+    /// <summary>
+    /// How many minutes of work one person can do in a day (SPEC-V2 4.3): the board compares each person's planned
+    /// minutes with it. The same for everyone (per-member capacity is later, SPEC-V2 4.10).
+    /// </summary>
+    public int DailyCapacityMinutes { get; private set; } = DefaultDailyCapacityMinutes;
 
     /// <summary>The next per-organization job number (SPEC 5.4).</summary>
     public int NextJobNumber { get; private set; }
@@ -107,8 +116,9 @@ public sealed class Organization : AggregateRoot
     /// Renames and re-zones the organization (US-51), reporting both fields at once; returns false (and records
     /// nothing) when nothing changed. The slug stays as it is (SPEC 5.1).
     /// </summary>
-    public bool UpdateSettings(string? name, string? timeZone)
+    public bool UpdateSettings(string? name, string? timeZone, int? dailyCapacityMinutes = null)
     {
+        var capacity = dailyCapacityMinutes ?? DailyCapacityMinutes;
         var errors = new Dictionary<string, string[]>();
         string? normalizedName = null;
         try
@@ -123,6 +133,11 @@ public sealed class Organization : AggregateRoot
         if (timeZone is null || !IsValidTimeZone(timeZone))
         {
             errors["timeZone"] = ["Choose a time zone from the list."];
+        }
+
+        if (capacity is < MinDailyCapacityMinutes or > MaxDailyCapacityMinutes)
+        {
+            errors["dailyCapacityMinutes"] = [$"Enter {MinDailyCapacityMinutes}–{MaxDailyCapacityMinutes} minutes (up to 24 hours)."];
         }
 
         if (errors.Count > 0)
@@ -141,6 +156,11 @@ public sealed class Organization : AggregateRoot
             changes.Add(new FieldChange("timeZone", TimeZone, timeZone));
         }
 
+        if (capacity != DailyCapacityMinutes)
+        {
+            changes.Add(new FieldChange("dailyCapacityMinutes", Hours(DailyCapacityMinutes), Hours(capacity)));
+        }
+
         if (changes.Count == 0)
         {
             return false;
@@ -148,10 +168,24 @@ public sealed class Organization : AggregateRoot
 
         Name = normalizedName!;
         TimeZone = timeZone!;
-        var what = string.Join(" and ", changes.Select(c => c.Field == "name" ? $"renamed it to “{c.To}”" : $"set the time zone to {c.To}"));
+        DailyCapacityMinutes = capacity;
+        var what = string.Join(" and ", changes.Select(c => c.Field switch
+        {
+            "name" => $"renamed it to “{c.To}”",
+            "timeZone" => $"set the time zone to {c.To}",
+            _ => $"set the daily capacity to {c.To}",
+        }));
         Raise(new OrganizationEvent(this, "organization.updated", $"Updated the organization: {what}", changes));
         return true;
     }
+
+    /// <summary>"8 h", "7 h 30 min", "45 min": durations as the audit log and the board show them.</summary>
+    public static string Hours(int minutes) => (minutes / 60, minutes % 60) switch
+    {
+        (0, var m) => $"{m} min",
+        (var h, 0) => $"{h} h",
+        (var h, var m) => $"{h} h {m} min",
+    };
 
     /// <summary>
     /// Switches plan ("demo billing", SPEC 4.1). Upgrades always fit; a downgrade is refused while the usage exceeds

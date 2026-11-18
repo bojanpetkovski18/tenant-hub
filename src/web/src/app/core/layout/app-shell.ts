@@ -101,6 +101,13 @@ export class AppShell {
       icon: 'M9 5h11M9 12h11M9 19h11M4 5h.01M4 12h.01M4 19h.01',
     },
     {
+      path: 'board',
+      anyOf: ['jobs.read'],
+      label: 'Board',
+      // A week grid: the plan, people by days.
+      icon: 'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 9h18M9 9v12M15 9v12',
+    },
+    {
       path: 'agreements',
       anyOf: ['agreements.read'],
       label: 'Agreements',

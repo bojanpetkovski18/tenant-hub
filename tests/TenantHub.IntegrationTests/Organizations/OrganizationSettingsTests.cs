@@ -52,6 +52,29 @@ public sealed class OrganizationSettingsTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task An_admin_sets_the_daily_capacity_the_board_compares_with()
+    {
+        var tenants = await SharedApiTenants.GetAsync<OrganizationSettingsTests>(postgres);
+        var admin = await tenants.ClientForAsync(Role.Admin);
+        var org = $"/api/orgs/{tenants.OrgA}";
+        var current = await admin.Http.GetFromJsonAsync<OrganizationOverview>(org, BrowserClient.Json, Ct);
+
+        await ProblemAssert.HasFieldErrorsAsync(await admin.PatchJsonAsync(org, new { name = current!.Name, timeZone = current.TimeZone, dailyCapacityMinutes = 10 }), "dailyCapacityMinutes");
+        var saved = await (await admin.PatchJsonAsync(org, new { name = current.Name, timeZone = current.TimeZone, dailyCapacityMinutes = 450 }))
+            .Content.ReadFromJsonAsync<OrganizationOverview>(BrowserClient.Json, Ct);
+        // Leaving the field out keeps it (an older form sends name and time zone only).
+        var kept = await (await admin.PatchJsonAsync(org, new { name = current.Name, timeZone = current.TimeZone }))
+            .Content.ReadFromJsonAsync<OrganizationOverview>(BrowserClient.Json, Ct);
+        var board = await admin.Http.GetFromJsonAsync<Application.Board.BoardView>($"{org}/board", BrowserClient.Json, Ct);
+
+        Assert.Equal((480, 450, 450, 450), (current.DailyCapacityMinutes, saved!.DailyCapacityMinutes, kept!.DailyCapacityMinutes, board!.DailyCapacityMinutes));
+        await using var db = PostgresFixture.CreateDbContext(tenants.ConnectionString);
+        Assert.Contains(
+            await db.AuditEntries.AcrossTenants().Where(e => e.OrganizationId == tenants.OrgA).Select(e => e.Summary).ToListAsync(Ct),
+            s => s == "Updated the organization: set the daily capacity to 7 h 30 min");
+    }
+
+    [Fact]
     public async Task Deleting_needs_the_name_typed_exactly()
     {
         await using var tenants = await ApiTenants.CreateAsync(postgres);

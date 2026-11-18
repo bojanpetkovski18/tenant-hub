@@ -109,12 +109,21 @@ interface Tile {
           <section class="th-card" aria-labelledby="week-heading">
             <div class="flex flex-wrap items-baseline justify-between gap-2">
               <h2 id="week-heading" class="font-semibold">My next 7 days</h2>
-              <a
-                [routerLink]="base() + '/jobs'"
-                [queryParams]="{ assignee: 'me', sort: 'due' }"
-                class="text-sm font-medium text-accent underline-offset-2 hover:underline"
-                >All my jobs</a
-              >
+              <div class="flex flex-wrap gap-4">
+                @if (can('jobs.manage')) {
+                  <a
+                    [routerLink]="base() + '/board'"
+                    class="text-sm font-medium text-accent underline-offset-2 hover:underline"
+                    >Plan the team's week</a
+                  >
+                }
+                <a
+                  [routerLink]="base() + '/jobs'"
+                  [queryParams]="{ assignee: 'me', sort: 'due' }"
+                  class="text-sm font-medium text-accent underline-offset-2 hover:underline"
+                  >All my jobs</a
+                >
+              </div>
             </div>
             @if (d.myNextSevenDays.length === 0) {
               <p class="mt-4 text-sm text-muted">Nothing scheduled for you in the next 7 days.</p>
