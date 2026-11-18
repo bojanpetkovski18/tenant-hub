@@ -84,7 +84,11 @@ describe('agreement pages', () => {
   let harness: RouterTestingHarness;
   let http: HttpTestingController;
 
-  async function open(url: string, user: SessionUser = olivia): Promise<HTMLElement> {
+  async function open(
+    url: string,
+    user: SessionUser = olivia,
+    timeZone = 'Europe/Amsterdam',
+  ): Promise<HTMLElement> {
     TestBed.configureTestingModule({
       providers: [provideTestHttp(), provideRouter(routes, withComponentInputBinding())],
     });
@@ -93,7 +97,15 @@ describe('agreement pages', () => {
     harness = await RouterTestingHarness.create();
     await harness.navigateByUrl(url);
     // The shell checks the membership as it opens the organization.
-    http.match(`/api/orgs/${org}`).forEach((r) => r.flush({}));
+    http.match(`/api/orgs/${org}`).forEach((r) =>
+      r.flush({
+        id: org,
+        name: 'Brightline Cleaning Co.',
+        slug: 'brightline',
+        plan: 'team',
+        timeZone,
+      }),
+    );
     return harness.routeNativeElement as HTMLElement;
   }
 
@@ -144,8 +156,8 @@ describe('agreement pages', () => {
   });
 
   describe('form', () => {
-    async function openForm(): Promise<HTMLElement> {
-      const page = await open('/o/brightline/agreements/new?clientId=c1');
+    async function openForm(timeZone?: string): Promise<HTMLElement> {
+      const page = await open('/o/brightline/agreements/new?clientId=c1', olivia, timeZone);
       http.expectOne((r) => r.url.endsWith('/members')).flush([]);
       http
         .expectOne((r) => r.url.endsWith('/clients'))
@@ -160,6 +172,36 @@ describe('agreement pages', () => {
       );
       box!.querySelector<HTMLInputElement>('input')!.click();
     };
+
+    it("starts on the organization's today, not the browser's", async () => {
+      // 20:00 UTC on 4 January is already 5 January in Kiritimati (UTC+14), while still the 4th in Europe.
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2027-01-04T20:00:00Z'));
+      try {
+        const page = await openForm('Pacific/Kiritimati');
+
+        expect(page.querySelector<HTMLInputElement>('#startsOn')!.value).toBe('2027-01-05');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('asks the API for dates only when the schedule changes', async () => {
+      const page = await openForm();
+      check(page, 'Monday');
+      await pause(350);
+      http.expectOne(`${agreementsUrl}/preview`).flush({ dates: ['2027-01-04'] });
+      await settle(harness.fixture);
+
+      for (const id of ['title', 'description']) {
+        const field = page.querySelector<HTMLInputElement>(`#${id}`)!;
+        field.value = 'Weekly office cleaning';
+        field.dispatchEvent(new Event('input'));
+      }
+      await pause(350);
+
+      http.expectNone(`${agreementsUrl}/preview`);
+    });
 
     it('asks for a weekday before previewing, then shows the next dates from the API', async () => {
       const page = await openForm();
