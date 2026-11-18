@@ -30,7 +30,7 @@ export interface MoveChoice {
   template: `
     <h2 id="move-title" class="text-lg font-semibold">Move {{ data.card.label }}</h2>
     <p id="move-message" class="mt-2 text-sm text-muted">{{ data.card.title }}</p>
-    <form class="mt-4 space-y-4" (submit)="$event.preventDefault(); submit()" novalidate>
+    <form class="mt-4 space-y-4" (submit)="$event.preventDefault(); submit(dayInput)" novalidate>
       <div>
         <label class="th-label" for="move-person">Person</label>
         <select
@@ -52,12 +52,10 @@ export interface MoveChoice {
           class="th-input"
           type="date"
           #dayInput
-          [value]="day()"
+          [value]="initialDay"
           [attr.aria-invalid]="!!error()"
           [attr.aria-describedby]="error() ? 'move-day-error' : 'move-day-hint'"
-          (input)="
-            day.set(dayInput.value); partial.set(dayInput.validity.badInput); error.set(null)
-          "
+          (input)="error.set(null)"
         />
         <p id="move-day-hint" class="th-hint">
           Leave it empty to put the job back in "Not scheduled".
@@ -79,18 +77,22 @@ export class MoveDialog {
   protected readonly ref = inject<DialogRef<MoveChoice | null>>(DialogRef);
   protected readonly activePeople = this.data.people.filter((p) => p.active);
   protected readonly assignee = signal<string | null>(this.data.card.assigneeUserId);
-  protected readonly day = signal(this.data.day);
+  /**
+   * Written to the field once, never again: writing "" back while someone clears one part of the date (the field
+   * reports "" for a half-typed date) would wipe the whole date. The day is read from the field on submit.
+   */
+  protected readonly initialDay = this.data.day;
   protected readonly error = signal<string | null>(null);
-  /** The browser holds an incomplete date (its value is then empty). */
-  protected readonly partial = signal(false);
 
-  protected submit(): void {
-    // A half-typed date also reads as "", so it must not be taken for "no day".
-    if (this.partial() || (this.day() !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(this.day()))) {
+  protected submit(dayInput: HTMLInputElement): void {
+    const day = dayInput.value;
+    // A half-typed date also reads as "", so it must not be taken for "no day". Asked of the field now: going from
+    // half-typed to empty fires no input event (the value stays ""), so a flag kept from events would be stale.
+    if (dayInput.validity.badInput || (day !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(day))) {
       this.error.set('Finish the date, or clear it to put the job back in "Not scheduled".');
       return;
     }
-    this.ref.close({ assigneeUserId: this.assignee(), scheduledOn: this.day() || null });
+    this.ref.close({ assigneeUserId: this.assignee(), scheduledOn: day || null });
   }
 }
 
