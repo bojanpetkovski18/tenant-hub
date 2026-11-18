@@ -97,6 +97,7 @@ public sealed class OrganizationSettingsTests(PostgresFixture postgres)
         var member = await tenants.ClientForAsync(Role.Member);
         await tenants.CreateJobAsync(tenants.OrgA, Role.Member);
         await tenants.CreateInvitationAsync(tenants.OrgA);
+        await tenants.CreateContactAsync(tenants.OrgA);
         var bBefore = await tenants.SnapshotOfBAsync();
         var tables = TenantOwnedTables(tenants.ConnectionString);
         Assert.All(tables, table => Assert.True(CountAsync(tenants.ConnectionString, table, tenants.OrgA).Result > 0, $"precondition: {table} has rows of A"));

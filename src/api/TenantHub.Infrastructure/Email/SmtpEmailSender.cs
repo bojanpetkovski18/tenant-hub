@@ -79,4 +79,9 @@ internal sealed class AppLinks(AppOptions options) : IAppLinks
     public string PasswordReset(string token) => new Uri(_baseUrl, $"reset-password#{Uri.EscapeDataString(token)}").ToString();
 
     public string VerifyEmail(string token) => new Uri(_baseUrl, $"verify-email#{Uri.EscapeDataString(token)}").ToString();
+
+    public string Portal(string organizationSlug) => new Uri(_baseUrl, $"portal/{Uri.EscapeDataString(organizationSlug)}").ToString();
+
+    public string PortalSignIn(string organizationSlug, string token) =>
+        new Uri(_baseUrl, $"portal/{Uri.EscapeDataString(organizationSlug)}/sign-in#{Uri.EscapeDataString(token)}").ToString();
 }

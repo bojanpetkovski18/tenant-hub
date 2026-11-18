@@ -43,6 +43,9 @@ public enum CaseResource
     /// <summary>A visit generated just for this request from a new agreement (skipping uses it up).</summary>
     FreshVisit,
 
+    /// <summary>A portal contact created just for this request, at a new client (removals use it up).</summary>
+    FreshContact,
+
     /// <summary>
     /// A new organization standing in for the requested one (for deletes, which use it up): like A (A's role users,
     /// same roles) when A is requested, owned by B's Owner when B is, and a random id otherwise.
@@ -89,6 +92,7 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         CaseResource.Invitation or CaseResource.FreshInvitation => "invitation-not-found",
         CaseResource.Job or CaseResource.FreshJob or CaseResource.FreshVisit => "job-not-found",
         CaseResource.Agreement or CaseResource.FreshAgreement => "agreement-not-found",
+        CaseResource.FreshContact => "contact-not-found",
         _ => throw new InvalidOperationException($"{Key} takes no id."),
     };
 
@@ -101,6 +105,7 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         CaseResource.Job or CaseResource.FreshJob => tenants.JobB,
         CaseResource.FreshVisit => tenants.VisitB,
         CaseResource.Agreement or CaseResource.FreshAgreement => tenants.AgreementB,
+        CaseResource.FreshContact => tenants.ContactB,
         _ => throw new InvalidOperationException($"{Key} takes no id."),
     };
 
@@ -321,6 +326,22 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         },
         new("POST", "/agreements/{id:guid}/end", Permissions.AgreementsManage) { Resource = CaseResource.FreshAgreement, Audited = true },
 
+        // Portal contacts (M18). Adding uses a new client each time: a client has at most five contacts.
+        new("GET", "/clients/{id:guid}/contacts", Permissions.ClientsRead) { Resource = CaseResource.Client },
+        new("POST", "/clients/{id:guid}/contacts", Permissions.PortalManage)
+        {
+            Resource = CaseResource.FreshClient,
+            Allowed = HttpStatusCode.Created,
+            Audited = true,
+            Body = _ => Task.FromResult<object>(new { name = "Dana Reyes", email = $"dana-{Guid.NewGuid():N}@client.example" }),
+        },
+        new("DELETE", "/contacts/{id:guid}", Permissions.PortalManage)
+        {
+            Resource = CaseResource.FreshContact,
+            Allowed = HttpStatusCode.NoContent,
+            Audited = true,
+        },
+
         new("GET", "/audit/", Permissions.AuditRead),
         new("GET", "/dashboard", Permissions.OrgRead),
 
@@ -352,6 +373,7 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
             CaseResource.Agreement => tenants.AgreementIn(organizationId),
             CaseResource.FreshAgreement => await tenants.CreateAgreementAsync(organizationId),
             CaseResource.FreshVisit => await tenants.CreateVisitAsync(organizationId),
+            CaseResource.FreshContact => await tenants.CreateContactAsync(organizationId),
             _ => null,
         };
         var input = new CaseInput(tenants, organizationId, resourceId);

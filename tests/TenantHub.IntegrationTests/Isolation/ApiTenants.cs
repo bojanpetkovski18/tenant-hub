@@ -68,6 +68,9 @@ public sealed class ApiTenants : IAsyncDisposable
 
     public Guid VisitB { get; private set; }
 
+    /// <summary>B's standing portal contact, at <see cref="ClientB"/>.</summary>
+    public Guid ContactB { get; private set; }
+
     public string OrgBOwnerEmail { get; } = $"owner-{Guid.NewGuid():N}@bravo.example";
 
     public string RemovedMemberEmail { get; } = $"removed-{Guid.NewGuid():N}@alpha.example";
@@ -134,7 +137,12 @@ public sealed class ApiTenants : IAsyncDisposable
             .OrderBy(a => a.Id)
             .Select(a => new { a.Id, a.Title, a.Status, a.Version })
             .ToListAsync(Ct);
-        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit, invitations, jobs, agreements, next = organization.NextJobNumber });
+        var contacts = await db.ClientContacts.AcrossTenants().AsNoTracking()
+            .Where(c => c.OrganizationId == OrgB)
+            .OrderBy(c => c.Id)
+            .Select(c => new { c.Id, c.ClientId, c.Name, c.Email, c.RemovedAt, c.LastSignInAt })
+            .ToListAsync(Ct);
+        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit, invitations, jobs, agreements, contacts, next = organization.NextJobNumber });
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
     }
 
@@ -233,6 +241,23 @@ public sealed class ApiTenants : IAsyncDisposable
         db.Clients.Add(client);
         await db.SaveChangesAsync(Ct);
         return client.Id;
+    }
+
+    /// <summary>A portal contact at a new client of the organization (removals use them up).</summary>
+    public async Task<Guid> CreateContactAsync(Guid organizationId, Guid? clientId = null)
+    {
+        if (organizationId != OrgA && organizationId != OrgB)
+        {
+            return Guid.NewGuid();
+        }
+
+        var client = clientId ?? await CreateClientAsync(organizationId);
+        await using var db = await OwnerContextAsync(organizationId);
+        var owner = await db.Clients.SingleAsync(c => c.Id == client, Ct);
+        var contact = ClientContact.Add(owner, "Matrix Contact", $"contact-{Guid.NewGuid():N}@client.example", 0, false, await OwnerIdAsync(organizationId), DateTimeOffset.UtcNow);
+        db.ClientContacts.Add(contact);
+        await db.SaveChangesAsync(Ct);
+        return contact.Id;
     }
 
     /// <summary>The user id of A's member with this role.</summary>
@@ -452,6 +477,7 @@ public sealed class ApiTenants : IAsyncDisposable
         AgreementA = await CreateAgreementAsync(OrgA, "Alpha Standing Agreement");
         AgreementB = await CreateAgreementAsync(OrgB, "Bravo Standing Agreement");
         VisitB = await CreateVisitAsync(OrgB);
+        ContactB = await CreateContactAsync(OrgB, ClientB);
     }
 
     /// <summary>

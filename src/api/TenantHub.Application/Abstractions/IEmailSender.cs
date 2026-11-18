@@ -23,4 +23,10 @@ public interface IAppLinks
     string PasswordReset(string token);
 
     string VerifyEmail(string token);
+
+    /// <summary>The organization's portal, where a contact asks for a sign-in link (SPEC-V2 4.4).</summary>
+    string Portal(string organizationSlug);
+
+    /// <summary>The one-time sign-in link; the token goes in the fragment (D028).</summary>
+    string PortalSignIn(string organizationSlug, string token);
 }

@@ -98,6 +98,14 @@ internal static class ProblemExtensions
                 problem.Extensions["allowed"] = reached.Breach.Allowed;
                 problem.Extensions["usage"] = reached.Breach.Usage;
                 break;
+            case PlanFeatureUnavailableException unavailable:
+                problem.Extensions["feature"] = Camel(unavailable.Feature.ToString());
+                problem.Extensions["plan"] = Camel(unavailable.Cheapest.ToString());
+                break;
+            case PlanFeatureLossException loss:
+                problem.Extensions["plan"] = Camel(loss.Target.ToString());
+                problem.Extensions["features"] = loss.Features.Select(f => Camel(f.ToString())).ToList();
+                break;
             case PlanDowngradeBlockedException blocked:
                 problem.Extensions["plan"] = Camel(blocked.Target.ToString());
                 problem.Extensions["blocking"] = blocked.Blocking

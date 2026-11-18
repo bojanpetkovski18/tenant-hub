@@ -33,6 +33,17 @@ public sealed class PlanLimitsCheck(IAppDbContext db, ITenantContext tenant, Tim
         return members + pending;
     }
 
+    /// <summary>
+    /// Features the organization uses, which a downgrade would turn off (SPEC-V2 4.8): the portal while any client has
+    /// an active contact.
+    /// </summary>
+    public async Task<IReadOnlyList<PlanFeature>> FeaturesInUseAsync(CancellationToken cancellationToken) =>
+        await db.ClientContacts.AnyAsync(c => c.RemovedAt == null, cancellationToken) ? [PlanFeature.Portal] : [];
+
+    /// <summary>Refuses with 403 <c>plan-feature-unavailable</c> when the organization's plan lacks the feature.</summary>
+    public async Task EnsureFeatureAsync(PlanFeature feature, CancellationToken cancellationToken) =>
+        PlanFeatures.Ensure(await PlanAsync(cancellationToken), feature);
+
     public async Task<Plan> PlanAsync(CancellationToken cancellationToken) =>
         await db.Organizations.Where(o => o.Id == tenant.OrganizationId).Select(o => o.Plan).SingleAsync(cancellationToken);
 

@@ -394,6 +394,74 @@ namespace TenantHub.Infrastructure.Data.Migrations
                     b.ToTable("clients", (string)null);
                 });
 
+            modelBuilder.Entity("TenantHub.Domain.Clients.ClientContact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("email");
+
+                    b.Property<DateTimeOffset?>("LastSignInAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_sign_in_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("normalized_email");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<DateTimeOffset?>("RemovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("removed_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_client_contacts");
+
+                    b.HasAlternateKey("OrganizationId", "Id")
+                        .HasName("ak_client_contacts_organization_id_id");
+
+                    b.HasIndex("CreatedByUserId")
+                        .HasDatabaseName("ix_client_contacts_created_by_user_id");
+
+                    b.HasIndex("OrganizationId", "NormalizedEmail")
+                        .HasDatabaseName("ix_client_contacts_organization_id_normalized_email");
+
+                    b.HasIndex("OrganizationId", "ClientId", "NormalizedEmail")
+                        .IsUnique()
+                        .HasDatabaseName("ux_client_contacts_active_email")
+                        .HasFilter("removed_at IS NULL");
+
+                    b.ToTable("client_contacts", (string)null);
+                });
+
             modelBuilder.Entity("TenantHub.Domain.Invitations.Invitation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -987,6 +1055,31 @@ namespace TenantHub.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_clients_organizations_organization_id");
+                });
+
+            modelBuilder.Entity("TenantHub.Domain.Clients.ClientContact", b =>
+                {
+                    b.HasOne("TenantHub.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_client_contacts_users_created_by_user_id");
+
+                    b.HasOne("TenantHub.Domain.Organizations.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_client_contacts_organizations_organization_id");
+
+                    b.HasOne("TenantHub.Domain.Clients.Client", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "ClientId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_client_contacts_clients_organization_id_client_id");
                 });
 
             modelBuilder.Entity("TenantHub.Domain.Invitations.Invitation", b =>

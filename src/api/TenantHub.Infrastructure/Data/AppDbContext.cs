@@ -60,6 +60,8 @@ public sealed class AppDbContext(
 
     public DbSet<Agreement> Agreements => Set<Agreement>();
 
+    public DbSet<ClientContact> ClientContacts => Set<ClientContact>();
+
     /// <summary>Side effects waiting for the dispatcher (D039); written through <see cref="IOutbox"/>.</summary>
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 

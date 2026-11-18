@@ -189,9 +189,11 @@ public sealed class Organization : AggregateRoot
 
     /// <summary>
     /// Switches plan ("demo billing", SPEC 4.1). Upgrades always fit; a downgrade is refused while the usage exceeds
-    /// the target plan, listing every limit in the way (US-50). The caller counts the usage under the organization lock.
+    /// the target plan, listing every limit in the way (US-50). A downgrade that would turn off a feature in use needs
+    /// <paramref name="confirmFeatureLoss"/> (SPEC-V2 4.8); the feature's data is kept. The caller counts the usage
+    /// and the features in use under the organization lock.
     /// </summary>
-    public bool ChangePlan(Plan target, PlanUsage usage)
+    public bool ChangePlan(Plan target, PlanUsage usage, IReadOnlyCollection<PlanFeature> featuresInUse, bool confirmFeatureLoss)
     {
         if (target == Plan)
         {
@@ -204,9 +206,21 @@ public sealed class Organization : AggregateRoot
             throw new PlanDowngradeBlockedException(target, blocking);
         }
 
+        List<PlanFeature> lost = [.. featuresInUse.Where(f => !PlanFeatures.Includes(target, f)).Order()];
+        if (lost.Count > 0 && !confirmFeatureLoss)
+        {
+            throw new PlanFeatureLossException(target, lost);
+        }
+
         var change = new FieldChange("plan", Plan.ToString(), target.ToString());
         Plan = target;
-        Raise(new OrganizationEvent(this, "organization.plan_changed", $"Changed the plan from {change.From} to {change.To}", [change]));
+        var summary = $"Changed the plan from {change.From} to {change.To}";
+        if (lost.Count > 0)
+        {
+            summary += $"; turned off {string.Join(" and ", lost.Select(PlanFeatures.Describe))}";
+        }
+
+        Raise(new OrganizationEvent(this, "organization.plan_changed", summary, [change]));
         return true;
     }
 

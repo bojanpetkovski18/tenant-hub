@@ -9,7 +9,7 @@ namespace TenantHub.Domain.Jobs;
 /// same rules. Requirements such as "assignee" are checked at the transition, not as standing invariants: removing a
 /// member unassigns their open jobs without moving them.
 /// </summary>
-public sealed class Job : AggregateRoot, ITenantOwned
+public sealed class Job : AggregateRoot, IClientOwned
 {
     private static readonly IReadOnlyDictionary<string, string> FieldLabels = new Dictionary<string, string>
     {

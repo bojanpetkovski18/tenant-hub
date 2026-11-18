@@ -95,9 +95,9 @@ public sealed class PlanPolicyTests
     {
         var organization = Organization.Create("Harbor & Pine", "harbor-pine", "UTC", Guid.NewGuid(), Now);
 
-        Assert.False(organization.ChangePlan(Plan.Free, new PlanUsage(1, 0, 0, 0)));
-        Assert.True(organization.ChangePlan(Plan.Team, new PlanUsage(5, 30, 60, 0)));
-        var refused = Assert.Throws<PlanDowngradeBlockedException>(() => organization.ChangePlan(Plan.Free, new PlanUsage(5, 30, 60, 0)));
+        Assert.False(organization.ChangePlan(Plan.Free, new PlanUsage(1, 0, 0, 0), [], false));
+        Assert.True(organization.ChangePlan(Plan.Team, new PlanUsage(5, 30, 60, 0), [], false));
+        var refused = Assert.Throws<PlanDowngradeBlockedException>(() => organization.ChangePlan(Plan.Free, new PlanUsage(5, 30, 60, 0), [], false));
 
         Assert.Equal(Plan.Team, organization.Plan);
         Assert.Equal("plan-downgrade-blocked", refused.Code);

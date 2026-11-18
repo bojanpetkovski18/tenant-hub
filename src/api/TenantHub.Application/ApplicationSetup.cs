@@ -41,6 +41,7 @@ public static class ApplicationSetup
         .AddScoped<ListClientsQuery>()
         .AddScoped<GetClientQuery>()
         .AddScoped<ClientCommands>()
+        .AddScoped<ContactCommands>()
         .AddScoped<JobViews>()
         .AddScoped<ListJobsQuery>()
         .AddScoped<GetJobQuery>()

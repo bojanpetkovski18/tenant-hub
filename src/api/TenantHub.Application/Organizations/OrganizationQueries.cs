@@ -7,8 +7,8 @@ namespace TenantHub.Application.Organizations;
 
 public sealed record OrganizationDetails(Guid Id, string Name, string Slug, Plan Plan, string TimeZone, int DailyCapacityMinutes, DateTimeOffset CreatedAt);
 
-/// <summary>A plan and its limits, for the plan cards (SPEC 6, Settings → Plan and usage).</summary>
-public sealed record PlanOption(Plan Plan, PlanLimits Limits);
+/// <summary>A plan, its limits and its features, for the plan cards (SPEC 6, Settings → Plan; SPEC-V2 4.8).</summary>
+public sealed record PlanOption(Plan Plan, PlanLimits Limits, IReadOnlyList<PlanFeature> Features);
 
 /// <summary>The organization with its usage against its plan (US-50: "Seats 3 of 3"), and every plan to compare.</summary>
 public sealed record OrganizationOverview(
@@ -21,10 +21,11 @@ public sealed record OrganizationOverview(
     DateTimeOffset CreatedAt,
     PlanUsage Usage,
     PlanLimits Limits,
+    IReadOnlyList<PlanFeature> Features,
     IReadOnlyList<PlanOption> Plans)
 {
     public static readonly IReadOnlyList<PlanOption> AllPlans =
-        [.. Enum.GetValues<Plan>().Select(plan => new PlanOption(plan, PlanLimits.For(plan)))];
+        [.. Enum.GetValues<Plan>().Select(plan => new PlanOption(plan, PlanLimits.For(plan), PlanFeatures.For(plan)))];
 }
 
 /// <summary>
@@ -46,7 +47,7 @@ public sealed class GetOrganizationQuery(IAppDbContext db, ITenantContext tenant
             .Select(o => new OrganizationDetails(o.Id, o.Name, o.Slug, o.Plan, o.TimeZone, o.DailyCapacityMinutes, o.CreatedAt))
             .SingleAsync(cancellationToken);
         var usage = await limits.UsageAsync(cancellationToken);
-        return new OrganizationOverview(o.Id, o.Name, o.Slug, o.Plan, o.TimeZone, o.DailyCapacityMinutes, o.CreatedAt, usage, PlanLimits.For(o.Plan), OrganizationOverview.AllPlans);
+        return new OrganizationOverview(o.Id, o.Name, o.Slug, o.Plan, o.TimeZone, o.DailyCapacityMinutes, o.CreatedAt, usage, PlanLimits.For(o.Plan), PlanFeatures.For(o.Plan), OrganizationOverview.AllPlans);
     }
 }
 
