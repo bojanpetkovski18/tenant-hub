@@ -677,12 +677,37 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
 - **Alternatives:** refusing the downgrade while a feature is in use (forces the Owner to delete contacts or webhooks first); feature flags outside the plan (a second system for the same question).
 - **Decided at M18 (2026-11-18):** `PlanFeatures` in the domain: the portal on Team and Business, integrations on Business (used from M21). A missing feature is `403 plan-feature-unavailable` with `feature` and the cheapest plan that has it; every contact, quote and request endpoint checks it. A feature is *in use* while it has data that would stop working: the portal while any client has an active contact. A downgrade checks limits first (`plan-downgrade-blocked`), then features in use: `409 plan-feature-loss` with `features` until the Owner repeats it with `confirmFeatureLoss: true`. The audit says what was turned off. Data is kept: contacts lose access at once (the portal filter checks the plan) and get it back with an upgrade. `GET /api/orgs/{orgId}` lists the plan's features and every plan's.
 
-## D043: Uploaded photos are re-encoded and stored outside the database (pending M19)
-- **Date:** 2026-11-16
-- **Decision (proposed):** photos are checked by magic bytes, decoded with size and dimension limits, re-encoded without metadata, and stored through an `IFileStore` port: a local directory (a Compose volume) by default, with an S3-compatible store as an option if hosting needs one. Rows in `attachments` hold the key and size; files are served only through authorized endpoints.
-- **Why:** re-encoding is what removes GPS data from phone photos and neutralizes malformed files; keeping the bytes out of PostgreSQL keeps the database and its backups small.
-- **To decide at M19:** the image library (licence, native dependencies in the chiseled runtime image, advisories), with current sources and dates recorded; whether a `storage_bytes_used` counter or a `SUM` under the lock enforces the limit.
-- **Alternatives:** `bytea` in PostgreSQL (simple, but bloats the database and its backups); storing files as uploaded (keeps location metadata and trusts the client's content type).
+## D043: Uploaded photos are re-encoded with SkiaSharp and stored outside the database (M19)
+- **Date:** 2026-11-16 (proposed); decided 2026-11-19 (M19).
+- **Decision:**
+  - **Pipeline.** An upload is read up to 10 MB (one byte more is `413 photo-too-large`). It is accepted by its first bytes only (JPEG, PNG or WebP signatures), whatever its name or declared type, and the decoder must agree. Anything else is `400 photo-not-accepted`.
+  - **Size before pixels.** The size in pixels is read from the header before any pixel is decoded: at most 12,000 px on a side, 50 megapixels for a JPEG (which decodes at a reduced scale) and 25 for PNG or WebP (which decode whole). Beyond that the answer is `413`. At most two uploads decode at once.
+  - **Re-encoding.** The camera's orientation is applied to the pixels. The first frame is decoded into sRGB, resized to at most 2,560 px on the long edge, plus a 320 px thumbnail. Both are encoded in the upload's format with no colour profile, EXIF, XMP or text. Nothing of the original file but its pixels is stored.
+  - **Storage.** Files go through an `IFileStore` port with a local-directory implementation under keys the application makes: `{organization}/{128 random bits}.{ext}`. A key that does not match that shape is refused before any path is built. The production image creates `/app/data/files` for its non-root user, and Compose mounts a volume there.
+  - **Write order.** Files are written **before** the transaction. Under the organization lock, the photo count (10 per job) and the storage limit are checked again and the row is saved. If anything fails after the write, the files are deleted at once. A crash in between leaves files without a row: nothing serves them, the plan does not count them, and the sweep removes them. A row never points at a missing file, which writing after the commit could not promise.
+  - **Storage limit.** The limit is a `SUM` of the organization's rows under the lock, not the `storage_bytes_used` counter in SPEC-V2 8. Rows are also deleted by cascade (a job, an organization), which a counter would have to follow by hand. The organization's rows are covered by the tenant-first index. `bytes` counts the photo and its thumbnail.
+  - **Clean-up.** Removing a photo or deleting a job writes a `files.delete` outbox message with its keys. Deleting an organization writes one with its folder. The message type has no organization, so the organization's cascade does not delete it. The demo reset deletes organizations without the outbox, so it removes their folders itself. A weekly `files.sweep` task removes files older than a day that no row names, and folders of organizations that no longer exist. It reads each organization in its own scope as the system, inside row-level security.
+  - **Serving.** Photos are served only through the job's or the portal visit's endpoints, with the stored type, `Content-Disposition: inline` under a file name of ours, `nosniff`, and `Cache-Control: private, max-age=3600`.
+  - **CSP.** `img-src` gains `blob:` only, for the preview shown while a photo uploads. Photos are same-origin, so `'self'` already serves them. A pipeline test checks that no other directive changed.
+- **The image library, researched 2026-11-19:**
+  - **SixLabors.ImageSharp 4.1.3** (2026-10-09). Fully managed, and its published advisories are fixed: the September 2026 TIFF and ICC ones from 4.1.2 and 3.2.0 (GHSA-jjfr-hcj7-qf5w and others), the August TIFF fax ones (GHSA-jj3q-cwqj-842r, GHSA-v76p-62qx-wwq2), and the 2025 GIF loop (GHSA-rxmq-m78w-7wmc, CVE-2025-54575). Licence: the Six Labors Split License, Apache 2.0 for open-source use.
+    - The owner first chose it. Building it then showed that from 3.2.0 and 4.0.0 a **build-time licence-key check fails every Release build** ("No Six Labors license found"), so CI and the Docker image would fail.
+    - The free community key needs the owner to apply at licensing.sixlabors.com, names the assembly, and expires.
+    - 3.1.12 has no key check but carries the advisories above, which the NuGet gate would fail. Presented to the owner again.
+  - **SkiaSharp 4.154.0 with SkiaSharp.NativeAssets.Linux.NoDependencies 4.154.0** (both published 2026-10-28, 22 days old), chosen by the owner.
+    - MIT, and no key or account.
+    - The Linux native library needs only glibc (`libpthread`, `libdl`, `libm`, `libc`, `ld-linux`; no fontconfig). Verified in the real image: the seed decoded and re-encoded 13 photos at startup in `aspnet:10.0.15-noble-chiseled-extra`.
+    - Past the August 2026 fix for CVE-2026-58641 (fixed in 4.148). Every later stable release (4.154.1 to 4.157.0) was under two weeks old.
+    - Trade-off: native code in the image, so future decoder fixes come through SkiaSharp releases. `dotnet list package --vulnerable` covers it in CI.
+  - **Sources:**
+    - nuget.org pages and the registration API for both packages (publish dates);
+    - github.com/SixLabors/ImageSharp/security/advisories and the GitHub advisory pages;
+    - docs.sixlabors.com/articles/imagesharp (licence keys);
+    - the package's own `build/SixLabors.ImageSharp.targets`;
+    - github.com/SixLabors/ImageSharp/discussions/3129;
+    - herodevs.com/vulnerability-directory/cve-2026-58641;
+    - the SkiaSharp.NativeAssets.Linux.NoDependencies description.
+- **Alternatives:** `bytea` in PostgreSQL (simple, but bloats the database and its backups); storing files as uploaded (keeps location metadata and trusts the client's content type); writing files after the commit (a failed write leaves a row without its file); a storage counter (drifts under cascades).
 
 ## D044: API keys and HMAC-signed webhooks with an SSRF guard (pending M21)
 - **Date:** 2026-11-16
@@ -746,3 +771,25 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
     - a link followed over an already open sign-in page changes only the fragment, which the page never read;
     - a session answer from before the sign-in, arriving after it, put the contact back to signed out.
 - **Alternatives:** a separate quotes table (a job has one price; history is in the audit log); converting by a server-side copy without the form (staff could not adjust the job before it exists); keeping a deleted job's link (a dangling reference).
+
+## D048: Checklists belong to the job; ticking is work, not an edit (M19)
+- **Date:** 2026-11-19
+- **Decision:**
+  - **Where it lives.** The checklist is part of the `Job` aggregate (a child collection in `checklist_items`). The job decides who may change it: whoever may edit the job, while it is New, Scheduled or In progress. A completed or cancelled job's checklist and photos stay as they are until it is reopened (`409 job-closed`), since they are what the client signs off.
+  - **The precondition.** Completed is refused while a required item is open (`409 checklist-incomplete` with `openItems`). The transition options show the same reason, and the domain tests run it against every v1 transition. Every loader that can move a job to Completed includes the checklist. A test completes through the API, so a missing include would show.
+  - **One writer.** Checklist changes and status changes take the job's row lock (`FOR NO KEY UPDATE`). Without it, an untick racing a completion left a completed job with an open required item in the first round of a race test. With it, eight rounds hold.
+  - **Ticking.** Ticking records who and when, but leaves the job row (and its version) alone, so ticking never makes someone's job edit a conflict. Adding, editing, removing or moving an item on a visit marks it changed by hand (SPEC-V2 5.1), like any edit.
+  - **Agreements.** An agreement's checklist template (`jsonb`, at most 30 items) is copied into each generated visit. Following visits take a changed template too, as long as nothing on their checklist is ticked: a visit being worked through keeps the list it was started with.
+  - **Client sign-off.** On the job: `client_feedback`, its text, when, and the contact (an extra column beyond SPEC-V2 8, so staff see who answered). Once per completed visit; reopening clears it. Two contacts at once make one sign-off through the version check.
+  - **Portal.** A visit's checklist and photos are shown only once it is completed. `checklist_items` and `attachments` have no client of their own, so their client policy (`EnableClientIsolationThroughJob`) reads `jobs` under that table's policies. A coverage test requires it for every table of a job's rows.
+  - **Mutation checks.** Without that policy, the two row-level security tests fail. Without the portal handler's client filter, the policy alone keeps the portal matrix green.
+- **Alternatives:** the checklist as its own aggregate (then the precondition needs the caller to pass it in, and a forgotten load is silent); bumping the job's version on every tick (concurrent edits and ticks would conflict all day); an optimistic retry instead of the row lock (more code for the same order).
+
+## D049: The session cookie is not reissued on every request (M19)
+- **Date:** 2026-11-19
+- **Found:** a staff photo came back with `Cache-Control: no-cache, no-store`, not the `private` cache SPEC-V2 5.6 asks for.
+  - The security stamp is validated on every request (D022's zero interval, so a password change ends other sessions at once).
+  - Identity's validator also asks the cookie handler to renew the cookie after each check.
+  - So every staff response carried a new `Set-Cookie`, and the handler marks such responses `no-store`.
+- **Decision:** after the validator runs, `ShouldRenew` is set back to false. The stamp is still checked on every request, and sliding expiration still renews the cookie once half of its seven days have passed. The photo test fails without the change; the account and session tests pass with it.
+- **Alternatives:** a cache header only on photo routes (overwritten by the handler anyway); a longer validation interval (a changed password would leave other sessions open for that long).
