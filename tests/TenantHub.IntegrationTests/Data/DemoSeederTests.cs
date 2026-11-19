@@ -118,6 +118,49 @@ public sealed class DemoSeederTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Recent_completed_work_has_its_proof_and_two_contacts_have_signed_off()
+    {
+        // M19: visits carry their agreement's checklist, completed work of the last three weeks has a generated photo,
+        // and two of the three portal contacts answered.
+        var connectionString = await postgres.CreateDatabaseAsync();
+        await using var factory = new ApiFactory(connectionString, Settings, services => services.AddSingleton<TimeProvider>(new FixedClock(Today)));
+        using var client = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health", Ct)).StatusCode);
+
+        await using var db = PostgresFixture.CreateDbContext(connectionString);
+        var brightline = await db.Organizations.SingleAsync(o => o.Slug == DemoSeeder.BrightlineSlug, Ct);
+        var harbor = await db.Organizations.SingleAsync(o => o.Slug == DemoSeeder.HarborPineSlug, Ct);
+        var jobs = await db.Jobs.AcrossTenants().AsNoTracking().Include(j => j.Checklist).Where(j => j.OrganizationId == brightline.Id).ToListAsync(Ct);
+        var photos = await db.Attachments.AcrossTenants().AsNoTracking().Where(a => a.OrganizationId == brightline.Id).ToListAsync(Ct);
+
+        var visits = jobs.Where(j => j.AgreementId is not null).ToList();
+        Assert.All(visits, v => Assert.Equal(4, v.Checklist.Count));
+        Assert.All(visits.Where(v => v.Status == JobStatus.Completed), v => Assert.All(v.Checklist, i => Assert.True(i.IsDone)));
+        Assert.All(visits.Where(v => v.Status != JobStatus.Completed), v => Assert.All(v.Checklist, i => Assert.False(i.IsDone)));
+        Assert.All(jobs.Where(j => j.Status == JobStatus.Completed), j => Assert.Null(Checklists.WhyNotComplete(j.Checklist)));
+
+        Assert.InRange(photos.Count, 5, 60);
+        var completedAt = jobs.ToDictionary(j => j.Id, j => j.CompletedAt);
+        Assert.All(photos, p => Assert.True(completedAt[p.JobId] >= Today.AddDays(-21), "a photo on old or unfinished work"));
+        Assert.All(photos, p =>
+        {
+            Assert.True(File.Exists(Path.Combine(factory.FilesRoot, p.StorageKey[..32], p.StorageKey[33..])));
+            Assert.True(File.Exists(Path.Combine(factory.FilesRoot, p.ThumbnailKey[..32], p.ThumbnailKey[33..])));
+            Assert.True(p.Width <= 2560 && p.Height <= 2560);
+        });
+        Assert.Equal(0, await db.Attachments.AcrossTenants().CountAsync(a => a.OrganizationId == harbor.Id, Ct));
+
+        Assert.Equal(
+            [ClientFeedback.Confirmed, ClientFeedback.ProblemReported],
+            jobs.Where(j => j.ClientFeedback is not null).Select(j => j.ClientFeedback!.Value).Order());
+        var signOffs = await db.AuditEntries.AcrossTenants().AsNoTracking()
+            .Where(a => a.OrganizationId == brightline.Id && (a.Action == "job.client_confirmed" || a.Action == "job.client_reported_problem"))
+            .ToListAsync(Ct);
+        Assert.Equal(2, signOffs.Count);
+        Assert.All(signOffs, a => Assert.Equal(TenantHub.Domain.ActorKind.Contact, a.ActorKind));
+    }
+
+    [Fact]
     public async Task Two_seeds_on_the_same_day_produce_the_same_organizations()
     {
         var first = await SeedAtAsync(Today);

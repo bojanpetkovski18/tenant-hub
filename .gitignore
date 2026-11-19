@@ -47,3 +47,7 @@ Thumbs.db
 # Playwright output (tests/e2e)
 test-results/
 playwright-report/
+
+# Photo files written by a local API (M19, Files__Root)
+/data/
+src/api/TenantHub.Api/data/

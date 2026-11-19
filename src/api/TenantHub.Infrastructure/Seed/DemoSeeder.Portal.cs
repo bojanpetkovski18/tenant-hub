@@ -37,7 +37,17 @@ public sealed partial class DemoSeeder
                     (j, c) => new { j.Id, j.ClientId, j.ScheduledOn, j.Number })
                 .OrderBy(j => j.ScheduledOn).ThenBy(j => j.Number)
                 .ToListAsync(cancellationToken);
-            var chosen = next.GroupBy(j => j.ClientId).Select(g => g.First()).Take(3).ToList();
+            // Clients whose recent work has photos first (M19), so two of them can sign a visit off; still soonest first.
+            var withProof = (await staff.Jobs.AsNoTracking()
+                    .Where(j => j.Status == JobStatus.Completed && staff.Attachments.Any(a => a.JobId == j.Id))
+                    .Select(j => j.ClientId)
+                    .Distinct()
+                    .ToListAsync(cancellationToken))
+                .ToHashSet();
+            var chosen = next.GroupBy(j => j.ClientId).Select(g => g.First())
+                .OrderBy(j => withProof.Contains(j.ClientId) ? 0 : 1)
+                .Take(3)
+                .ToList();
             clock.Now = organization.CreatedAt.AddDays(-1);
             foreach (var pick in chosen)
             {
@@ -104,7 +114,39 @@ public sealed partial class DemoSeeder
             await staff.SaveChangesAsync(cancellationToken);
         }
 
+        await SeedSignOffsAsync(organization, contacts, now, clock, cancellationToken);
         clock.Now = now;
+    }
+
+    /// <summary>
+    /// Client sign-off (M19): the first contact confirmed their latest completed visit with photos, the second reported a
+    /// problem with theirs; the third has left theirs for the demo visitor to answer.
+    /// </summary>
+    private async Task SeedSignOffsAsync(Organization organization, List<ClientContact> contacts, DateTimeOffset now, SeedClock clock, CancellationToken cancellationToken)
+    {
+        var answers = new (bool Confirmed, string? Text)[]
+        {
+            (true, null),
+            (false, "The meeting room was not vacuumed, and the bins by the back door were still full."),
+        };
+        foreach (var (contact, (confirmed, text)) in contacts.Zip(answers))
+        {
+            await using var asContact = ContactContext(organization.Id, contact, clock);
+            var visit = await asContact.Jobs
+                .Where(j => j.ClientId == contact.ClientId && j.Status == JobStatus.Completed && asContact.Attachments.Any(a => a.JobId == j.Id))
+                .OrderByDescending(j => j.CompletedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (visit is null)
+            {
+                continue;
+            }
+
+            // A few hours after the visit, but never in the future.
+            var answeredAt = visit.CompletedAt!.Value.AddHours(5);
+            clock.Now = answeredAt > now ? now : answeredAt;
+            visit.RecordFeedback(confirmed, text, contact.Id, clock.Now);
+            await asContact.SaveChangesAsync(cancellationToken);
+        }
     }
 
     /// <summary>A context in the contact's portal session, so what they do is checked and audited as them.</summary>
