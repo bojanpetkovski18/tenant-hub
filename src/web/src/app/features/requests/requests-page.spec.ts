@@ -123,6 +123,30 @@ describe('requests inbox', () => {
     expect(text(main(element))).toContain('No open requests');
   });
 
+  it('says which plan has the inbox instead of offering to try again', async () => {
+    const element = await open('/o/brightline/requests');
+
+    http
+      .expectOne((r) => r.url === requestsUrl)
+      .flush(
+        {
+          title:
+            'The client portal is part of the Team plan. An Owner can change the plan in Settings.',
+          code: 'plan-feature-unavailable',
+          feature: 'portal',
+          plan: 'team',
+        },
+        { status: 403, statusText: 'Forbidden' },
+      );
+    await settle(harness.fixture);
+
+    expect(text(main(element))).toContain('The client portal is part of the Team plan.');
+    expect(main(element).querySelector('a[href="/o/brightline/settings#plan"]')).not.toBeNull();
+    expect([...main(element).querySelectorAll('button')].some((b) => text(b) === 'Try again')).toBe(
+      false,
+    );
+  });
+
   it('keeps the status filter in the address', async () => {
     await open('/o/brightline/requests?status=declined');
 

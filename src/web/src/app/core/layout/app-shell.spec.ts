@@ -151,6 +151,28 @@ describe('AppShell', () => {
     expect(overlayStyles()).toBe(0);
   });
 
+  it('hides the Requests inbox once the plan is known not to include the portal (SPEC-V2 4.8)', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    const navLabels = () =>
+      [...element.querySelectorAll<HTMLAnchorElement>('aside nav a')].map((a) =>
+        a.textContent?.trim(),
+      );
+    expect(navLabels()).toContain('Requests');
+
+    http.expectOne(`/api/orgs/${olivia.memberships[0]!.organizationId}`).flush({
+      id: olivia.memberships[0]!.organizationId,
+      name: 'Brightline Cleaning Co.',
+      slug: 'brightline',
+      plan: 'free',
+      timeZone: 'UTC',
+      createdAt: '2026-10-01T09:00:00Z',
+      features: [],
+    });
+    await harness.fixture.whenStable();
+
+    expect(navLabels()).not.toContain('Requests');
+  });
+
   it('checks the organization with the server when it opens it', () => {
     TestBed.inject(HttpTestingController).expectOne(
       `/api/orgs/${olivia.memberships[0]!.organizationId}`,

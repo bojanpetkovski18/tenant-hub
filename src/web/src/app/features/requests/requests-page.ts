@@ -54,7 +54,19 @@ const filters = ['open', 'converted', 'declined', 'all'] as const;
         <div class="th-alert-error" role="alert">{{ text }}</div>
       }
 
-      @if (error(); as problem) {
+      @if (unavailable(); as problem) {
+        <div class="th-card">
+          <p>{{ problem.title }}</p>
+          @if (canChangePlan()) {
+            <a
+              [routerLink]="['/o', slug(), 'settings']"
+              fragment="plan"
+              class="mt-2 inline-block font-medium text-accent hover:underline"
+              >See the plans</a
+            >
+          }
+        </div>
+      } @else if (error(); as problem) {
         <app-error-state [message]="problem.title" (retry)="load()" />
       } @else if (!requests()) {
         <div class="h-40 animate-pulse rounded-lg bg-surface-2" aria-busy="true"></div>
@@ -156,6 +168,11 @@ export class RequestsPage {
   protected readonly canConvert = computed(() => this.session.can(this.slug(), 'jobs.create'));
   protected readonly requests = signal<PagedList<WorkRequest> | null>(null);
   protected readonly error = signal<ApiProblem | null>(null);
+  /** The plan has no portal (403 `plan-feature-unavailable`): say which plan has it, not "try again". */
+  protected readonly unavailable = signal<ApiProblem | null>(null);
+  protected readonly canChangePlan = computed(() =>
+    this.session.can(this.slug(), 'billing.manage'),
+  );
   protected readonly busy = signal(false);
   protected readonly message = signal<string | null>(null);
   protected readonly announcement = signal('');
@@ -176,6 +193,7 @@ export class RequestsPage {
       return;
     }
     this.error.set(null);
+    this.unavailable.set(null);
     this.requests.set(null);
     const params: Record<string, string> = { page: String(this.page()), pageSize: '20' };
     if (this.filter() !== 'all') {
@@ -184,7 +202,12 @@ export class RequestsPage {
     try {
       this.requests.set(await this.api.list(organizationId, params));
     } catch (error) {
-      this.error.set(toApiProblem(error));
+      const problem = toApiProblem(error);
+      if (problem.code === 'plan-feature-unavailable') {
+        this.unavailable.set(problem);
+      } else {
+        this.error.set(problem);
+      }
     }
   }
 

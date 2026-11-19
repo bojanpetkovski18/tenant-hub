@@ -84,7 +84,13 @@ export class AppShell {
   protected readonly membership = computed(() => this.session.membershipBySlug(this.slug()));
   protected readonly visibleNavItems = computed(() => {
     const granted = this.membership()?.permissions ?? [];
-    return this.navItems.filter((item) => item.anyOf.some((p) => granted.includes(p)));
+    // The inbox is part of the portal (SPEC-V2 4.8): hidden once the plan is known not to include it.
+    const features = this.currentOrganization.organization()?.features;
+    const portalOff = features !== undefined && !features.includes('portal');
+    return this.navItems.filter(
+      (item) =>
+        item.anyOf.some((p) => granted.includes(p)) && !(item.path === 'requests' && portalOff),
+    );
   });
   private readonly currentOrganization = inject(CurrentOrganizationStore);
   /** The open work requests, shown next to "Requests" (SPEC-V2 6). */

@@ -44,6 +44,8 @@ export interface Organization {
   readonly plan: 'free' | 'team' | 'business';
   readonly timeZone: string;
   readonly createdAt: string;
+  /** What the plan includes beyond its limits (SPEC-V2 4.8), e.g. "portal"; absent until the organization loads. */
+  readonly features?: readonly string[];
 }
 
 export interface SessionUser {
