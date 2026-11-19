@@ -100,6 +100,8 @@ describe('SignUpPage', () => {
 
     expect(TestBed.inject(Router).url).toBe('/o/brightline/dashboard');
     http.expectOne(`/api/orgs/${olivia.memberships[0]!.organizationId}`);
+    // The Owner manages the portal: the shell asks for the open work requests for the sidebar.
+    http.expectOne(`/api/orgs/${olivia.memberships[0]!.organizationId}/requests/open-count`);
     http.expectOne(`/api/orgs/${olivia.memberships[0]!.organizationId}/dashboard`);
   });
 });

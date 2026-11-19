@@ -7,13 +7,13 @@ namespace TenantHub.Infrastructure.Tenancy;
 
 /// <summary>
 /// Layer 6 of tenant isolation (SPEC-V2 3.1, D038): before EF Core runs a command, the database session gets the
-/// scope's organization, the user whose memberships it reads, and the invitation token it presents, which the
-/// row-level security policies compare rows with.
+/// scope's organization, the user whose memberships it reads, the invitation token it presents and, in a portal
+/// session, the client (SPEC-V2 3.2), which the row-level security policies compare rows with.
 /// <para>
 /// The settings are session-level and applied before every command whose scope differs from what this connection
 /// last received, rather than per transaction: EF Core reads outside transactions, and a scope enters its tenant
 /// part-way through a request (after resolution, or after creating an organization). Pooled connections cannot carry
-/// a tenant into the next request, because the first command of every scope overwrites all three values; anything
+/// a tenant into the next request, because the first command of every scope overwrites all four values; anything
 /// that may have discarded or reverted them (opening, closing, a rollback) makes the next command set them again.
 /// An unset value is the empty string, which matches no row: a command without a tenant reads and writes nothing
 /// tenant-owned.
@@ -26,7 +26,8 @@ internal sealed class RowSecurityInterceptor : DbCommandInterceptor, IDbConnecti
     private const string ApplySql =
         "SELECT set_config('app.organization_id', @organization, false), " +
         "set_config('app.user_id', @user, false), " +
-        "set_config('app.invitation_token_hash', @invitation, false)";
+        "set_config('app.invitation_token_hash', @invitation, false), " +
+        "set_config('app.client_id', @client, false)";
 
     public override InterceptionResult<DbDataReader> ReaderExecuting(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result)
     {
@@ -136,8 +137,8 @@ internal sealed class RowSecurityInterceptor : DbCommandInterceptor, IDbConnecti
             return null;
         }
 
-        var (organization, user, invitation) = db.RowSecuritySettings;
-        var key = $"{organization}|{user}|{invitation}";
+        var (organization, user, invitation, client) = db.RowSecuritySettings;
+        var key = $"{organization}|{user}|{invitation}|{client}";
         if (db.AppliedRowSecurity == key)
         {
             return null;
@@ -150,6 +151,7 @@ internal sealed class RowSecurityInterceptor : DbCommandInterceptor, IDbConnecti
         AddParameter(set, "organization", organization);
         AddParameter(set, "user", user);
         AddParameter(set, "invitation", invitation);
+        AddParameter(set, "client", client);
         return (db, key, set);
     }
 

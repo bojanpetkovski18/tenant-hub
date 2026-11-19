@@ -54,7 +54,7 @@ public sealed record AgreementTemplate(
 /// jobs, generated ahead by <see cref="VisitGeneration"/>; this aggregate holds the rules about the agreement itself.
 /// The client never changes: an agreement for another client is another agreement.
 /// </summary>
-public sealed class Agreement : AggregateRoot, ITenantOwned
+public sealed class Agreement : AggregateRoot, IClientOwned
 {
     private Agreement()
     {

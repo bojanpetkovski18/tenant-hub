@@ -68,6 +68,12 @@ public sealed class ApiTenants : IAsyncDisposable
 
     public Guid VisitB { get; private set; }
 
+    /// <summary>B's standing portal contact, at <see cref="ClientB"/>.</summary>
+    public Guid ContactB { get; private set; }
+
+    /// <summary>B's standing open work request, from <see cref="ContactB"/>.</summary>
+    public Guid RequestB { get; private set; }
+
     public string OrgBOwnerEmail { get; } = $"owner-{Guid.NewGuid():N}@bravo.example";
 
     public string RemovedMemberEmail { get; } = $"removed-{Guid.NewGuid():N}@alpha.example";
@@ -134,7 +140,17 @@ public sealed class ApiTenants : IAsyncDisposable
             .OrderBy(a => a.Id)
             .Select(a => new { a.Id, a.Title, a.Status, a.Version })
             .ToListAsync(Ct);
-        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit, invitations, jobs, agreements, next = organization.NextJobNumber });
+        var contacts = await db.ClientContacts.AcrossTenants().AsNoTracking()
+            .Where(c => c.OrganizationId == OrgB)
+            .OrderBy(c => c.Id)
+            .Select(c => new { c.Id, c.ClientId, c.Name, c.Email, c.RemovedAt, c.LastSignInAt })
+            .ToListAsync(Ct);
+        var requests = await db.WorkRequests.AcrossTenants().AsNoTracking()
+            .Where(r => r.OrganizationId == OrgB)
+            .OrderBy(r => r.Id)
+            .Select(r => new { r.Id, r.Status, r.JobId, r.DeclineReason, r.Version })
+            .ToListAsync(Ct);
+        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit, invitations, jobs, agreements, contacts, requests, next = organization.NextJobNumber });
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
     }
 
@@ -151,7 +167,7 @@ public sealed class ApiTenants : IAsyncDisposable
         organizationId == OrgA ? AgreementA : organizationId == OrgB ? AgreementB : Guid.NewGuid();
 
     /// <summary>A weekly agreement in A or B starting next week, written as its Owner, without visits.</summary>
-    public async Task<Guid> CreateAgreementAsync(Guid organizationId, string? title = null)
+    public async Task<Guid> CreateAgreementAsync(Guid organizationId, string? title = null, Guid? clientId = null)
     {
         if (organizationId != OrgA && organizationId != OrgB)
         {
@@ -163,7 +179,7 @@ public sealed class ApiTenants : IAsyncDisposable
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var agreement = Agreement.Create(
             organizationId,
-            ClientIn(organizationId),
+            clientId ?? ClientIn(organizationId),
             AgreementTemplate.Validate(title ?? $"Agreement {Guid.NewGuid():N}", null, null, JobPriority.Normal, null, 60),
             new Schedule(Recurrence.Weekly([DayOfWeek.Monday]), today.AddDays(7), null, null),
             today,
@@ -235,6 +251,23 @@ public sealed class ApiTenants : IAsyncDisposable
         return client.Id;
     }
 
+    /// <summary>A portal contact at a new client of the organization (removals use them up).</summary>
+    public async Task<Guid> CreateContactAsync(Guid organizationId, Guid? clientId = null)
+    {
+        if (organizationId != OrgA && organizationId != OrgB)
+        {
+            return Guid.NewGuid();
+        }
+
+        var client = clientId ?? await CreateClientAsync(organizationId);
+        await using var db = await OwnerContextAsync(organizationId);
+        var owner = await db.Clients.SingleAsync(c => c.Id == client, Ct);
+        var contact = ClientContact.Add(owner, "Matrix Contact", $"contact-{Guid.NewGuid():N}@client.example", 0, false, await OwnerIdAsync(organizationId), DateTimeOffset.UtcNow);
+        db.ClientContacts.Add(contact);
+        await db.SaveChangesAsync(Ct);
+        return contact.Id;
+    }
+
     /// <summary>The user id of A's member with this role.</summary>
     public async Task<Guid> UserIdOfAsync(Role role)
     {
@@ -246,7 +279,7 @@ public sealed class ApiTenants : IAsyncDisposable
     /// A new New job in A or B, created like a manager would (numbered from the organization's counter). Assigned to
     /// A's member with <paramref name="assignTo"/> when given, otherwise to the organization's Owner.
     /// </summary>
-    public async Task<Guid> CreateJobAsync(Guid organizationId, Role? assignTo = null, string? title = null)
+    public async Task<Guid> CreateJobAsync(Guid organizationId, Role? assignTo = null, string? title = null, Guid? clientId = null)
     {
         if (organizationId != OrgA && organizationId != OrgB)
         {
@@ -257,7 +290,7 @@ public sealed class ApiTenants : IAsyncDisposable
         var assignee = organizationId == OrgA && assignTo is { } role ? await UserIdOfAsync(role) : ownerId;
         await using var db = ContextAs(organizationId, ownerId);
         var organization = await db.Organizations.SingleAsync(o => o.Id == organizationId, Ct);
-        var clientId = ClientIn(organizationId);
+        clientId ??= ClientIn(organizationId);
         var details = JobDetails.Validate(title ?? $"Job {Guid.NewGuid():N}", null, clientId, assignee, JobPriority.Normal, null, null, null);
         var job = Job.Create(
             organizationId,
@@ -452,6 +485,65 @@ public sealed class ApiTenants : IAsyncDisposable
         AgreementA = await CreateAgreementAsync(OrgA, "Alpha Standing Agreement");
         AgreementB = await CreateAgreementAsync(OrgB, "Bravo Standing Agreement");
         VisitB = await CreateVisitAsync(OrgB);
+        ContactB = await CreateContactAsync(OrgB, ClientB);
+        // A contact and an unused sign-in link in each, so every tenant-owned table has rows on both sides.
+        await CreateSignInLinkAsync(OrgA, await CreateContactAsync(OrgA, ClientA));
+        await CreateSignInLinkAsync(OrgB, ContactB);
+        RequestB = await CreateRequestAsync(OrgB, ContactB);
+        await CreateRequestAsync(OrgA);
+    }
+
+    /// <summary>An open work request in A or B, as its contact submits it (a new contact at a new client unless given).</summary>
+    public async Task<Guid> CreateRequestAsync(Guid organizationId, Guid? contactId = null)
+    {
+        if (organizationId != OrgA && organizationId != OrgB)
+        {
+            return Guid.NewGuid();
+        }
+
+        var contact = contactId ?? await CreateContactAsync(organizationId);
+        await using var lookup = await OwnerContextAsync(organizationId);
+        var row = await lookup.ClientContacts.AsNoTracking().SingleAsync(c => c.Id == contact, Ct);
+        var tenant = new TenantContext();
+        tenant.EnterAsContact(organizationId, row.ClientId, contact);
+        await using var db = PostgresFixture.CreateDbContext(ConnectionString, tenant);
+        var request = WorkRequest.Submit(
+            await db.ClientContacts.SingleAsync(c => c.Id == contact, Ct),
+            $"Request {Guid.NewGuid():N}"[..40],
+            null,
+            null,
+            0,
+            DateOnly.FromDateTime(DateTime.UtcNow),
+            DateTimeOffset.UtcNow);
+        db.WorkRequests.Add(request);
+        await db.SaveChangesAsync(Ct);
+        return request.Id;
+    }
+
+    /// <summary>Gives a job of A or B a quoted amount (written as the Owner); unknown ids are left alone.</summary>
+    public async Task SetQuotedAmountAsync(Guid jobId, decimal amount)
+    {
+        await using var lookup = PostgresFixture.CreateDbContext(ConnectionString);
+        var organizationId = await lookup.Jobs.AcrossTenants().Where(j => j.Id == jobId).Select(j => (Guid?)j.OrganizationId).SingleOrDefaultAsync(Ct);
+        if (organizationId is not { } organization || (organization != OrgA && organization != OrgB))
+        {
+            return;
+        }
+
+        var ownerId = await OwnerIdAsync(organization);
+        await using var db = ContextAs(organization, ownerId);
+        var job = await db.Jobs.SingleAsync(j => j.Id == jobId, Ct);
+        job.Update(job.Details with { QuotedAmount = amount }, JobActor.From(ownerId, Role.Owner), new Dictionary<Guid, string>(), DateTimeOffset.UtcNow);
+        await db.SaveChangesAsync(Ct);
+    }
+
+    /// <summary>An unused portal sign-in link for the contact; the token itself is thrown away.</summary>
+    public async Task CreateSignInLinkAsync(Guid organizationId, Guid contactId)
+    {
+        await using var db = await OwnerContextAsync(organizationId);
+        var contact = await db.ClientContacts.SingleAsync(c => c.Id == contactId, Ct);
+        db.PortalSignInTokens.Add(PortalSignInToken.Issue(contact, InvitationTokens.Create().Hash, DateTimeOffset.UtcNow));
+        await db.SaveChangesAsync(Ct);
     }
 
     /// <summary>

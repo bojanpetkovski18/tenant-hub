@@ -42,7 +42,23 @@ public sealed record JobView(
     bool CanAssign,
     bool CanDelete,
     bool CanSkip,
-    IReadOnlyList<JobTransitionOption> Transitions);
+    IReadOnlyList<JobTransitionOption> Transitions,
+    JobQuoteView Quote);
+
+/// <summary>
+/// The quote panel (SPEC-V2 5.4): where the approval stands, who decided, and whether the caller can send it now.
+/// <see cref="CannotSend"/> says why not to someone who could (null for those without <c>portal.manage</c>).
+/// </summary>
+public sealed record JobQuoteView(
+    JobApprovalStatus Status,
+    DateTimeOffset? SentAt,
+    string? SentByName,
+    decimal? ApprovedAmount,
+    DateTimeOffset? DecidedAt,
+    string? DecidedByName,
+    string? Comment,
+    bool CanSend,
+    string? CannotSend);
 
 public static class JobErrors
 {
@@ -92,7 +108,7 @@ public sealed class JobViews(IAppDbContext db, ITenantContext tenant, IIdentityS
 
     public async Task<JobView> ForAsync(Job job, CancellationToken cancellationToken)
     {
-        var names = await NamesAsync([job.ClientId], [job.AssigneeUserId, job.CreatedByUserId], cancellationToken);
+        var names = await NamesAsync([job.ClientId], [job.AssigneeUserId, job.CreatedByUserId, job.ApprovalSentByUserId], cancellationToken);
         var today = await TodayAsync(cancellationToken);
         var agreementTitle = job.AgreementId is { } agreementId
             ? await db.Agreements.Where(a => a.Id == agreementId).Select(a => a.Title).SingleOrDefaultAsync(cancellationToken)
@@ -131,6 +147,37 @@ public sealed class JobViews(IAppDbContext db, ITenantContext tenant, IIdentityS
             // Skipping is cancelling a visit with a fixed reason: who may cancel, for visits of an agreement (SPEC-V2 2.2).
             CanSkip: job.AgreementId is not null && tenant.HasPermission(Permissions.AgreementsManage)
                 && job.AllowedFor(actor).Contains(JobStatus.Cancelled),
-            job.OptionsFor(actor));
+            job.OptionsFor(actor),
+            await QuoteAsync(job, names, cancellationToken));
+    }
+
+    private async Task<JobQuoteView> QuoteAsync(Job job, IReadOnlyDictionary<Guid, string> names, CancellationToken cancellationToken)
+    {
+        var decidedBy = job.ApprovalDecidedByContactId is { } contact
+            ? await db.ClientContacts.Where(c => c.Id == contact).Select(c => c.Name).SingleOrDefaultAsync(cancellationToken)
+            : null;
+        string? cannotSend = null;
+        var mayManage = tenant.HasPermission(Permissions.PortalManage);
+        if (mayManage)
+        {
+            var plan = await db.Organizations.Where(o => o.Id == tenant.OrganizationId).Select(o => o.Plan).SingleAsync(cancellationToken);
+            cannotSend = !PlanFeatures.Includes(plan, PlanFeature.Portal)
+                ? $"Quotes for approval come with the client portal, part of the {PlanFeatures.CheapestWith(PlanFeature.Portal)} plan."
+                : JobQuotes.WhyNotSend(job.Status, job.QuotedAmount, job.ApprovalStatus)
+                    ?? (await db.ClientContacts.AnyAsync(c => c.ClientId == job.ClientId && c.RemovedAt == null, cancellationToken)
+                        ? null
+                        : "Add a portal contact to the client first: they are the ones who approve.");
+        }
+
+        return new JobQuoteView(
+            job.ApprovalStatus,
+            job.ApprovalSentAt,
+            job.ApprovalSentByUserId is { } sender ? names.GetValueOrDefault(sender, "A former member") : null,
+            job.ApprovedAmount,
+            job.ApprovalDecidedAt,
+            decidedBy,
+            job.ApprovalComment,
+            CanSend: mayManage && cannotSend is null,
+            cannotSend);
     }
 }

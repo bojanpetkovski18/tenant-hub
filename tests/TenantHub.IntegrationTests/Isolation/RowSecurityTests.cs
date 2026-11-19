@@ -53,6 +53,72 @@ public sealed class RowSecurityTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Every_client_owned_table_and_clients_have_the_restrictive_client_policy()
+    {
+        // SPEC-V2 3.2: a new client-owned entity is covered by its migration or this fails.
+        var tenants = await SharedApiTenants.GetAsync<RowSecurityTests>(postgres);
+        var tables = ClientTables(tenants.ConnectionString);
+
+        await using var connection = await OpenAsOwnerAsync(tenants.ConnectionString);
+        var missing = new List<string>();
+        foreach (var (table, column) in tables)
+        {
+            await using var command = new NpgsqlCommand(
+                """
+                SELECT EXISTS (SELECT 1 FROM pg_policies p
+                    WHERE p.schemaname = 'public' AND p.tablename = @table AND p.policyname = @policy
+                        AND p.permissive = 'RESTRICTIVE' AND p.cmd = 'ALL' AND p.roles = '{public}'
+                        AND p.qual LIKE '%' || @column || '%app.client_id%'
+                        AND p.with_check LIKE '%' || @column || '%app.client_id%')
+                """,
+                connection);
+            command.Parameters.AddWithValue("policy", RowSecuritySql.ClientPolicy);
+            command.Parameters.AddWithValue("table", table);
+            command.Parameters.AddWithValue("column", column);
+            if (await command.ExecuteScalarAsync(Ct) is not true)
+            {
+                missing.Add(table);
+            }
+        }
+
+        Assert.Contains(("jobs", "client_id"), tables);
+        Assert.True(missing.Count == 0, $"Client-owned tables without the restrictive {RowSecuritySql.ClientPolicy} policy " +
+            $"(call EnableClientIsolation in the migration that creates them): {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public async Task With_a_client_set_each_client_owned_table_shows_and_takes_only_that_clients_rows()
+    {
+        // Two clients of A, each with a job, an agreement, a contact and a request; the portal session is the second one's.
+        var tenants = await SharedApiTenants.GetAsync<RowSecurityTests>(postgres);
+        var mine = await tenants.CreateClientAsync(tenants.OrgA, $"Portal Client {Guid.NewGuid():N}");
+        await tenants.CreateRequestAsync(tenants.OrgA, await tenants.CreateContactAsync(tenants.OrgA, mine));
+        await tenants.CreateJobAsync(tenants.OrgA, clientId: mine);
+        await tenants.CreateAgreementAsync(tenants.OrgA, clientId: mine);
+        await tenants.CreateContactAsync(tenants.OrgA, tenants.ClientA);
+        await using var portal = await OpenAsApiAsync(tenants.ConnectionString, organization: tenants.OrgA, client: mine);
+        await using var staff = await OpenAsApiAsync(tenants.ConnectionString, organization: tenants.OrgA);
+
+        foreach (var (table, column) in ClientTables(tenants.ConnectionString))
+        {
+            var others = await CountAsync(staff, $"SELECT count(*) FROM \"{table}\" WHERE {column} <> '{mine}'");
+            Assert.True(others > 0, $"{table}: no other client's rows to hide");
+            // No WHERE clause: the forgotten client filter.
+            Assert.Equal(
+                await CountAsync(staff, $"SELECT count(*) FROM \"{table}\" WHERE {column} = '{mine}'"),
+                await CountAsync(portal, $"SELECT count(*) FROM \"{table}\""));
+            Assert.True(await CountAsync(portal, $"SELECT count(*) FROM \"{table}\"") > 0, $"{table}: the client's own rows are hidden");
+        }
+
+        // Writes: another client's rows match nothing, and a row cannot be moved or added to another client.
+        Assert.Equal(0, await ExecuteAsync(portal, $"UPDATE jobs SET title = title WHERE client_id = '{tenants.ClientA}'"));
+        Assert.Equal(0, await ExecuteAsync(portal, $"DELETE FROM client_contacts WHERE client_id = '{tenants.ClientA}'"));
+        var moved = await Assert.ThrowsAsync<PostgresException>(() =>
+            ExecuteAsync(portal, $"UPDATE jobs SET client_id = '{tenants.ClientA}' WHERE client_id = '{mine}'"));
+        Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, moved.SqlState);
+    }
+
+    [Fact]
     public async Task The_only_way_past_the_policies_is_the_reviewed_definer_function()
     {
         // A SECURITY DEFINER function runs as the owner, whom the policies do not bind: each one is a bypass and
@@ -233,6 +299,17 @@ public sealed class RowSecurityTests(PostgresFixture postgres)
         return new AppDbContext(options.Options, tenant, rowSecurity: new RowSecurity());
     }
 
+    /// <summary>Every client-owned table with its client column, and clients itself (keyed by id).</summary>
+    private static List<(string Table, string Column)> ClientTables(string connectionString)
+    {
+        using var db = PostgresFixture.CreateDbContext(connectionString);
+        return [.. db.Model.GetEntityTypes()
+            .Where(t => typeof(IClientOwned).IsAssignableFrom(t.ClrType))
+            .Select(t => (t.GetTableName()!, "client_id"))
+            .Append(("clients", "id"))
+            .OrderBy(t => t.Item1, StringComparer.Ordinal)];
+    }
+
     private static List<string> TenantTables(string connectionString)
     {
         using var db = PostgresFixture.CreateDbContext(connectionString);
@@ -245,17 +322,18 @@ public sealed class RowSecurityTests(PostgresFixture postgres)
     /// <summary>The API's database user with the given session settings, as the interceptor would set them.
     /// Unpooled, so no test inherits another's session.</summary>
     private static async Task<NpgsqlConnection> OpenAsApiAsync(
-        string connectionString, Guid? organization = null, Guid? user = null, byte[]? invitationTokenHash = null)
+        string connectionString, Guid? organization = null, Guid? user = null, byte[]? invitationTokenHash = null, Guid? client = null)
     {
         var connection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(connectionString) { Pooling = false }.ConnectionString);
         await connection.OpenAsync(Ct);
         await using var set = new NpgsqlCommand(
             "SELECT set_config('app.organization_id', @org, false), set_config('app.user_id', @user, false), " +
-            "set_config('app.invitation_token_hash', @token, false)",
+            "set_config('app.invitation_token_hash', @token, false), set_config('app.client_id', @client, false)",
             connection);
         set.Parameters.AddWithValue("org", organization?.ToString() ?? "");
         set.Parameters.AddWithValue("user", user?.ToString() ?? "");
         set.Parameters.AddWithValue("token", invitationTokenHash is null ? "" : Convert.ToHexStringLower(invitationTokenHash));
+        set.Parameters.AddWithValue("client", client?.ToString() ?? "");
         await set.ExecuteNonQueryAsync(Ct);
         return connection;
     }

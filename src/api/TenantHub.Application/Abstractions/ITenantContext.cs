@@ -17,6 +17,15 @@ public interface ITenantContext
 
     IReadOnlySet<string> Permissions { get; }
 
+    /// <summary>
+    /// A portal session's client (SPEC-V2 3.2): every client-owned read and write is limited to it, by the handlers, the
+    /// save guard and row-level security. Null for staff, the system and outside a tenant.
+    /// </summary>
+    Guid? ClientId { get; }
+
+    /// <summary>The signed-in client contact of a portal session; the audit names them.</summary>
+    Guid? ContactId { get; }
+
     bool HasPermission(string permission);
 }
 

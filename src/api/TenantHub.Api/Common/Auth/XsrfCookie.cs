@@ -11,7 +11,11 @@ public sealed class XsrfCookie(IAntiforgery antiforgery, CookieHttpsPolicy https
 {
     public const string Name = "XSRF-TOKEN";
 
-    public void Issue(HttpContext context)
+    /// <summary>
+    /// <paramref name="path"/>: the portal issues its own at <see cref="PortalAuth.PagesPath"/>, bound to the contact, so a
+    /// browser with both sessions keeps one token for each (the portal pages read the longer path's first).
+    /// </summary>
+    public void Issue(HttpContext context, string path = "/")
     {
         var tokens = antiforgery.GetAndStoreTokens(context);
         context.Response.Cookies.Append(Name, tokens.RequestToken!, new CookieOptions
@@ -19,7 +23,7 @@ public sealed class XsrfCookie(IAntiforgery antiforgery, CookieHttpsPolicy https
             HttpOnly = false, // Angular must read it; it is useless to an attacker without the HttpOnly antiforgery cookie
             SameSite = SameSiteMode.Strict,
             Secure = https.RequireHttps || context.Request.IsHttps,
-            Path = "/",
+            Path = path,
         });
     }
 }

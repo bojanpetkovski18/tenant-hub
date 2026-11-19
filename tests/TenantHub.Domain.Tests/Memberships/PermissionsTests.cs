@@ -27,6 +27,7 @@ public sealed class PermissionsTests
         // SPEC-V2 2.2.
         { "agreements.read", true, true, true, true },
         { "agreements.manage", true, true, false, false },
+        { "portal.manage", true, true, false, false },
     };
 
     [Theory]

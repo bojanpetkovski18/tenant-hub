@@ -74,6 +74,30 @@ public static class ClientEndpoints
             })
             .RequirePermission(Permissions.ClientsDelete);
 
+        // Portal contacts (SPEC-V2 5.3): everyone who reads clients sees them; Owners and Admins add and remove them.
+        clients.MapGet("/{id:guid}/contacts", async (Guid id, ContactCommands contacts, CancellationToken ct) =>
+                TypedResults.Ok(await contacts.ListAsync(id, ct)))
+            .RequirePermission(Permissions.ClientsRead);
+
+        clients.MapPost("/{id:guid}/contacts", async (Guid id, AddContactRequest request, HttpContext context, ContactCommands contacts, CancellationToken ct) =>
+            {
+                var contact = await contacts.AddAsync(id, request.Name, request.Email, ct);
+                return TypedResults.Created($"/api/orgs/{context.Request.RouteValues["orgId"]}/contacts/{contact.Id}", contact);
+            })
+            .RequirePermission(Permissions.PortalManage);
+
+        // The contact's own id is enough: it belongs to one client, and the tenant filter keeps it in this organization.
+        app.MapTenantGroup().WithTags("Clients").MapDelete("/contacts/{id:guid}", async (Guid id, ContactCommands contacts, CancellationToken ct) =>
+            {
+                await contacts.RemoveAsync(id, ct);
+                return TypedResults.NoContent();
+            })
+            .RequirePermission(Permissions.PortalManage);
+
         return app;
     }
 }
+
+public sealed record AddContactRequest(
+    [property: Required(AllowEmptyStrings = true), MaxLength(500)] string Name,
+    [property: Required(AllowEmptyStrings = true), MaxLength(500)] string Email);

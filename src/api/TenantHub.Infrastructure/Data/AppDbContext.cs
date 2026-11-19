@@ -60,6 +60,12 @@ public sealed class AppDbContext(
 
     public DbSet<Agreement> Agreements => Set<Agreement>();
 
+    public DbSet<ClientContact> ClientContacts => Set<ClientContact>();
+
+    public DbSet<PortalSignInToken> PortalSignInTokens => Set<PortalSignInToken>();
+
+    public DbSet<WorkRequest> WorkRequests => Set<WorkRequest>();
+
     /// <summary>Side effects waiting for the dispatcher (D039); written through <see cref="IOutbox"/>.</summary>
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
@@ -69,10 +75,11 @@ public sealed class AppDbContext(
     internal Guid? CurrentOrganizationId => _tenant.OrganizationId;
 
     /// <summary>What <see cref="RowSecurityInterceptor"/> gives the database session; empty strings match no row.</summary>
-    internal (string Organization, string User, string Invitation) RowSecuritySettings => (
+    internal (string Organization, string User, string Invitation, string Client) RowSecuritySettings => (
         _tenant.OrganizationId?.ToString() ?? "",
         _rowSecurity.UserId?.ToString() ?? "",
-        _rowSecurity.InvitationTokenHash is { } hash ? Convert.ToHexStringLower(hash) : "");
+        _rowSecurity.InvitationTokenHash is { } hash ? Convert.ToHexStringLower(hash) : "",
+        _tenant.ClientId?.ToString() ?? "");
 
     /// <summary>The settings this context's connection last received; null when they must be applied again.</summary>
     internal string? AppliedRowSecurity { get; set; }

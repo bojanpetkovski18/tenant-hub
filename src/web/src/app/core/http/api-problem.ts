@@ -12,6 +12,8 @@ export interface ApiProblem {
   readonly limit?: PlanLimitDetail & { readonly plan: string };
   /** `plan-downgrade-blocked`: every limit the usage exceeds on the target plan. */
   readonly blocking?: readonly PlanLimitDetail[];
+  /** `plan-feature-loss`: the features in use that the target plan turns off (SPEC-V2 4.8). */
+  readonly features?: readonly string[];
 }
 
 export type LimitName = 'seats' | 'activeClients' | 'openJobs' | 'activeAgreements';
@@ -47,6 +49,9 @@ export function toApiProblem(error: unknown): ApiProblem {
         : undefined,
     blocking: Array.isArray(body['blocking'])
       ? body['blocking'].filter(isRecord).map(toLimit)
+      : undefined,
+    features: Array.isArray(body['features'])
+      ? body['features'].filter((f): f is string => typeof f === 'string')
       : undefined,
   };
 }

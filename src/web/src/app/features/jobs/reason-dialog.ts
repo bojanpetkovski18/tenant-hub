@@ -8,11 +8,19 @@ export interface ReasonOptions {
   readonly message: string;
   readonly confirmLabel: string;
   readonly danger?: boolean;
+  /** The field's label ("Reason" unless given). */
+  readonly label?: string;
+  /** May be left empty (a comment on a quote, SPEC-V2 5.4); empty comes back as "". */
+  readonly optional?: boolean;
+  readonly maxLength?: number;
+  /** Said when a required text is missing. */
+  readonly requiredMessage?: string;
 }
 
-const maxLength = 500;
-
-/** Asks for the reason a move needs (cancel, reopen: SPEC 5.4); it is recorded in the job's history. */
+/**
+ * Asks for the reason a move needs (cancel, reopen: SPEC 5.4; declining a request: SPEC-V2 5.5), or an optional
+ * comment (deciding on a quote). Null when the user goes back.
+ */
 @Component({
   selector: 'app-reason-dialog',
   host: {
@@ -23,7 +31,12 @@ const maxLength = 500;
     <h2 id="reason-title" class="text-lg font-semibold">{{ data.title }}</h2>
     <p id="reason-message" class="mt-2 text-sm text-muted">{{ data.message }}</p>
     <form class="mt-4" (submit)="$event.preventDefault(); submit()" novalidate>
-      <label class="th-label" for="reason">Reason</label>
+      <label class="th-label" for="reason"
+        >{{ data.label ?? 'Reason' }}
+        @if (data.optional) {
+          <span class="font-normal text-muted"> (optional)</span>
+        }
+      </label>
       <textarea
         #field
         id="reason"
@@ -52,14 +65,16 @@ const maxLength = 500;
 export class ReasonDialog {
   protected readonly data = inject<ReasonOptions>(DIALOG_DATA);
   protected readonly ref = inject<DialogRef<string | null>>(DialogRef);
-  protected readonly maxLength = maxLength;
+  protected readonly maxLength = this.data.maxLength ?? 500;
   protected readonly reason = signal('');
   protected readonly error = signal<string | null>(null);
 
   protected submit(): void {
     const reason = this.reason().trim();
-    if (!reason) {
-      this.error.set('Give a reason; it is kept in the job’s history.');
+    if (!reason && !this.data.optional) {
+      this.error.set(
+        this.data.requiredMessage ?? 'Give a reason; it is kept in the job’s history.',
+      );
       return;
     }
     this.ref.close(reason);
@@ -70,7 +85,7 @@ export class ReasonDialog {
 export class AskReason {
   private readonly dialog = inject(Dialog);
 
-  /** The trimmed reason, or null when the user goes back. */
+  /** The trimmed text ("" for an optional one left empty), or null when the user goes back. */
   async ask(options: ReasonOptions): Promise<string | null> {
     const ref = this.dialog.open<string | null, ReasonOptions>(ReasonDialog, {
       data: options,

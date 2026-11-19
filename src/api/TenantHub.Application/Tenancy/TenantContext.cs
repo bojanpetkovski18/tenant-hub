@@ -20,11 +20,15 @@ public sealed class TenantContext : ITenantContext
 
     public IReadOnlySet<string> Permissions { get; private set; } = NoPermissions;
 
+    public Guid? ClientId { get; private set; }
+
+    public Guid? ContactId { get; private set; }
+
     public bool HasPermission(string permission) => Permissions.Contains(permission);
 
     public void Enter(Guid organizationId, Guid userId, Role role)
     {
-        if (OrganizationId is { } current && (current != organizationId || UserId != userId))
+        if (OrganizationId is { } current && (current != organizationId || UserId != userId || ContactId is not null))
         {
             throw new InvalidOperationException("A scope works inside one organization for one user; it cannot switch.");
         }
@@ -41,11 +45,27 @@ public sealed class TenantContext : ITenantContext
     /// </summary>
     public void EnterAsSystem(Guid organizationId)
     {
-        if (OrganizationId is { } current && (current != organizationId || UserId is not null))
+        if (OrganizationId is { } current && (current != organizationId || UserId is not null || ContactId is not null))
         {
             throw new InvalidOperationException("A scope works inside one organization for one actor; it cannot switch.");
         }
 
         OrganizationId = organizationId;
+    }
+
+    /// <summary>
+    /// A portal request (SPEC-V2 3.2): the organization, client and contact come from the portal session only, after the
+    /// portal filter checked that all three still exist and are active. No user and no staff permissions.
+    /// </summary>
+    public void EnterAsContact(Guid organizationId, Guid clientId, Guid contactId)
+    {
+        if (OrganizationId is { } current && (current != organizationId || UserId is not null || ClientId != clientId || ContactId != contactId))
+        {
+            throw new InvalidOperationException("A scope works inside one organization for one actor; it cannot switch.");
+        }
+
+        OrganizationId = organizationId;
+        ClientId = clientId;
+        ContactId = contactId;
     }
 }

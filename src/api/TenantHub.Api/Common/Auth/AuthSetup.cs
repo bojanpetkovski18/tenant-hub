@@ -57,6 +57,8 @@ public static class AuthSetup
         builder.Services.AddAuthorizationBuilder()
             .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
 
+        builder.Services.AddPortalAuth(securePolicy);
+
         builder.Services.AddAntiforgery(options =>
         {
             options.HeaderName = "X-XSRF-TOKEN";
@@ -73,6 +75,7 @@ public static class AuthSetup
     public static WebApplication UseAppAuth(this WebApplication app)
     {
         app.UseAuthentication();
+        app.UseMiddleware<PortalPrincipalMiddleware>();
         app.UseAuthorization();
         app.UseMiddleware<AntiforgeryValidationMiddleware>();
         return app;

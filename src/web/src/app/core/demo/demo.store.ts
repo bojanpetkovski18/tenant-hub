@@ -15,6 +15,15 @@ export interface DemoInfo {
   readonly resetIntervalHours: number;
   readonly nextResetAt: string | null;
   readonly accounts: readonly DemoAccount[];
+  /** The portal "Try as a client" offers: the seeded contacts of this organization's portal (D040). */
+  readonly portalSlug?: string;
+  readonly portalContacts?: readonly DemoContact[];
+}
+
+export interface DemoContact {
+  readonly name: string;
+  readonly email: string;
+  readonly clientName: string;
 }
 
 /** What each role can do, in one line, for the sign-in buttons (the API's role map, SPEC 2, in words). */

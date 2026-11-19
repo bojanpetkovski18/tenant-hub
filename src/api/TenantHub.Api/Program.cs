@@ -15,6 +15,8 @@ using TenantHub.Api.Features.Demo;
 using TenantHub.Api.Features.Invitations;
 using TenantHub.Api.Features.Jobs;
 using TenantHub.Api.Features.Organizations;
+using TenantHub.Api.Features.Portal;
+using TenantHub.Api.Features.Requests;
 using TenantHub.Application;
 using TenantHub.Infrastructure;
 using TenantHub.Infrastructure.Data;
@@ -94,6 +96,8 @@ app.MapBoardEndpoints();
 app.MapAuditEndpoints();
 app.MapDashboardEndpoints();
 app.MapDemoEndpoints();
+app.MapPortalEndpoints();
+app.MapRequestEndpoints();
 foreach (var mapper in app.Services.GetServices<IEndpointMapper>())
 {
     mapper.Map(app);

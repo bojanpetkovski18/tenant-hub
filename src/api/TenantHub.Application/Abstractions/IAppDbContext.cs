@@ -31,6 +31,12 @@ public interface IAppDbContext
 
     DbSet<Agreement> Agreements { get; }
 
+    DbSet<ClientContact> ClientContacts { get; }
+
+    DbSet<PortalSignInToken> PortalSignInTokens { get; }
+
+    DbSet<WorkRequest> WorkRequests { get; }
+
     /// <summary>For optimistic concurrency: handlers set the version the client last saw as the original value.</summary>
     EntityEntry<TEntity> Entry<TEntity>(TEntity entity)
         where TEntity : class;

@@ -6,7 +6,8 @@ import { SessionStore } from './session.store';
 
 /**
  * A 401 on any API call except the auth endpoints means the session ended (signed out elsewhere, password
- * changed, cookie expired): forget it and send the user to sign in, then back to where they were.
+ * changed, cookie expired): forget it and send the user to sign in, then back to where they were. The portal has
+ * its own session and its own sign-in (D040), so its calls are left to the portal's interceptor.
  */
 export const authInterceptor: HttpInterceptorFn = (request, next) => {
   const session = inject(SessionStore);
@@ -17,7 +18,8 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
       if (
         error instanceof HttpErrorResponse &&
         error.status === 401 &&
-        !request.url.startsWith('/api/auth/')
+        !request.url.startsWith('/api/auth/') &&
+        !request.url.startsWith('/api/portal/')
       ) {
         session.clear();
         void router.navigate(['/sign-in'], { queryParams: { returnUrl: router.url } });

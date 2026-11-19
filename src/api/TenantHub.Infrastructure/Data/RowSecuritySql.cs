@@ -11,6 +11,11 @@ public static class RowSecuritySql
 {
     public const string TenantPolicy = "tenant_isolation";
 
+    public const string ClientPolicy = "client_isolation";
+
+    /// <summary>A portal session's client; unset (staff, the system) is null, which leaves the client policy open.</summary>
+    public const string CurrentClient = "nullif(current_setting('app.client_id', true), '')::uuid";
+
     /// <summary>The organization the session entered; an unset or empty value is null and matches no row.</summary>
     public const string CurrentOrganization = "nullif(current_setting('app.organization_id', true), '')::uuid";
 
@@ -30,6 +35,21 @@ public static class RowSecuritySql
                 USING (organization_id = {CurrentOrganization})
                 WITH CHECK (organization_id = {CurrentOrganization});
             """);
+
+    /// <summary>
+    /// The client boundary (SPEC-V2 3.2, D040): in a portal session (<c>app.client_id</c> set) a client-owned table shows
+    /// and accepts only that client's rows. RESTRICTIVE, so it narrows <see cref="TenantPolicy"/> and every permissive
+    /// policy instead of adding to them; without a client (staff) it changes nothing.
+    /// </summary>
+    public static void EnableClientIsolation(this MigrationBuilder migrationBuilder, string table, string column = "client_id") =>
+        migrationBuilder.Sql($"""
+            CREATE POLICY {ClientPolicy} ON {table} AS RESTRICTIVE
+                USING ({CurrentClient} IS NULL OR {column} = {CurrentClient})
+                WITH CHECK ({CurrentClient} IS NULL OR {column} = {CurrentClient});
+            """);
+
+    public static void DisableClientIsolation(this MigrationBuilder migrationBuilder, string table) =>
+        migrationBuilder.Sql($"DROP POLICY {ClientPolicy} ON {table};");
 
     public static void DisableTenantIsolation(this MigrationBuilder migrationBuilder, string table) =>
         migrationBuilder.Sql($"""

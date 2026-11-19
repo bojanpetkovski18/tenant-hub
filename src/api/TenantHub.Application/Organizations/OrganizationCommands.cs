@@ -32,7 +32,7 @@ public sealed class OrganizationCommands(
         return await overview.HandleAsync(cancellationToken);
     }
 
-    public async Task<OrganizationOverview> ChangePlanAsync(Plan? plan, CancellationToken cancellationToken)
+    public async Task<OrganizationOverview> ChangePlanAsync(Plan? plan, bool confirmFeatureLoss, CancellationToken cancellationToken)
     {
         if (plan is not { } target)
         {
@@ -42,7 +42,8 @@ public sealed class OrganizationCommands(
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         await locks.LockOrganizationAsync(tenant.OrganizationId!.Value, cancellationToken);
         var organization = await LoadAsync(cancellationToken);
-        if (organization.ChangePlan(target, await limits.UsageAsync(cancellationToken)))
+        var usage = await limits.UsageAsync(cancellationToken);
+        if (organization.ChangePlan(target, usage, await limits.FeaturesInUseAsync(cancellationToken), confirmFeatureLoss))
         {
             await db.SaveChangesAsync(cancellationToken);
         }

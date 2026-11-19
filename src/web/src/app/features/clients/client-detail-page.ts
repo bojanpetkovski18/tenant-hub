@@ -18,6 +18,7 @@ import { PagedList } from '../../shared/list/paged-list.store';
 import { JobStatusBadge } from '../jobs/job-badges';
 import { AgreementStatusBadge } from '../agreements/agreement-status-badge';
 import { AgreementListItem, AgreementsApi } from '../agreements/agreements.api';
+import { ClientContacts } from './client-contacts';
 import { JobListItem, JobsApi } from '../jobs/jobs.api';
 import { ClientStatusBadge } from './client-status-badge';
 import { Client, ClientsApi } from './clients.api';
@@ -26,6 +27,7 @@ import { Client, ClientsApi } from './clients.api';
 @Component({
   selector: 'app-client-detail-page',
   imports: [
+    ClientContacts,
     RouterLink,
     DatePipe,
     EmptyState,
@@ -224,6 +226,13 @@ import { Client, ClientsApi } from './clients.api';
           }
         </section>
       }
+
+      <app-client-contacts
+        [slug]="slug()"
+        [organizationId]="organizationId()"
+        [clientId]="client.id"
+        [clientActive]="client.status === 'active'"
+      />
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -242,6 +251,7 @@ export class ClientDetailPage {
   private readonly router = inject(Router);
 
   private readonly membership = computed(() => this.session.membershipBySlug(this.slug()));
+  protected readonly organizationId = computed(() => this.membership()?.organizationId ?? '');
   protected readonly canWrite = computed(() => this.session.can(this.slug(), 'clients.write'));
   // Absolute: ".." from a multi-segment route (clients/:id) would leave the clients section entirely.
   protected readonly listLink = computed(() => ['/o', this.slug(), 'clients']);

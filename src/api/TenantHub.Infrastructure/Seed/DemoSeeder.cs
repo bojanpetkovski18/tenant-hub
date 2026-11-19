@@ -38,7 +38,7 @@ public sealed partial class DemoSeeder(
 {
     public const string PasswordSetting = "DEMO_PASSWORD";
 
-    internal const string BrightlineSlug = "brightline-cleaning-co";
+    public const string BrightlineSlug = "brightline-cleaning-co";
     internal const string HarborPineSlug = "harbor-pine-landscaping";
 
     private static readonly SeedPerson[] People =
@@ -312,6 +312,12 @@ public sealed partial class DemoSeeder(
                 }
 
                 await context.SaveChangesAsync(cancellationToken);
+            }
+
+            if (seed.Slug == BrightlineSlug)
+            {
+                clock.Now = now;
+                await SeedPortalAsync(organization, ids[owner.Email], clock, cancellationToken);
             }
 
             LogSeededOrganization(logger, seed.Slug, steps.Count);

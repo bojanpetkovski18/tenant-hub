@@ -584,12 +584,36 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
     - The archive and restore matrix cases changed the shared standing client. A refused restore left it archived, so "create a job" for it failed with 400 whenever xUnit's order ran it later.
     - It failed on `dev` locally on 2026-11-17. Both cases now use a fresh client.
 
-## D040: Client contacts are a separate identity with email-link sign-in (pending M18)
+## D040: Client contacts are a separate identity with email-link sign-in (decided at M18, below)
 - **Date:** 2026-11-16
 - **Decision (proposed):** client contacts are rows in `client_contacts`, not ASP.NET Core Identity users. They sign in with a one-time link (hashed token, 15 minutes, single use) and get their own cookie scheme. Portal endpoints are a fourth endpoint class with their own isolation matrix, and row-level security also checks `client_id` in portal sessions.
 - **Why:** a contact belongs to exactly one client of one organization. Making contacts users would mix them into the membership model, where one mistake could give a client staff access. A cleaning company's clients will not keep a password for it. A separate scheme means a staff cookie never authenticates a portal request, and the reverse.
 - **Alternatives:** Identity users with a "contact" role (shared tables and code paths with staff); public tokenized links per visit (no session, no list of visits, links forwarded around); passwords (friction, and a second password-reset flow).
 - **Trade-offs:** sign-in depends on email, so the demo needs Mailpit or a demo shortcut like the v1 demo buttons (decided at M18).
+- **Decided at M18 (2026-11-18):**
+  - **Contacts** (`client_contacts`, tenant-owned and client-owned): at most 5 active per client, email unique among them (a filtered unique index as backstop), no seats. Removing is final: the row stays for the audit and the requests, and giving access again is a new contact, so an old session cannot come back to life. Adding one needs a verified staff email (SPEC-V2 4.1) and sends an invitation through the outbox that carries no secret, only the portal's address.
+  - **Sign-in.**
+    - The link is `/portal/{slug}/sign-in#token`: 32 random bytes, SHA-256 stored, 15 minutes, spent by one conditional `UPDATE … WHERE used_at IS NULL`, so two requests with one link sign in once.
+    - Asking always answers 202 with no body. Unknown portals, plans without the portal, unknown or removed contacts, archived clients and the cooldown all end silently.
+    - Rate limits: 5 link requests per address per 10 minutes, and one link a minute per contact (the per-email limit).
+    - The sign-in email is a secret outbox message, encrypted at rest and deleted once sent (D039).
+  - **No tenant bypass was needed.** Changed from SPEC-V2 8, which had approved one for portal sign-in. Before a session exists, the request names its organization by slug, as a staff route names it by id, and the handler enters that one organization with no user and no permissions. The tenant filter and row-level security then apply exactly as for any request: it reads one contact by email, or one link by its hash. So `POST /api/portal/sign-in/confirm` takes `{ orgSlug, token }` instead of `{ token }`; the SPA has the slug from its URL. No `AcrossTenants()` call or widened policy was added.
+  - **Session.**
+    - A cookie scheme of its own: `th_portal`, path `/api/portal`, `HttpOnly`, `SameSite=Strict`, `Secure` outside local http, 7 days, not sliding.
+    - A middleware gives every `/api/portal` request the portal identity or none, before authorization and antiforgery run. So a staff cookie cannot authorize a portal endpoint, a portal cookie never reaches a staff one, and portal antiforgery tokens are bound to the contact.
+    - The portal's `XSRF-TOKEN` cookie has path `/portal`. The portal pages read it before the staff one; the staff pages never see it.
+  - **Portal-scoped endpoints** are a fourth class (`MapPortalGroup`).
+    - The portal policy, then `PortalResolutionFilter`. On every request it checks that the plan has the portal, the client is active and the contact is not removed. Otherwise it clears the cookie and answers `401 portal-session-ended`.
+    - The scope enters as the contact (`TenantContext.EnterAsContact`): no user, no staff permissions.
+    - Handlers take the client from `PortalContext` and name it in every query.
+  - **The client boundary in the database:** `app.client_id` is set in portal sessions, and a RESTRICTIVE `client_isolation` policy on clients (by id), jobs, agreements, contacts and work requests narrows every other policy. Staff sessions leave it unset and are unaffected. The save guard refuses writes for another client, and the audit names the contact (`actor_kind = contact`).
+  - **Mutation checks (2026-11-18):**
+    - The handlers' client filters removed, policies kept: the portal matrix still passes, 22/22.
+    - The policies removed as well: 6/22 fail.
+    - `PortalResolutionFilter` removed: 23/49 portal tests fail.
+  - **Visits** are the client's jobs: upcoming means still open; past means completed or cancelled in the last 12 months. Contacts see the assignee's display name only.
+  - **Demo.** The seed gives three Brightline clients with an upcoming quoted job a contact (the client's own contact person), dated before the organization. In demo mode, which sends no email, `POST /api/portal/demo/sign-in` (404 otherwise) signs in such a contact without a link. Only contacts older than the organization qualify, so a contact a demo visitor adds is never offered or accepted.
+  - **Endpoint shape changes** (SPEC-V2 7 updated): `DELETE /contacts/{id}` instead of `/clients/{id}/contacts/{contactId}` (a contact belongs to one client; one id keeps the matrix uniform), and `GET /requests/open-count` for the sidebar.
 
 ## D041: Visits are jobs generated from agreements on a rolling horizon (decided at M16, below)
 - **Date:** 2026-11-16
@@ -646,11 +670,12 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
   - The form starts a new agreement on the organization's today (its time zone, from the loaded organization), not the browser's, and previews only when a schedule field changes.
   - `scheduled_tasks` is indexed on `due_at` for the claim (D039).
 
-## D042: Plan entitlements next to numeric limits (pending M18)
+## D042: Plan entitlements next to numeric limits (decided at M18, below)
 - **Date:** 2026-11-16
 - **Decision (proposed):** `PlanPolicy` gains features (portal; API and webhooks) and two limits (active agreements, file storage). A missing feature is `403 plan-feature-unavailable`. A downgrade that would turn features off needs a confirmation (`confirmFeatureLoss`) and keeps the data.
 - **Why:** real SaaS plans differ by feature as much as by quantity; checking both in one domain policy keeps the rules in one tested place (D013). Keeping data on downgrade makes an accidental downgrade reversible.
 - **Alternatives:** refusing the downgrade while a feature is in use (forces the Owner to delete contacts or webhooks first); feature flags outside the plan (a second system for the same question).
+- **Decided at M18 (2026-11-18):** `PlanFeatures` in the domain: the portal on Team and Business, integrations on Business (used from M21). A missing feature is `403 plan-feature-unavailable` with `feature` and the cheapest plan that has it; every contact, quote and request endpoint checks it. A feature is *in use* while it has data that would stop working: the portal while any client has an active contact. A downgrade checks limits first (`plan-downgrade-blocked`), then features in use: `409 plan-feature-loss` with `features` until the Owner repeats it with `confirmFeatureLoss: true`. The audit says what was turned off. Data is kept: contacts lose access at once (the portal filter checks the plan) and get it back with an upgrade. `GET /api/orgs/{orgId}` lists the plan's features and every plan's.
 
 ## D043: Uploaded photos are re-encoded and stored outside the database (pending M19)
 - **Date:** 2026-11-16
@@ -701,3 +726,23 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
 - **Indexes:** none added. EXPLAIN as `tenant_hub_app` with 500 jobs per organization: week cards 0.48 ms, queue 0.14 ms, load 0.22 ms, each through `ix_jobs_organization_id_client_id` (PROGRESS, Measured results). An `(organization_id, scheduled_on)` index is the change to make if one organization reaches tens of thousands of jobs.
 - **Seed:** one-off demo jobs get estimates (60–210 minutes, none on every seventh), taken from the job's index rather than the seeded random sequence so the rest of the demo data is unchanged.
 - **Alternatives:** a client-side week assembled from `GET /jobs` (one request per filter combination and the load computed in the browser); optimistic moves with rollback (more state, and a conflict would first show the wrong place); a separate "capacity per member" (SPEC-V2 out of scope).
+
+## D047: Quotes and work requests in the portal (M18)
+- **Date:** 2026-11-18
+- **Decision:**
+  - **Quotes (SPEC-V2 5.4).**
+    - The approval lives on the job (`approval_status` and who and when). Staff with `portal.manage` send a New or Scheduled job with a quoted amount, for a client with an active contact.
+    - While the approval is Pending or Declined, the job cannot move to In progress (`409 quote-not-approved`). This is the one condition added to the v1 transition table; the transition options show it as the reason.
+    - A contact decides once. The decision records the approved amount, the contact and an optional comment of up to 1,000 characters. The job's version check makes two contacts deciding at once one decision; the loser gets `409 quote-already-decided`.
+    - Jobs from before quotes default to NotRequested and behave exactly as in v1.
+  - **Reset.** Changing the amount *or the client* of a Pending or Approved quote resets it to NotRequested and records `job.quote_reset`. Wider than SPEC-V2 5.4, which names only an approved quote's amount: a pending quote with a new amount would otherwise be approved for a price the client never saw, and a new client's contacts would decide on another client's quote.
+  - **Work requests (SPEC-V2 5.5).**
+    - A request is client-owned. It stays Open until converted or declined, with no other moves. A contact may have at most 10 open requests, and the preferred day must not be before the organization's today.
+    - Converting is the job form, prefilled from the request through the URL; saving posts to `/requests/{id}/convert`. That creates the job (limit-checked like any new job) and converts the request in one transaction, through a hook in `JobCommands.CreateAsync`. The job is always for the request's client, whatever the form says, so the contact can follow it. It also needs `jobs.create`, checked in the handler, since a route declares one permission (D028).
+    - Declining needs a reason of 1–500 characters, which the contact reads.
+    - Deleting a job that a request became (a New job can be deleted) clears the link; the request stays converted. Otherwise the foreign key would turn the delete into a 500.
+  - **Staff screens:** the job page's "Client approval" panel (`canSend` and `cannotSend` from the API); the Requests inbox with the status in the URL and an open count in the navigation; the client page's portal contacts.
+  - **Portal screens:** its own lazy area and layout, and the 401 from a portal call goes to that portal's sign-in. Two defects found in the browser pass and fixed, each with a regression spec shown failing first:
+    - a link followed over an already open sign-in page changes only the fragment, which the page never read;
+    - a session answer from before the sign-in, arriving after it, put the contact back to signed out.
+- **Alternatives:** a separate quotes table (a job has one price; history is in the audit log); converting by a server-side copy without the form (staff could not adjust the job before it exists); keeping a deleted job's link (a dangling reference).

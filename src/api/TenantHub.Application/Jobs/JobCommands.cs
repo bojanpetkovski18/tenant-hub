@@ -40,7 +40,11 @@ public sealed class JobCommands(
     PlanLimitsCheck limits,
     TimeProvider time)
 {
-    public async Task<JobView> CreateAsync(JobInput input, CancellationToken cancellationToken)
+    /// <summary>
+    /// Creates a job. <paramref name="alongside"/> runs before the save, inside the same transaction and lock: converting a
+    /// work request into the job is one change, or none.
+    /// </summary>
+    public async Task<JobView> CreateAsync(JobInput input, CancellationToken cancellationToken, Func<Job, Task>? alongside = null)
     {
         var details = input.ToDetails();
         await EnsureReferencesAsync(details, current: null, cancellationToken);
@@ -54,6 +58,11 @@ public sealed class JobCommands(
         await limits.EnsureRoomForAsync(LimitKind.OpenJobs, cancellationToken);
         var job = Job.Create(organization.Id, organization.TakeJobNumber(), details, views.Actor(), names, time.GetUtcNow());
         db.Jobs.Add(job);
+        if (alongside is not null)
+        {
+            await alongside(job);
+        }
+
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return await views.ForAsync(job, cancellationToken);
@@ -128,6 +137,17 @@ public sealed class JobCommands(
         return await views.ForAsync(job, cancellationToken);
     }
 
+    /// <summary>Sends the job's quote to the client's contacts for approval (US-83, SPEC-V2 5.4); a portal feature.</summary>
+    public async Task<JobView> SendQuoteAsync(Guid id, CancellationToken cancellationToken)
+    {
+        await limits.EnsureFeatureAsync(PlanFeature.Portal, cancellationToken);
+        var job = await LoadAsync(id, cancellationToken);
+        var contacts = await db.ClientContacts.CountAsync(c => c.ClientId == job.ClientId && c.RemovedAt == null, cancellationToken);
+        job.SendForApproval(tenant.UserId!.Value, contacts, time.GetUtcNow());
+        await SaveAsync(cancellationToken);
+        return await views.ForAsync(job, cancellationToken);
+    }
+
     /// <summary>Skips one visit of an agreement (SPEC-V2 5.1): cancelled as "Skipped", and its date is never generated again.</summary>
     public async Task<JobView> SkipAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -141,6 +161,12 @@ public sealed class JobCommands(
     {
         var job = await LoadAsync(id, cancellationToken);
         job.MarkDeleted(views.Actor());
+        // A request converted into this job stays converted; it no longer links to a job that is gone.
+        foreach (var request in await db.WorkRequests.Where(r => r.JobId == id).ToListAsync(cancellationToken))
+        {
+            request.ForgetJob();
+        }
+
         db.Jobs.Remove(job);
         await SaveAsync(cancellationToken);
     }

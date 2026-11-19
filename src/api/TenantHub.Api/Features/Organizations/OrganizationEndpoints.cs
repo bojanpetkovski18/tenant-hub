@@ -18,7 +18,8 @@ public sealed record UpdateOrganizationRequest(
     [property: Required(AllowEmptyStrings = true), MaxLength(64)] string TimeZone,
     int? DailyCapacityMinutes = null);
 
-public sealed record ChangePlanRequest(Plan? Plan);
+/// <summary><c>ConfirmFeatureLoss</c>: the Owner saw which features the downgrade turns off (SPEC-V2 4.8).</summary>
+public sealed record ChangePlanRequest(Plan? Plan, bool ConfirmFeatureLoss = false);
 
 public sealed record DeleteOrganizationRequest(string? ConfirmName);
 
@@ -59,7 +60,7 @@ public static partial class OrganizationEndpoints
 
         // Demo billing (SPEC 4.1): no payment; a downgrade that does not fit is 409 with the blocking limits.
         organization.MapPut("/plan", async (ChangePlanRequest request, OrganizationCommands commands, CancellationToken ct) =>
-                TypedResults.Ok(await commands.ChangePlanAsync(request.Plan, ct)))
+                TypedResults.Ok(await commands.ChangePlanAsync(request.Plan, request.ConfirmFeatureLoss, ct)))
             .RequirePermission(Permissions.BillingManage);
 
         organization.MapDelete("/", async (
