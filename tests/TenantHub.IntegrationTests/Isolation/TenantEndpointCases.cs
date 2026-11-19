@@ -49,6 +49,15 @@ public enum CaseResource
     /// <summary>An open work request created just for this request (converting and declining use it up).</summary>
     FreshRequest,
 
+    /// <summary>A required checklist item on a new job assigned to the caller's role (edits and removals change it).</summary>
+    FreshChecklistItem,
+
+    /// <summary>The photo on the organization's standing job.</summary>
+    Photo,
+
+    /// <summary>A photo on a new job assigned to the caller's role (removals use it up).</summary>
+    FreshPhoto,
+
     /// <summary>
     /// A new organization standing in for the requested one (for deletes, which use it up): like A (A's role users,
     /// same roles) when A is requested, owned by B's Owner when B is, and a random id otherwise.
@@ -78,6 +87,9 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
 
     public Func<CaseInput, Task<object>>? Body { get; init; }
 
+    /// <summary>A file upload instead of a JSON body (<c>multipart/form-data</c>, M19).</summary>
+    public Func<CaseInput, byte[]>? Upload { get; init; }
+
     /// <summary>Undoes what the call (or its Arrange) did to the shared fixture; runs after every call, whatever the answer.</summary>
     public Func<CaseInput, Task>? Restore { get; init; }
 
@@ -97,6 +109,8 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         CaseResource.Agreement or CaseResource.FreshAgreement => "agreement-not-found",
         CaseResource.FreshContact => "contact-not-found",
         CaseResource.FreshRequest => "request-not-found",
+        CaseResource.FreshChecklistItem => "checklist-item-not-found",
+        CaseResource.Photo or CaseResource.FreshPhoto => "photo-not-found",
         _ => throw new InvalidOperationException($"{Key} takes no id."),
     };
 
@@ -111,6 +125,8 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         CaseResource.Agreement or CaseResource.FreshAgreement => tenants.AgreementB,
         CaseResource.FreshContact => tenants.ContactB,
         CaseResource.FreshRequest => tenants.RequestB,
+        CaseResource.FreshChecklistItem => tenants.ChecklistItemB,
+        CaseResource.Photo or CaseResource.FreshPhoto => tenants.PhotoB,
         _ => throw new InvalidOperationException($"{Key} takes no id."),
     };
 
@@ -277,6 +293,42 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
             },
         },
 
+        // The proof of the work (SPEC-V2 7, M19): the checklist and photos. Changes go to jobs assigned to the caller.
+        new("GET", "/jobs/{id:guid}/checklist", Permissions.JobsRead) { Resource = CaseResource.Job },
+        new("POST", "/jobs/{id:guid}/checklist", Permissions.JobsWork)
+        {
+            Resource = CaseResource.FreshJob,
+            Audited = true,
+            Body = _ => Task.FromResult<object>(new { text = "Wipe the counters", required = true }),
+        },
+        new("PUT", "/jobs/{id:guid}/checklist/{itemId:guid}", Permissions.JobsWork)
+        {
+            Resource = CaseResource.FreshChecklistItem,
+            Audited = true,
+            Body = _ => Task.FromResult<object>(new { done = true }),
+        },
+        new("DELETE", "/jobs/{id:guid}/checklist/{itemId:guid}", Permissions.JobsWork)
+        {
+            Resource = CaseResource.FreshChecklistItem,
+            Audited = true,
+        },
+        new("GET", "/jobs/{id:guid}/photos", Permissions.JobsRead) { Resource = CaseResource.Job },
+        new("POST", "/jobs/{id:guid}/photos", Permissions.JobsWork)
+        {
+            Resource = CaseResource.FreshJob,
+            Allowed = HttpStatusCode.Created,
+            Audited = true,
+            Upload = _ => TestImages.Jpeg(),
+        },
+        new("GET", "/jobs/{id:guid}/photos/{photoId:guid}", Permissions.JobsRead) { Resource = CaseResource.Photo },
+        new("GET", "/jobs/{id:guid}/photos/{photoId:guid}/thumbnail", Permissions.JobsRead) { Resource = CaseResource.Photo },
+        new("DELETE", "/jobs/{id:guid}/photos/{photoId:guid}", Permissions.JobsWork)
+        {
+            Resource = CaseResource.FreshPhoto,
+            Allowed = HttpStatusCode.NoContent,
+            Audited = true,
+        },
+
         // Visits of agreements (SPEC-V2 7, M16).
         new("POST", "/jobs/{id:guid}/quote", Permissions.PortalManage)
         {
@@ -403,6 +455,9 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
             CaseResource.FreshVisit => await tenants.CreateVisitAsync(organizationId),
             CaseResource.FreshContact => await tenants.CreateContactAsync(organizationId),
             CaseResource.FreshRequest => await tenants.CreateRequestAsync(organizationId),
+            CaseResource.FreshChecklistItem => await tenants.CreateChecklistItemAsync(organizationId, assignTo: caller),
+            CaseResource.Photo => tenants.PhotoIn(organizationId),
+            CaseResource.FreshPhoto => await tenants.CreatePhotoAsync(organizationId, assignTo: caller),
             _ => null,
         };
         var input = new CaseInput(tenants, organizationId, resourceId);
@@ -421,7 +476,13 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
 
     public async Task<HttpResponseMessage> SendAsync(BrowserClient client, CaseInput input)
     {
-        var path = $"/api/orgs/{input.OrganizationId}{IdSegment().Replace(Pattern, input.ResourceId?.ToString() ?? "")}";
+        // Two ids (a job's checklist item or photo): the first is the job, the second the resource.
+        var ids = IdSegment().Count(Pattern);
+        var segment = 0;
+        var path = $"/api/orgs/{input.OrganizationId}" + IdSegment().Replace(Pattern, _ =>
+            ids == 2 && segment++ == 0 && input.ResourceId is { } resource
+                ? input.Tenants.JobForRoute(input.OrganizationId, resource).ToString()
+                : input.ResourceId?.ToString() ?? "");
         if (Pattern == ApiFactory.IsolationViolationPattern)
         {
             path += $"?targetOrganizationId={input.Tenants.OrgB}";
@@ -429,15 +490,17 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
 
         var body = Body is null ? new { } : await Body(input);
         var ct = TestContext.Current.CancellationToken;
-        var response = Method switch
-        {
-            "GET" => await client.Http.GetAsync(path, ct),
-            "POST" => await client.PostJsonAsync(path, body),
-            "PUT" => await client.SendJsonAsync(HttpMethod.Put, path, body),
-            "PATCH" => await client.PatchJsonAsync(path, body),
-            "DELETE" => await client.SendJsonAsync(HttpMethod.Delete, path, Body is null ? null : body),
-            _ => throw new NotSupportedException(Method),
-        };
+        var response = Upload is not null
+            ? await client.UploadAsync(path, Upload(input))
+            : Method switch
+            {
+                "GET" => await client.Http.GetAsync(path, ct),
+                "POST" => await client.PostJsonAsync(path, body),
+                "PUT" => await client.SendJsonAsync(HttpMethod.Put, path, body),
+                "PATCH" => await client.PatchJsonAsync(path, body),
+                "DELETE" => await client.SendJsonAsync(HttpMethod.Delete, path, Body is null ? null : body),
+                _ => throw new NotSupportedException(Method),
+            };
 
         if (Restore is not null)
         {

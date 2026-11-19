@@ -119,6 +119,70 @@ public sealed class RowSecurityTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Every_table_of_a_jobs_own_rows_has_the_client_policy_through_the_job()
+    {
+        // Checklist items and photos have no client of their own (M19): their restrictive policy reads the job.
+        var tenants = await SharedApiTenants.GetAsync<RowSecurityTests>(postgres);
+        List<string> tables;
+        using (var db = PostgresFixture.CreateDbContext(tenants.ConnectionString))
+        {
+            tables = [.. db.Model.GetEntityTypes()
+                .Where(t => typeof(ITenantOwned).IsAssignableFrom(t.ClrType) && !typeof(IClientOwned).IsAssignableFrom(t.ClrType)
+                    && t.FindProperty("JobId") is { IsNullable: false })
+                .Select(t => t.GetTableName()!)
+                .Order(StringComparer.Ordinal)];
+        }
+
+        await using var connection = await OpenAsOwnerAsync(tenants.ConnectionString);
+        var missing = new List<string>();
+        foreach (var table in tables)
+        {
+            await using var command = new NpgsqlCommand(
+                """
+                SELECT EXISTS (SELECT 1 FROM pg_policies p
+                    WHERE p.schemaname = 'public' AND p.tablename = @table AND p.policyname = @policy
+                        AND p.permissive = 'RESTRICTIVE' AND p.cmd = 'ALL'
+                        AND p.qual LIKE '%app.client_id%' AND p.qual LIKE '%jobs%'
+                        AND p.with_check LIKE '%app.client_id%' AND p.with_check LIKE '%jobs%')
+                """,
+                connection);
+            command.Parameters.AddWithValue("policy", RowSecuritySql.ClientPolicy);
+            command.Parameters.AddWithValue("table", table);
+            if (await command.ExecuteScalarAsync(Ct) is not true)
+            {
+                missing.Add(table);
+            }
+        }
+
+        Assert.Equal(["attachments", "checklist_items"], tables);
+        Assert.True(missing.Count == 0, $"Tables of a job's rows without the client policy (call EnableClientIsolationThroughJob): {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public async Task With_a_client_set_a_jobs_checklist_and_photos_are_seen_only_through_that_clients_jobs()
+    {
+        var tenants = await SharedApiTenants.GetAsync<RowSecurityTests>(postgres);
+        var mine = await tenants.CreateClientAsync(tenants.OrgA, $"Proof Client {Guid.NewGuid():N}");
+        var job = await tenants.CreateJobAsync(tenants.OrgA, clientId: mine);
+        await tenants.CreateChecklistItemAsync(tenants.OrgA, job);
+        await tenants.CreatePhotoAsync(tenants.OrgA, job);
+        await using var portal = await OpenAsApiAsync(tenants.ConnectionString, organization: tenants.OrgA, client: mine);
+        await using var staff = await OpenAsApiAsync(tenants.ConnectionString, organization: tenants.OrgA);
+
+        foreach (var table in new[] { "checklist_items", "attachments" })
+        {
+            Assert.True(await CountAsync(staff, $"SELECT count(*) FROM {table} WHERE job_id <> '{job}'") > 0, $"{table}: no other client's rows to hide");
+            Assert.Equal(1L, await CountAsync(portal, $"SELECT count(*) FROM {table}"));
+            Assert.Equal(0, await ExecuteAsync(portal, $"DELETE FROM {table} WHERE job_id = '{tenants.JobA}'"));
+        }
+
+        // A row cannot be moved onto another client's job either.
+        var moved = await Assert.ThrowsAsync<PostgresException>(() =>
+            ExecuteAsync(portal, $"UPDATE checklist_items SET job_id = '{tenants.JobA}' WHERE job_id = '{job}'"));
+        Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, moved.SqlState);
+    }
+
+    [Fact]
     public async Task The_only_way_past_the_policies_is_the_reviewed_definer_function()
     {
         // A SECURITY DEFINER function runs as the owner, whom the policies do not bind: each one is a bypass and

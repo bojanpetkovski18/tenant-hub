@@ -20,8 +20,8 @@ public enum GenerationHold
 }
 
 /// <summary>
-/// What every visit of an agreement starts as (SPEC-V2 4.2): the job fields a generated visit copies. The checklist
-/// joins in M19. <see cref="Validate"/> uses the job rules, keyed by the API's property names.
+/// What every visit of an agreement starts as (SPEC-V2 4.2): the job fields a generated visit copies, and its checklist
+/// (SPEC-V2 4.5). <see cref="Validate"/> uses the job rules, keyed by the API's property names.
 /// </summary>
 public sealed record AgreementTemplate(
     string Title,
@@ -31,17 +31,24 @@ public sealed record AgreementTemplate(
     decimal? QuotedAmount,
     int? EstimatedMinutes)
 {
+    /// <summary>The checklist each visit starts with; empty when the visits have none.</summary>
+    public IReadOnlyList<ChecklistEntry> Checklist { get; init; } = [];
+
     public static AgreementTemplate Validate(
         string? title,
         string? description,
         Guid? assigneeUserId,
         JobPriority? priority,
         decimal? quotedAmount,
-        int? estimatedMinutes)
+        int? estimatedMinutes,
+        IReadOnlyList<(string? Text, bool? Required)>? checklist = null)
     {
         // The job's own rules; the client is the agreement's, so a placeholder satisfies that check.
         var details = JobDetails.Validate(title, description, Guid.NewGuid(), assigneeUserId, priority, null, null, quotedAmount, estimatedMinutes);
-        return new AgreementTemplate(details.Title, details.Description, details.AssigneeUserId, details.Priority, details.QuotedAmount, details.EstimatedMinutes);
+        return new AgreementTemplate(details.Title, details.Description, details.AssigneeUserId, details.Priority, details.QuotedAmount, details.EstimatedMinutes)
+        {
+            Checklist = ChecklistEntry.ValidateList(checklist),
+        };
     }
 
     /// <summary>The job a visit on <paramref name="occurrence"/> is: scheduled and due on that date.</summary>
@@ -78,6 +85,9 @@ public sealed class Agreement : AggregateRoot, IClientOwned
 
     public int? EstimatedMinutes { get; private set; }
 
+    /// <summary>The checklist copied into each generated visit (SPEC-V2 4.5); stored as one jsonb document.</summary>
+    public IReadOnlyList<ChecklistEntry> ChecklistTemplate { get; private set; } = [];
+
     public Recurrence Recurrence { get; private set; } = null!;
 
     public DateOnly StartsOn { get; private set; }
@@ -102,7 +112,7 @@ public sealed class Agreement : AggregateRoot, IClientOwned
     /// <summary>Optimistic-concurrency token; the database bumps it on every update.</summary>
     public uint Version { get; private set; }
 
-    public AgreementTemplate Template => new(Title, Description, AssigneeUserId, Priority, QuotedAmount, EstimatedMinutes);
+    public AgreementTemplate Template => new(Title, Description, AssigneeUserId, Priority, QuotedAmount, EstimatedMinutes) { Checklist = ChecklistTemplate };
 
     public Schedule Schedule => new(Recurrence, StartsOn, EndsOn, MaxVisits);
 
@@ -249,6 +259,7 @@ public sealed class Agreement : AggregateRoot, IClientOwned
         ("priority", JobLabels.Of(template.Priority)),
         ("quotedAmount", JobDetails.Money(template.QuotedAmount)),
         ("estimatedMinutes", JobDetails.Minutes(template.EstimatedMinutes)),
+        ("checklist", template.Checklist.Count == 0 ? null : string.Join("; ", template.Checklist.Select(e => e.Required ? $"{e.Text} (required)" : e.Text))),
         ("recurrence", schedule.Recurrence.Describe()),
         ("startsOn", JobDetails.Date(schedule.StartsOn)),
         ("endsOn", JobDetails.Date(schedule.EndsOn)),
@@ -273,6 +284,7 @@ public sealed class Agreement : AggregateRoot, IClientOwned
         Priority = template.Priority;
         QuotedAmount = template.QuotedAmount;
         EstimatedMinutes = template.EstimatedMinutes;
+        ChecklistTemplate = template.Checklist;
         Recurrence = schedule.Recurrence;
         StartsOn = schedule.StartsOn;
         EndsOn = schedule.EndsOn;

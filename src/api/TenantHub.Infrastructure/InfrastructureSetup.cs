@@ -6,10 +6,12 @@ using TenantHub.Application.Abstractions;
 using TenantHub.Application.Accounts;
 using TenantHub.Application.Agreements;
 using TenantHub.Application.Demo;
+using TenantHub.Application.Jobs;
 using TenantHub.Application.Portal;
 using TenantHub.Infrastructure.Background;
 using TenantHub.Infrastructure.Data;
 using TenantHub.Infrastructure.Email;
+using TenantHub.Infrastructure.Files;
 using TenantHub.Infrastructure.Identity;
 using TenantHub.Infrastructure.Seed;
 
@@ -32,6 +34,10 @@ public static class InfrastructureSetup
         services.AddScoped<DemoReset>();
         services.AddScoped<IDemoAccounts, DemoAccounts>();
         services.AddAppEmail(configuration, demo);
+        // Photos (D043): files on a local directory, decoded and re-encoded by SkiaSharp.
+        services.AddSingleton(configuration.GetSection(FileStoreOptions.Section).Get<FileStoreOptions>() ?? new FileStoreOptions());
+        services.AddSingleton<IFileStore, LocalFileStore>();
+        services.AddSingleton<IPhotoProcessor, SkiaPhotoProcessor>();
         services.AddBackgroundWork(configuration, demo);
         return services;
     }
@@ -45,7 +51,9 @@ public static class InfrastructureSetup
         services.AddSingleton<OutboxDispatcher>();
         services.AddSingleton<Scheduler>();
         services.AddOutboxHandler<EmailOutboxHandler>(AccountEmails.PasswordReset, AccountEmails.Verification, PortalEmails.Invitation, PortalEmails.SignIn);
+        services.AddOutboxHandler<FileCleanupHandler>(FileCleanup.Type);
         services.AddScheduledTask<OutboxRetentionTask>(OutboxRetentionTask.Name);
+        services.AddScheduledTask<FileSweepTask>(FileSweepTask.Name);
         services.AddScheduledTask<AgreementGenerationTask>(IRecurringWork.DailyGeneration, perOrganization: true);
         services.AddScoped<IRecurringWork, RecurringWork>();
         if (demo.Enabled)

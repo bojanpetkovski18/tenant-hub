@@ -24,6 +24,8 @@ public sealed class Job : AggregateRoot, IClientOwned
         ["estimatedMinutes"] = "estimated time",
     };
 
+    private readonly List<ChecklistItem> _checklist = [];
+
     private Job()
     {
     }
@@ -87,6 +89,18 @@ public sealed class Job : AggregateRoot, IClientOwned
     public Guid? ApprovalDecidedByContactId { get; private set; }
 
     public string? ApprovalComment { get; private set; }
+
+    /// <summary>The client's sign-off on a completed visit (SPEC-V2 5.6): once, cleared when the job is reopened.</summary>
+    public ClientFeedback? ClientFeedback { get; private set; }
+
+    public string? ClientFeedbackText { get; private set; }
+
+    public DateTimeOffset? ClientFeedbackAt { get; private set; }
+
+    public Guid? ClientFeedbackByContactId { get; private set; }
+
+    /// <summary>The items in no particular order (as loaded); <see cref="ChecklistItem.Position"/> orders them.</summary>
+    public IReadOnlyList<ChecklistItem> Checklist => _checklist;
 
     /// <summary>Optimistic-concurrency token; the database bumps it on every update.</summary>
     public uint Version { get; private set; }
@@ -253,9 +267,14 @@ public sealed class Job : AggregateRoot, IClientOwned
             UpdatedAt = now,
         };
         job.Apply(details);
+        job.ReplaceChecklist(agreement.Template.Checklist, now);
         var empty = new JobDetails("", null, Guid.Empty, null, details.Priority, null, null, null);
         var changes = empty.ChangesTo(details, names).Select(c => c with { From = null }).ToList();
         changes.Add(new FieldChange("status", null, JobLabels.Of(job.Status)));
+        if (job._checklist.Count > 0)
+        {
+            changes.Add(new FieldChange("checklist", null, Checklists.Describe(job._checklist.Count)));
+        }
         job.Raise(new JobEvent(job, "job.created", $"Created {job.Label} “{job.Title}” for {JobDetails.Date(occurrence)}", changes, agreement.SystemActor));
         return job;
     }
@@ -346,12 +365,26 @@ public sealed class Job : AggregateRoot, IClientOwned
             changes.Add(new FieldChange("status", JobLabels.Of(Status), JobLabels.Of(status)));
         }
 
+        // The checklist follows too, while nothing on it is ticked (a person's edits already stop all of this).
+        var template = agreement.Template.Checklist;
+        var checklistFollows = !_checklist.Any(i => i.IsDone)
+            && !OrderedChecklist().Select(i => new ChecklistEntry(i.Text, i.Required)).SequenceEqual(template);
+        if (checklistFollows)
+        {
+            changes.Add(new FieldChange("checklist", Checklists.Describe(_checklist.Count), Checklists.Describe(template.Count)));
+        }
+
         if (changes.Count == 0)
         {
             return false;
         }
 
         Apply(details);
+        if (checklistFollows)
+        {
+            ReplaceChecklist(template, now);
+        }
+
         Status = status;
         UpdatedAt = now;
         var fields = string.Join(", ", changes.Select(c => FieldLabels.GetValueOrDefault(c.Field, c.Field)));
@@ -399,6 +432,12 @@ public sealed class Job : AggregateRoot, IClientOwned
             throw new DomainException("quote-not-approved", why);
         }
 
+        // SPEC-V2 5.6: and work is complete only with every required checklist item done.
+        if (target == JobStatus.Completed && Checklists.WhyNotComplete(_checklist) is { } incomplete)
+        {
+            throw new ChecklistIncompleteException(incomplete, [.. OrderedChecklist().Where(i => i.Required && !i.IsDone)]);
+        }
+
         var missing = MissingFor(transition, reason, checkReason: true);
         if (missing.Count > 0)
         {
@@ -415,6 +454,13 @@ public sealed class Job : AggregateRoot, IClientOwned
         if (normalizedReason is not null)
         {
             changes.Add(new FieldChange("reason", null, normalizedReason));
+        }
+
+        // The client signed off the work as it was; reopened work needs a new sign-off (SPEC-V2 5.6).
+        if (from == JobStatus.Completed && ClientFeedback is { } feedback)
+        {
+            changes.Add(new FieldChange("clientFeedback", ClientFeedbacks.Label(feedback), null));
+            ClearFeedback();
         }
 
         var verb = (from, target) switch
@@ -438,8 +484,196 @@ public sealed class Job : AggregateRoot, IClientOwned
                 t.To,
                 t.NeedsReason,
                 (t.To == JobStatus.InProgress ? JobQuotes.WhyNotStart(ApprovalStatus) : null)
+                    ?? (t.To == JobStatus.Completed ? Checklists.WhyNotComplete(_checklist) : null)
                     ?? MissingFor(t, reason: null, checkReason: false).Values.FirstOrDefault()?[0])),
     ];
+
+    /// <summary>The checklist in its order.</summary>
+    public IReadOnlyList<ChecklistItem> OrderedChecklist() => [.. _checklist.OrderBy(i => i.Position)];
+
+    /// <summary>
+    /// The proof of the work (checklist and photos, SPEC-V2 5.6) is changed by whoever may edit the job, while it is open:
+    /// a completed job's proof is what the client signs off, so it stays as it is until the job is reopened.
+    /// </summary>
+    public void EnsureProofEditable(JobActor actor)
+    {
+        if (!CanEdit(actor))
+        {
+            throw new DomainException("job-not-yours", "You can only change the checklist and photos of jobs assigned to you.", DomainErrorKind.Forbidden);
+        }
+
+        if (!Status.IsOpen())
+        {
+            throw new DomainException("job-closed", $"{Label} is {JobLabels.Of(Status)}. Reopen it to change its checklist or photos.");
+        }
+    }
+
+    public ChecklistItem AddChecklistItem(ChecklistEntry entry, JobActor actor, DateTimeOffset now)
+    {
+        EnsureProofEditable(actor);
+        if (_checklist.Count >= Checklists.MaxItems)
+        {
+            throw new DomainException("checklist-full", $"A checklist has at most {Checklists.MaxItems} items.");
+        }
+
+        var item = ChecklistItem.Create(this, _checklist.Count, entry, now);
+        _checklist.Add(item);
+        MarkEditedByHand(now);
+        Raise(new JobEvent(
+            this,
+            "job.checklist_item_added",
+            $"Added “{entry.Text}”{(entry.Required ? " (required)" : "")} to the checklist of {Label}",
+            [new FieldChange("item", null, entry.Text)]));
+        return item;
+    }
+
+    /// <summary>
+    /// Changes an item's text, whether it is required, whether it is done, and its place. Ticking is work, not an edit of
+    /// the visit: it leaves the job row alone, so ticking never conflicts with someone editing the job.
+    /// Returns false when nothing changed.
+    /// </summary>
+    public bool ChangeChecklistItem(Guid itemId, ChecklistChange change, JobActor actor, DateTimeOffset now)
+    {
+        var item = FindItem(itemId);
+        EnsureProofEditable(actor);
+        var changed = false;
+
+        var entry = ChecklistEntry.Validate(change.Text ?? item.Text, change.Required ?? item.Required);
+        if (entry.Text != item.Text || entry.Required != item.Required)
+        {
+            var fieldChanges = new List<FieldChange>();
+            if (entry.Text != item.Text)
+            {
+                fieldChanges.Add(new FieldChange("item", item.Text, entry.Text));
+            }
+
+            if (entry.Required != item.Required)
+            {
+                fieldChanges.Add(new FieldChange("required", YesNo(item.Required), YesNo(entry.Required)));
+            }
+
+            Raise(new JobEvent(this, "job.checklist_item_changed", $"Changed “{item.Text}” on the checklist of {Label}", fieldChanges));
+            item.Apply(entry);
+            MarkEditedByHand(now);
+            changed = true;
+        }
+
+        if (change.Done is { } done && done != item.IsDone)
+        {
+            item.Tick(done, actor.UserId, now);
+            Raise(new JobEvent(
+                this,
+                done ? "job.checklist_item_ticked" : "job.checklist_item_unticked",
+                $"{(done ? "Ticked" : "Unticked")} “{item.Text}” on the checklist of {Label}",
+                [new FieldChange("done", YesNo(!done), YesNo(done))]));
+            changed = true;
+        }
+
+        if (change.Position is { } position && Math.Clamp(position, 0, _checklist.Count - 1) is var place && place != item.Position)
+        {
+            var ordered = OrderedChecklist().Where(i => i != item).ToList();
+            ordered.Insert(place, item);
+            Renumber(ordered);
+            MarkEditedByHand(now);
+            Raise(new JobEvent(
+                this,
+                "job.checklist_item_moved",
+                $"Moved “{item.Text}” to place {place + 1} of {_checklist.Count} on the checklist of {Label}",
+                [new FieldChange("place", null, Text(place + 1))]));
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    /// <summary>Takes the item off the checklist; the save deletes its row (it belongs to the job).</summary>
+    public void RemoveChecklistItem(Guid itemId, JobActor actor, DateTimeOffset now)
+    {
+        var item = FindItem(itemId);
+        EnsureProofEditable(actor);
+        _checklist.Remove(item);
+        Renumber(OrderedChecklist());
+        MarkEditedByHand(now);
+        Raise(new JobEvent(this, "job.checklist_item_removed", $"Removed “{item.Text}” from the checklist of {Label}", [new FieldChange("item", item.Text, null)]));
+    }
+
+    /// <summary>
+    /// Adds a photo whose files are already written (SPEC-V2 5.6). <paramref name="photosOnJob"/> is counted by the caller
+    /// under the organization lock, together with the storage limit.
+    /// </summary>
+    public Attachment AddPhoto(StoredPhoto photo, int photosOnJob, JobActor actor, DateTimeOffset now)
+    {
+        EnsureRoomForPhoto(photosOnJob, actor);
+        var attachment = Attachment.Create(this, photo, actor.UserId, now);
+        Raise(new JobEvent(this, "job.photo_added", $"Added a photo to {Label}", [new FieldChange("photos", Text(photosOnJob), Text(photosOnJob + 1))]));
+        return attachment;
+    }
+
+    /// <summary>Whether one more photo may be added: checked before an upload is processed, and again under the lock.</summary>
+    public void EnsureRoomForPhoto(int photosOnJob, JobActor actor)
+    {
+        EnsureProofEditable(actor);
+        if (photosOnJob >= Checklists.MaxPhotos)
+        {
+            throw new DomainException("photo-limit-reached", $"A job has at most {Checklists.MaxPhotos} photos. Remove one first.");
+        }
+    }
+
+    /// <summary>Records the removal; the caller deletes the row and has its files removed after the commit.</summary>
+    public void RemovePhoto(Attachment photo, int photosOnJob, JobActor actor)
+    {
+        if (photo.JobId != Id)
+        {
+            throw new InvalidOperationException("The photo belongs to another job.");
+        }
+
+        EnsureProofEditable(actor);
+        Raise(new JobEvent(this, "job.photo_removed", $"Removed a photo from {Label}", [new FieldChange("photos", Text(photosOnJob), Text(photosOnJob - 1))]));
+    }
+
+    /// <summary>
+    /// The contact's sign-off on a completed visit (SPEC-V2 5.6): "looks good", or a problem in their own words. Once, and
+    /// it does not reopen the job. The audit names the contact (their portal session is the scope).
+    /// </summary>
+    public void RecordFeedback(bool confirmed, string? text, Guid contactId, DateTimeOffset now)
+    {
+        if (Status != JobStatus.Completed)
+        {
+            throw new DomainException("visit-not-completed", "Only a completed visit can be confirmed or have a problem reported.");
+        }
+
+        if (ClientFeedback is not null)
+        {
+            throw new DomainException("feedback-already-given", "This visit already has its feedback.");
+        }
+
+        string? normalized = null;
+        if (!confirmed)
+        {
+            normalized = string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+            if (normalized is null || normalized.Length > ClientFeedbacks.TextMaxLength)
+            {
+                throw new DomainValidationException(new Dictionary<string, string[]> { ["text"] = ["Describe the problem in 1–2,000 characters."] });
+            }
+        }
+
+        ClientFeedback = confirmed ? Jobs.ClientFeedback.Confirmed : Jobs.ClientFeedback.ProblemReported;
+        ClientFeedbackText = normalized;
+        ClientFeedbackAt = now;
+        ClientFeedbackByContactId = contactId;
+        UpdatedAt = now;
+        var changes = new List<FieldChange> { new("clientFeedback", null, ClientFeedbacks.Label(ClientFeedback.Value)) };
+        if (normalized is not null)
+        {
+            changes.Add(new FieldChange("problem", null, normalized));
+        }
+
+        Raise(new JobEvent(
+            this,
+            confirmed ? "job.client_confirmed" : "job.client_reported_problem",
+            confirmed ? $"Confirmed {Label}: looks good" : $"Reported a problem with {Label}",
+            changes));
+    }
 
     /// <summary>Whether the actor may edit this job (not whether the edit is valid).</summary>
     public bool CanEdit(JobActor actor) => actor.CanManage || (actor.CanWork && AssigneeUserId == actor.UserId);
@@ -533,6 +767,49 @@ public sealed class Job : AggregateRoot, IClientOwned
         }
 
         return missing;
+    }
+
+    private static string Text(int value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string YesNo(bool value) => value ? "yes" : "no";
+
+    private static void Renumber(IReadOnlyList<ChecklistItem> ordered)
+    {
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            ordered[i].Position = i;
+        }
+    }
+
+    private ChecklistItem FindItem(Guid itemId) =>
+        _checklist.FirstOrDefault(i => i.Id == itemId)
+        ?? throw new DomainException("checklist-item-not-found", "Checklist item not found.", DomainErrorKind.NotFound);
+
+    /// <summary>A person changed what this visit asks for, so changes to its agreement leave it alone (SPEC-V2 5.1).</summary>
+    private void MarkEditedByHand(DateTimeOffset now)
+    {
+        if (AgreementId is not null && !ChangedByHand)
+        {
+            ChangedByHand = true;
+            UpdatedAt = now;
+        }
+    }
+
+    private void ReplaceChecklist(IReadOnlyList<ChecklistEntry> entries, DateTimeOffset now)
+    {
+        _checklist.Clear();
+        foreach (var entry in entries)
+        {
+            _checklist.Add(ChecklistItem.Create(this, _checklist.Count, entry, now));
+        }
+    }
+
+    private void ClearFeedback()
+    {
+        ClientFeedback = null;
+        ClientFeedbackText = null;
+        ClientFeedbackAt = null;
+        ClientFeedbackByContactId = null;
     }
 
     private void ClearDecision()

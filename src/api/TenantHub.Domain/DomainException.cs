@@ -9,6 +9,9 @@ public enum DomainErrorKind
 
     /// <summary>Allowed in general by the permission, refused for this target (an Admin acting on an Owner).</summary>
     Forbidden,
+
+    /// <summary>The content is larger than a rule allows (an upload): 413.</summary>
+    TooLarge,
 }
 
 /// <summary>

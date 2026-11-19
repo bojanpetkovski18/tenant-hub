@@ -17,6 +17,7 @@ namespace TenantHub.Infrastructure.Seed;
 public sealed partial class DemoReset(
     AppDbContext db,
     DemoSeeder seeder,
+    IFileStore files,
     DemoMode demo,
     IConfiguration configuration,
     TimeProvider time,
@@ -52,8 +53,16 @@ public sealed partial class DemoReset(
     {
         var now = time.GetUtcNow();
         var cutoff = now - VisitorOrganizationLifetime;
+        var going = db.Organizations.Where(o => o.IsDemoSeed || o.CreatedAt < cutoff);
+        var deleted = await going.Select(o => o.Id).ToListAsync(cancellationToken);
         var seeded = await db.Organizations.Where(o => o.IsDemoSeed).ExecuteDeleteAsync(cancellationToken);
         var visitors = await db.Organizations.Where(o => !o.IsDemoSeed && o.CreatedAt < cutoff).ExecuteDeleteAsync(cancellationToken);
+
+        // The rows went by cascade, without the outbox: their photo folders go now (D043); the weekly sweep catches a miss.
+        foreach (var organization in deleted)
+        {
+            await files.DeleteOrganizationAsync(organization, cancellationToken);
+        }
         await seeder.SeedAsync(configuration[DemoSeeder.PasswordSetting], cancellationToken);
         var accounts = await DeleteStaleVisitorAccountsAsync(cutoff, cancellationToken);
         LogReset(logger, seeded, visitors, accounts);

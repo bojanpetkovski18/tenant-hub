@@ -91,6 +91,7 @@ app.MapOrganizationEndpoints();
 app.MapClientEndpoints();
 app.MapInvitationEndpoints();
 app.MapJobEndpoints();
+app.MapJobProofEndpoints();
 app.MapAgreementEndpoints();
 app.MapBoardEndpoints();
 app.MapAuditEndpoints();

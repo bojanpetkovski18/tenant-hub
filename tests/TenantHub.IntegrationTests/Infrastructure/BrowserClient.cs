@@ -97,6 +97,24 @@ public sealed class BrowserClient : IDisposable
         return await Http.SendAsync(request, Ct);
     }
 
+    /// <summary>
+    /// A photo upload as the browser sends it: <c>multipart/form-data</c> with one <c>file</c> part, under the name and
+    /// declared type given (both of which the API ignores).
+    /// </summary>
+    public async Task<HttpResponseMessage> UploadAsync(string path, byte[] content, string fileName = "photo.jpg", string contentType = "image/jpeg")
+    {
+        await EnsureXsrfAsync();
+        using var form = Upload(content, fileName, contentType);
+        return await Http.PostAsync(path, form, Ct);
+    }
+
+    public static MultipartFormDataContent Upload(byte[] content, string fileName = "photo.jpg", string contentType = "image/jpeg")
+    {
+        var file = new ByteArrayContent(content);
+        file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+        return new MultipartFormDataContent { { file, "file", fileName } };
+    }
+
     /// <summary>The portal session as its pages load it (issues the portal's XSRF token).</summary>
     public async Task<JsonElement> PortalSessionAsync(string organizationSlug)
     {

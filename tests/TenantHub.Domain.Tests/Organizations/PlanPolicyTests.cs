@@ -7,12 +7,15 @@ public sealed class PlanPolicyTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 23, 9, 0, 0, TimeSpan.Zero);
 
+    private const long Mb = 1024L * 1024;
+
     [Fact]
     public void The_limits_are_the_spec()
     {
-        Assert.Equal(new PlanLimits(3, 25, 50, 3), PlanLimits.For(Plan.Free));
-        Assert.Equal(new PlanLimits(10, 500, 2_000, 200), PlanLimits.For(Plan.Team));
-        Assert.Equal(new PlanLimits(50, null, null, null), PlanLimits.For(Plan.Business));
+        // SPEC-V2 4.8 adds storage: 100 MB, 5 GB and 50 GB.
+        Assert.Equal(new PlanLimits(3, 25, 50, 3, 100 * Mb), PlanLimits.For(Plan.Free));
+        Assert.Equal(new PlanLimits(10, 500, 2_000, 200, 5 * 1024 * Mb), PlanLimits.For(Plan.Team));
+        Assert.Equal(new PlanLimits(50, null, null, null, 50 * 1024 * Mb), PlanLimits.For(Plan.Business));
     }
 
     public static TheoryData<Plan, LimitKind, int, bool> Boundaries() => new()
@@ -67,6 +70,35 @@ public sealed class PlanPolicyTests
         }
     }
 
+    // Storage counts bytes: a photo fits while the total stays at or under the limit.
+    [Theory]
+    [InlineData(Plan.Free, 100 * Mb - 1000, 1000, true)]
+    [InlineData(Plan.Free, 100 * Mb - 1000, 1001, false)]
+    [InlineData(Plan.Team, 5 * 1024 * Mb, 1, false)]
+    [InlineData(Plan.Business, 5 * 1024 * Mb, 10 * Mb, true)]
+    public void A_photo_fits_only_within_the_storage_limit(Plan plan, long used, long adding, bool allowed)
+    {
+        var error = Record.Exception(() => PlanPolicy.EnsureRoomFor(plan, new PlanUsage(1, 0, 0, 0, used), LimitKind.Storage, adding));
+
+        Assert.Equal(allowed, error is null);
+        if (!allowed)
+        {
+            Assert.Equal(new LimitBreach(LimitKind.Storage, PlanLimits.For(plan).StorageBytes!.Value, used), Assert.IsType<PlanLimitReachedException>(error).Breach);
+        }
+    }
+
+    [Fact]
+    public void Storage_reads_in_bytes_people_know()
+    {
+        var error = Assert.Throws<PlanLimitReachedException>(() =>
+            PlanPolicy.EnsureRoomFor(Plan.Free, new PlanUsage(1, 0, 0, 0, 99 * Mb + 512 * 1024), LimitKind.Storage, 2 * Mb));
+
+        Assert.Equal("Your Free plan allows 100 MB of photo storage, and 99.5 MB is in use.", error.Message);
+        Assert.Equal(
+            ["0 bytes", "1 byte", "1023 bytes", "1 KB", "1.5 MB", "5 GB", "4.2 GB"],
+            new[] { 0L, 1, 1023, 1024, 3 * Mb / 2, 5 * 1024 * Mb, (long)(4.2 * 1024 * Mb) }.Select(PlanPolicy.Bytes));
+    }
+
     [Fact]
     public void The_message_names_the_plan_the_limit_and_the_usage()
     {
@@ -88,6 +120,19 @@ public sealed class PlanPolicyTests
             blocking);
         Assert.Empty(PlanPolicy.BlockingLimits(Plan.Free, new PlanUsage(3, 25, 50, 3)));
         Assert.Empty(PlanPolicy.BlockingLimits(Plan.Business, new PlanUsage(50, 10_000, 10_000, 10_000)));
+    }
+
+    [Fact]
+    public void Stored_photos_block_a_downgrade_that_has_less_room()
+    {
+        var organization = Organization.Create("Harbor & Pine", "harbor-pine", "UTC", Guid.NewGuid(), Now);
+        organization.ChangePlan(Plan.Team, new PlanUsage(1, 0, 0, 0), [], false);
+
+        var refused = Assert.Throws<PlanDowngradeBlockedException>(() =>
+            organization.ChangePlan(Plan.Free, new PlanUsage(1, 0, 0, 0, 150 * Mb), [], false));
+
+        Assert.Equal([new LimitBreach(LimitKind.Storage, 100 * Mb, 150 * Mb)], refused.Blocking);
+        Assert.Equal("Your organization uses more than the Free plan allows: 150 MB of photo storage (limit 100 MB).", refused.Message);
     }
 
     [Fact]

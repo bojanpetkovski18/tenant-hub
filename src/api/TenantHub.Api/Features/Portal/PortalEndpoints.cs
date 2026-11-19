@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using TenantHub.Api.Common;
 using TenantHub.Api.Common.Auth;
 using TenantHub.Api.Common.Tenancy;
+using TenantHub.Api.Features.Jobs;
 using TenantHub.Application.Demo;
 using TenantHub.Application.Portal;
 using TenantHub.Infrastructure.Seed;
@@ -16,6 +17,8 @@ public sealed record PortalWorkRequest(
     DateOnly? PreferredOn);
 
 public sealed record PortalDecisionRequest([property: MaxLength(5000)] string? Comment);
+
+public sealed record PortalProblemRequest([property: MaxLength(10000)] string? Text);
 
 public sealed record PortalSignInRequest(
     [property: MaxLength(100)] string? OrgSlug,
@@ -108,6 +111,19 @@ public static class PortalEndpoints
 
         portal.MapGet("/visits/{id:guid}", async (Guid id, PortalVisits visits, CancellationToken ct) =>
             TypedResults.Ok(await visits.GetAsync(id, ct)));
+
+        // The proof of a completed visit and the client's sign-off (SPEC-V2 5.6).
+        portal.MapGet("/visits/{id:guid}/photos/{photoId:guid}", async (Guid id, Guid photoId, HttpContext context, PortalVisits visits, CancellationToken ct) =>
+            PhotoUpload.Serve(context, await visits.OpenPhotoAsync(id, photoId, thumbnail: false, ct)));
+
+        portal.MapGet("/visits/{id:guid}/photos/{photoId:guid}/thumbnail", async (Guid id, Guid photoId, HttpContext context, PortalVisits visits, CancellationToken ct) =>
+            PhotoUpload.Serve(context, await visits.OpenPhotoAsync(id, photoId, thumbnail: true, ct)));
+
+        portal.MapPost("/visits/{id:guid}/confirm", async (Guid id, PortalVisits visits, CancellationToken ct) =>
+            TypedResults.Ok(await visits.RecordFeedbackAsync(id, confirmed: true, text: null, ct)));
+
+        portal.MapPost("/visits/{id:guid}/report-problem", async (Guid id, PortalProblemRequest request, PortalVisits visits, CancellationToken ct) =>
+            TypedResults.Ok(await visits.RecordFeedbackAsync(id, confirmed: false, request.Text, ct)));
 
         portal.MapGet("/requests", async (PortalRequests requests, CancellationToken ct) =>
             TypedResults.Ok(await requests.ListAsync(ct)));

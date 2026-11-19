@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
 using TenantHub.Application.Demo;
+using TenantHub.Application.Jobs;
 using TenantHub.Domain.Organizations;
 
 namespace TenantHub.Application.Organizations;
@@ -19,7 +20,8 @@ public sealed class OrganizationCommands(
     IDatabaseLocks locks,
     PlanLimitsCheck limits,
     GetOrganizationQuery overview,
-    DemoProtection demo)
+    DemoProtection demo,
+    IOutbox outbox)
 {
     public async Task<OrganizationOverview> UpdateSettingsAsync(string? name, string? timeZone, int? dailyCapacityMinutes, CancellationToken cancellationToken)
     {
@@ -67,6 +69,9 @@ public sealed class OrganizationCommands(
         }
 
         var members = await db.Memberships.CountAsync(m => m.RemovedAt == null, cancellationToken);
+        // The photos' files go after the commit, the whole folder at once (D043); the message is not the organization's,
+        // so the cascade does not take it along.
+        outbox.Add(FileCleanup.Type, new FileCleanup([], organization.Id));
         db.Organizations.Remove(organization);
         await db.SaveChangesAsync(cancellationToken);
         return new DeletedOrganization(organization.Id, organization.Slug, members);

@@ -45,6 +45,18 @@ internal sealed class AgreementConfiguration : IEntityTypeConfiguration<Agreemen
                 new ValueConverter<Recurrence, string>(r => RecurrenceJson.Write(r), json => RecurrenceJson.Read(json)),
                 new ValueComparer<Recurrence>((a, b) => a!.Equals(b), r => r.GetHashCode(), r => r));
 
+        // The checklist each visit starts with (SPEC-V2 8 checklist_template), as one jsonb array of { text, required }.
+        agreement.Property(a => a.ChecklistTemplate)
+            .HasColumnName("checklist_template")
+            .HasColumnType("jsonb")
+            .HasDefaultValueSql("'[]'::jsonb")
+            .HasConversion(
+                new ValueConverter<IReadOnlyList<ChecklistEntry>, string>(c => ChecklistJson.Write(c), json => ChecklistJson.Read(json)),
+                new ValueComparer<IReadOnlyList<ChecklistEntry>>(
+                    (a, b) => a!.SequenceEqual(b!),
+                    c => c.Aggregate(0, (hash, e) => HashCode.Combine(hash, e)),
+                    c => c.ToList()));
+
         // PostgreSQL's xmin system column as the concurrency token (D004).
         agreement.Property(a => a.Version).IsRowVersion();
 
@@ -61,6 +73,17 @@ internal sealed class AgreementConfiguration : IEntityTypeConfiguration<Agreemen
             .OnDelete(DeleteBehavior.NoAction);
         agreement.HasOne<AppUser>().WithMany().HasForeignKey(a => a.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
     }
+}
+
+/// <summary>The stored form of a checklist template; the domain's rules apply again when it is read.</summary>
+internal static class ChecklistJson
+{
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    public static string Write(IReadOnlyList<ChecklistEntry> entries) => JsonSerializer.Serialize(entries, Json);
+
+    public static IReadOnlyList<ChecklistEntry> Read(string json) =>
+        ChecklistEntry.ValidateList([.. (JsonSerializer.Deserialize<List<ChecklistEntry>>(json, Json) ?? []).Select(e => ((string?)e.Text, (bool?)e.Required))]);
 }
 
 /// <summary>The stored form of a <see cref="Recurrence"/>: only the fields of its kind, enums as names.</summary>

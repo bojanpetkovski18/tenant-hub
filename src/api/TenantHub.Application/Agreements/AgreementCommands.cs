@@ -34,7 +34,8 @@ public sealed record AgreementInput(
     RecurrenceInput? Recurrence,
     DateOnly? StartsOn,
     DateOnly? EndsOn,
-    int? MaxVisits)
+    int? MaxVisits,
+    IReadOnlyList<ChecklistItemInput>? Checklist = null)
 {
     public (AgreementTemplate Template, Schedule Schedule) Validate()
     {
@@ -57,7 +58,8 @@ public sealed record AgreementInput(
             }
         }
 
-        var template = Collect(() => AgreementTemplate.Validate(Title, Description, AssigneeUserId, Priority, QuotedAmount, EstimatedMinutes));
+        var template = Collect(() => AgreementTemplate.Validate(
+            Title, Description, AssigneeUserId, Priority, QuotedAmount, EstimatedMinutes, Checklist?.Select(i => (i.Text, i.Required)).ToList()));
         var recurrence = Collect(() => (Recurrence ?? new RecurrenceInput(null, null, null, null, null, null, null)).ToRecurrence());
         var schedule = Collect(() => Schedule.Validate(recurrence ?? Domain.Agreements.Recurrence.MonthlyOnDay(1), StartsOn, EndsOn, MaxVisits));
         return errors.Count == 0 ? (template!, schedule!) : throw new DomainValidationException(errors);
@@ -220,8 +222,9 @@ public sealed class AgreementCommands(
         return await db.Organizations.SingleAsync(o => o.Id == tenant.OrganizationId, cancellationToken);
     }
 
+    /// <summary>With their checklists: a following visit's checklist follows the template too (SPEC-V2 4.5).</summary>
     private Task<List<Job>> FutureVisitsAsync(Guid agreementId, DateOnly today, CancellationToken cancellationToken) =>
-        db.Jobs.Where(j => j.AgreementId == agreementId && j.OccurrenceOn >= today).ToListAsync(cancellationToken);
+        db.Jobs.Include(j => j.Checklist).Where(j => j.AgreementId == agreementId && j.OccurrenceOn >= today).ToListAsync(cancellationToken);
 
     private async Task<Agreement> LoadAsync(Guid id, CancellationToken cancellationToken) =>
         await db.Agreements.SingleOrDefaultAsync(a => a.Id == id, cancellationToken) ?? throw AgreementErrors.NotFound();

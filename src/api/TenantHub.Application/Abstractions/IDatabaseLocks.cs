@@ -10,6 +10,13 @@ public interface IDatabaseLocks
 
     /// <summary>Serializes membership and invitation changes in one organization (the last-Owner rule, seats).</summary>
     Task LockOrganizationAsync(Guid organizationId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Serializes changes to one job's checklist with its status changes (SPEC-V2 5.6): an item unticked while the job
+    /// is completed would otherwise leave a completed job with an open required item. Row-level security limits it to
+    /// the entered organization's jobs.
+    /// </summary>
+    Task LockJobAsync(Guid jobId, CancellationToken cancellationToken);
 }
 
 /// <summary>Recognizes provider-specific database errors without the application referencing the provider.</summary>
