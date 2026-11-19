@@ -344,17 +344,15 @@ describe('portal pages', () => {
 
       it('shows no sign-off before the visit is completed', async () => {
         const page = await open('/portal/brightline/visits/v1', signedIn);
-        http
-          .expectOne('/api/portal/visits/v1')
-          .flush(
-            completed({
-              status: 'scheduled',
-              completedAt: null,
-              checklist: [],
-              photos: [],
-              canGiveFeedback: false,
-            }),
-          );
+        http.expectOne('/api/portal/visits/v1').flush(
+          completed({
+            status: 'scheduled',
+            completedAt: null,
+            checklist: [],
+            photos: [],
+            canGiveFeedback: false,
+          }),
+        );
         await settle(harness.fixture);
 
         expect(text(main(page))).not.toContain('Your sign-off');
