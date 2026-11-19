@@ -167,7 +167,8 @@ const fieldLabels: Readonly<Record<string, string>> = {
             @if (option.blockedReason) {
               <p [id]="'blocked-' + option.to" class="th-hint">
                 {{ label(job, option) }}: {{ option.blockedReason }}
-                @if (job.canEdit) {
+                @if (job.canEdit && option.to !== 'completed') {
+                  <!-- Complete waits for the checklist below, which the edit form does not hold. -->
                   <a routerLink="edit" class="text-accent underline">Edit the job</a>
                 }
               </p>

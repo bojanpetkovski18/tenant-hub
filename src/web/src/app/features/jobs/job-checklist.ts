@@ -82,7 +82,7 @@ import { Checklist, ChecklistChange, ChecklistItem, JobsApi } from './jobs.api';
                   [disabled]="!c.canEdit || busy()"
                   (change)="tick(item, $any($event.target).checked)"
                 />
-                <div class="min-w-0 flex-1">
+                <div class="min-w-0 flex-1 basis-48">
                   @if (editing() === item.id) {
                     <form
                       class="flex flex-wrap items-center gap-2"
@@ -135,7 +135,7 @@ import { Checklist, ChecklistChange, ChecklistItem, JobsApi } from './jobs.api';
                   }
                 </div>
                 @if (c.canEdit && editing() !== item.id) {
-                  <div class="flex flex-wrap gap-1">
+                  <div class="ml-auto flex flex-wrap gap-1">
                     <button
                       type="button"
                       class="th-icon-button"
