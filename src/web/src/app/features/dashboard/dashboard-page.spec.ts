@@ -41,8 +41,14 @@ const dashboard = (overrides: Partial<Dashboard> = {}): Dashboard => ({
     },
   ],
   plan: 'team',
-  usage: { seats: 6, activeClients: 35, openJobs: 41, activeAgreements: 3 },
-  limits: { seats: 10, activeClients: 500, openJobs: 2000, activeAgreements: 200 },
+  usage: { seats: 6, activeClients: 35, openJobs: 41, activeAgreements: 3, storage: 4_404_019 },
+  limits: {
+    seats: 10,
+    activeClients: 500,
+    openJobs: 2000,
+    activeAgreements: 200,
+    storage: 5 * 1024 ** 3,
+  },
   recentActivity: [
     {
       id: 9,
@@ -150,7 +156,7 @@ describe('dashboard page', () => {
     expect(text(page)).toContain('Window cleaning');
     expect(text(page)).toContain('JOB-0142 · Northgate Offices');
     expect(text(page)).toContain('Mon 26 Oct');
-    expect(page.querySelectorAll('[role="meter"]').length).toBe(4);
+    expect(page.querySelectorAll('[role="meter"]').length).toBe(5); // M19 adds photo storage
     expect(text(page)).toContain('Recent activity');
     expect(text(page)).toContain('Created JOB-0142 Window cleaning');
   });

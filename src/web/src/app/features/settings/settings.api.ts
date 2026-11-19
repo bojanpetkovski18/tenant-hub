@@ -5,7 +5,9 @@ import { PlanFeature, PlanLimits, PlanName, PlanUsage } from '../../shared/plan/
 
 export type { PlanFeature, PlanLimits, PlanName, PlanUsage } from '../../shared/plan/plan';
 export {
+  amountText,
   featureLabels,
+  formatBytes,
   limitLabels,
   limitNames,
   planFeatures,

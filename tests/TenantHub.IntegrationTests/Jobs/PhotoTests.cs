@@ -221,7 +221,7 @@ public sealed class PhotoTests(PostgresFixture postgres)
         var member = await tenants.ClientForAsync(Role.Member);
         var size = tenants.Factory.Services.GetRequiredService<IPhotoProcessor>().Process(TestImages.Jpeg()).Bytes;
         // Fill the plan's 100 MB to within one and a half photos of the limit.
-        await FillStorageAsync(tenants, tenants.OrgA, PlanLimits.For(Plan.Free).StorageBytes!.Value - await StorageUsedAsync(tenants, tenants.OrgA) - size - (size / 2));
+        await FillStorageAsync(tenants, tenants.OrgA, PlanLimits.For(Plan.Free).Storage!.Value - await StorageUsedAsync(tenants, tenants.OrgA) - size - (size / 2));
         var filesBefore = FilesOf(tenants, tenants.OrgA, except: []).Count;
 
         var answers = await Task.WhenAll(
@@ -236,8 +236,8 @@ public sealed class PhotoTests(PostgresFixture postgres)
         // The refused upload's files were written before the check and removed after it.
         Assert.Equal(filesBefore + 2, FilesOf(tenants, tenants.OrgA, except: []).Count);
         var overview = await (await tenants.ClientForAsync(Role.Owner)).Http.GetFromJsonAsync<JsonElement>($"/api/orgs/{tenants.OrgA}", Ct);
-        Assert.Equal(100L * 1024 * 1024, overview.GetProperty("limits").GetProperty("storageBytes").GetInt64());
-        Assert.Equal(await StorageUsedAsync(tenants, tenants.OrgA), overview.GetProperty("usage").GetProperty("storageBytes").GetInt64());
+        Assert.Equal(100L * 1024 * 1024, overview.GetProperty("limits").GetProperty("storage").GetInt64());
+        Assert.Equal(await StorageUsedAsync(tenants, tenants.OrgA), overview.GetProperty("usage").GetProperty("storage").GetInt64());
     }
 
     [Fact]

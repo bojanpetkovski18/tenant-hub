@@ -36,6 +36,31 @@ export interface PortalVisitDetail extends PortalVisit {
   readonly description: string | null;
   readonly dueOn: string | null;
   readonly completedAt: string | null;
+  /** The proof, once the visit is completed (SPEC-V2 5.6); empty before. */
+  readonly checklist: readonly PortalChecklistItem[];
+  readonly photos: readonly PortalPhoto[];
+  readonly feedback: PortalFeedback | null;
+  /** Completed and not yet signed off: confirm it or report a problem, once. */
+  readonly canGiveFeedback: boolean;
+}
+
+export interface PortalChecklistItem {
+  readonly text: string;
+  readonly required: boolean;
+  readonly done: boolean;
+}
+
+export interface PortalPhoto {
+  readonly id: string;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface PortalFeedback {
+  readonly kind: 'confirmed' | 'problemReported';
+  readonly text: string | null;
+  readonly at: string;
+  readonly byName: string | null;
 }
 
 export type ApprovalStatus = 'notRequested' | 'pending' | 'approved' | 'declined';
@@ -116,6 +141,25 @@ export class PortalApi {
   visit(id: string): Promise<PortalVisitDetail> {
     return firstValueFrom(
       this.http.get<PortalVisitDetail>(`${base}/visits/${encodeURIComponent(id)}`),
+    );
+  }
+
+  /** Where a visit's photo is served; the portal cookie's path (/api/portal) covers it. */
+  photoUrl(visitId: string, photoId: string, thumbnail = false): string {
+    return `${base}/visits/${encodeURIComponent(visitId)}/photos/${encodeURIComponent(photoId)}${thumbnail ? '/thumbnail' : ''}`;
+  }
+
+  confirmVisit(id: string): Promise<PortalVisitDetail> {
+    return firstValueFrom(
+      this.http.post<PortalVisitDetail>(`${base}/visits/${encodeURIComponent(id)}/confirm`, {}),
+    );
+  }
+
+  reportProblem(id: string, text: string): Promise<PortalVisitDetail> {
+    return firstValueFrom(
+      this.http.post<PortalVisitDetail>(`${base}/visits/${encodeURIComponent(id)}/report-problem`, {
+        text,
+      }),
     );
   }
 

@@ -15,7 +15,7 @@ public enum LimitKind
 }
 
 /// <summary>A plan's limits; null means unlimited. Storage is in bytes (binary units: 1 MB is 1,048,576 bytes).</summary>
-public sealed record PlanLimits(int? Seats, int? ActiveClients, int? OpenJobs, int? ActiveAgreements, long? StorageBytes)
+public sealed record PlanLimits(int? Seats, int? ActiveClients, int? OpenJobs, int? ActiveAgreements, long? Storage)
 {
     public const long Megabyte = 1024L * 1024;
 
@@ -23,9 +23,9 @@ public sealed record PlanLimits(int? Seats, int? ActiveClients, int? OpenJobs, i
 
     public static PlanLimits For(Plan plan) => plan switch
     {
-        Plan.Free => new(Seats: 3, ActiveClients: 25, OpenJobs: 50, ActiveAgreements: 3, StorageBytes: 100 * Megabyte),
-        Plan.Team => new(Seats: 10, ActiveClients: 500, OpenJobs: 2_000, ActiveAgreements: 200, StorageBytes: 5 * Gigabyte),
-        Plan.Business => new(Seats: 50, ActiveClients: null, OpenJobs: null, ActiveAgreements: null, StorageBytes: 50 * Gigabyte),
+        Plan.Free => new(Seats: 3, ActiveClients: 25, OpenJobs: 50, ActiveAgreements: 3, Storage: 100 * Megabyte),
+        Plan.Team => new(Seats: 10, ActiveClients: 500, OpenJobs: 2_000, ActiveAgreements: 200, Storage: 5 * Gigabyte),
+        Plan.Business => new(Seats: 50, ActiveClients: null, OpenJobs: null, ActiveAgreements: null, Storage: 50 * Gigabyte),
         _ => throw new ArgumentOutOfRangeException(nameof(plan), plan, "Unknown plan."),
     };
 
@@ -35,7 +35,7 @@ public sealed record PlanLimits(int? Seats, int? ActiveClients, int? OpenJobs, i
         LimitKind.ActiveClients => ActiveClients,
         LimitKind.OpenJobs => OpenJobs,
         LimitKind.ActiveAgreements => ActiveAgreements,
-        LimitKind.Storage => StorageBytes,
+        LimitKind.Storage => Storage,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 }
@@ -44,7 +44,7 @@ public sealed record PlanLimits(int? Seats, int? ActiveClients, int? OpenJobs, i
 /// What an organization uses (SPEC 5.5): seats are active members plus pending invitations; archived clients and
 /// closed jobs do not count.
 /// </summary>
-public sealed record PlanUsage(int Seats, int ActiveClients, int OpenJobs, int ActiveAgreements, long StorageBytes = 0)
+public sealed record PlanUsage(int Seats, int ActiveClients, int OpenJobs, int ActiveAgreements, long Storage = 0)
 {
     public long Of(LimitKind kind) => kind switch
     {
@@ -52,7 +52,7 @@ public sealed record PlanUsage(int Seats, int ActiveClients, int OpenJobs, int A
         LimitKind.ActiveClients => ActiveClients,
         LimitKind.OpenJobs => OpenJobs,
         LimitKind.ActiveAgreements => ActiveAgreements,
-        LimitKind.Storage => StorageBytes,
+        LimitKind.Storage => Storage,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 }

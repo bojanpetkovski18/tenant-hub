@@ -16,7 +16,7 @@ export interface ApiProblem {
   readonly features?: readonly string[];
 }
 
-export type LimitName = 'seats' | 'activeClients' | 'openJobs' | 'activeAgreements';
+export type LimitName = 'seats' | 'activeClients' | 'openJobs' | 'activeAgreements' | 'storage';
 
 export interface PlanLimitDetail {
   readonly limit: LimitName;

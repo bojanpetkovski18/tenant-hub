@@ -73,6 +73,13 @@ export interface Agreement {
   readonly changedByHand: readonly VisitItem[];
   /** Decided by the API from the caller's permissions (D008). */
   readonly canManage: boolean;
+  /** The checklist each visit starts with (SPEC-V2 4.5). */
+  readonly checklist: readonly ChecklistEntry[];
+}
+
+export interface ChecklistEntry {
+  readonly text: string;
+  readonly required: boolean;
 }
 
 export interface RecurrenceInput {
@@ -97,6 +104,7 @@ export interface AgreementInput {
   readonly startsOn: string | null;
   readonly endsOn: string | null;
   readonly maxVisits: number | null;
+  readonly checklist?: readonly ChecklistEntry[];
 }
 
 export interface PreviewInput {

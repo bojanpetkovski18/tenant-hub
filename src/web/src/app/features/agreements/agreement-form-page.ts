@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  afterNextRender,
   ElementRef,
   Injector,
   computed,
@@ -39,6 +40,13 @@ import {
 } from './agreements.api';
 
 type EndKind = 'none' | 'date' | 'count';
+
+/** A row of the visit checklist being edited. */
+interface ChecklistLine {
+  readonly key: number;
+  readonly text: string;
+  readonly required: boolean;
+}
 
 const messages = {
   clientId: { required: 'Choose a client.' },
@@ -242,6 +250,92 @@ function todayIn(timeZone?: string): string {
                 <p class="th-field-error">{{ message }}</p>
               }
             </div>
+          </section>
+
+          <section class="th-card space-y-3" aria-labelledby="checklist-heading">
+            <h2 id="checklist-heading" class="font-semibold">Visit checklist</h2>
+            <p class="th-hint">
+              Each visit starts with these items. Required ones must be ticked before a visit is
+              completed. Upcoming visits nobody has started follow changes here.
+            </p>
+            <p class="sr-only" aria-live="polite" aria-atomic="true">
+              {{ checklistAnnouncement() }}
+            </p>
+            @if (checklistError('checklist'); as message) {
+              <p class="th-field-error" role="alert">{{ message }}</p>
+            }
+            @if (checklist().length === 0) {
+              <p class="text-sm text-muted">No checklist: visits start without one.</p>
+            } @else {
+              <ol class="space-y-2">
+                @for (
+                  line of checklist();
+                  track line.key;
+                  let i = $index;
+                  let first = $first;
+                  let last = $last
+                ) {
+                  <li class="flex flex-wrap items-start gap-2">
+                    <div class="min-w-0 flex-1">
+                      <label class="sr-only" [for]="'line-' + line.key">Item {{ i + 1 }}</label>
+                      <input
+                        class="th-input"
+                        [id]="'line-' + line.key"
+                        maxlength="200"
+                        [value]="line.text"
+                        [attr.aria-invalid]="!!checklistError('checklist[' + i + '].text')"
+                        (input)="setLine(i, { text: $any($event.target).value })"
+                      />
+                      @if (checklistError('checklist[' + i + '].text'); as message) {
+                        <p class="th-field-error">{{ message }}</p>
+                      }
+                    </div>
+                    <label class="flex h-10 items-center gap-1 text-sm">
+                      <input
+                        type="checkbox"
+                        class="size-4 accent-accent"
+                        [checked]="line.required"
+                        (change)="setLine(i, { required: $any($event.target).checked })"
+                      />
+                      Required
+                    </label>
+                    <div class="flex gap-1">
+                      <button
+                        type="button"
+                        class="th-icon-button"
+                        [disabled]="first"
+                        [attr.aria-label]="'Move item ' + (i + 1) + ' up'"
+                        (click)="moveLine(i, -1)"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        class="th-icon-button"
+                        [disabled]="last"
+                        [attr.aria-label]="'Move item ' + (i + 1) + ' down'"
+                        (click)="moveLine(i, 1)"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        class="th-icon-button text-danger"
+                        [attr.aria-label]="'Remove item ' + (i + 1)"
+                        (click)="removeLine(i)"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </li>
+                }
+              </ol>
+            }
+            @if (checklist().length < maxChecklistItems) {
+              <button type="button" class="th-button-secondary" (click)="addLine()">
+                Add an item
+              </button>
+            }
           </section>
 
           <section class="th-card space-y-5" aria-labelledby="schedule-heading">
@@ -471,6 +565,13 @@ export class AgreementFormPage {
   protected readonly preview = signal<readonly string[] | null>(null);
   protected readonly previewNote = signal('Choose the days to see the dates.');
 
+  /** The visit checklist (SPEC-V2 4.5), edited beside the form; `key` keeps each row's input across reorders. */
+  protected readonly checklist = signal<readonly ChecklistLine[]>([]);
+  protected readonly checklistErrors = signal<Readonly<Record<string, readonly string[]>>>({});
+  protected readonly checklistAnnouncement = signal('');
+  protected readonly maxChecklistItems = 30;
+  private nextKey = 0;
+
   protected readonly form = inject(NonNullableFormBuilder).group({
     clientId: ['', Validators.required],
     title: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(120)]],
@@ -614,6 +715,9 @@ export class AgreementFormPage {
         endsOn: a.endsOn ?? '',
         maxVisits: a.maxVisits,
       });
+      this.checklist.set(
+        a.checklist.map((e) => ({ key: this.nextKey++, text: e.text, required: e.required })),
+      );
     } catch (error) {
       this.loadError.set(toApiProblem(error));
     } finally {
@@ -707,7 +811,12 @@ export class AgreementFormPage {
       recurrence,
       startsOn: value.startsOn || null,
       ...this.ends(),
+      // Empty lines are dropped rather than refused: an added row left blank is not an item.
+      checklist: this.checklist()
+        .filter((line) => line.text.trim() !== '')
+        .map((line) => ({ text: line.text, required: line.required })),
     };
+    this.checklistErrors.set({});
     const organizationId = this.membership()!.organizationId;
     this.saving.set(true);
     try {
@@ -721,12 +830,50 @@ export class AgreementFormPage {
       if (problem.code === 'plan-limit-reached') {
         this.limit.set(problem);
       } else {
+        this.checklistErrors.set(
+          Object.fromEntries(
+            Object.entries(problem.fieldErrors).filter(([field]) => field.startsWith('checklist')),
+          ),
+        );
         this.formError.set(applyProblem(this.form, problem));
       }
       this.focusInvalid();
     } finally {
       this.saving.set(false);
     }
+  }
+
+  protected checklistError(field: string): string | null {
+    return this.checklistErrors()[field]?.[0] ?? null;
+  }
+
+  protected addLine(): void {
+    this.checklist.update((lines) => [...lines, { key: this.nextKey++, text: '', required: true }]);
+    const key = this.nextKey - 1;
+    afterNextRender(() => document.getElementById(`line-${key}`)?.focus(), {
+      injector: this.injector,
+    });
+  }
+
+  protected setLine(index: number, change: Partial<ChecklistLine>): void {
+    this.checklist.update((lines) =>
+      lines.map((line, i) => (i === index ? { ...line, ...change } : line)),
+    );
+  }
+
+  protected moveLine(index: number, by: number): void {
+    const lines = [...this.checklist()];
+    const [line] = lines.splice(index, 1);
+    lines.splice(index + by, 0, line!);
+    this.checklist.set(lines);
+    this.checklistAnnouncement.set(
+      `Moved item ${index + 1} to place ${index + by + 1} of ${lines.length}.`,
+    );
+  }
+
+  protected removeLine(index: number): void {
+    this.checklist.update((lines) => lines.filter((_, i) => i !== index));
+    this.checklistAnnouncement.set(`Removed item ${index + 1}.`);
   }
 
   private focusInvalid(): void {

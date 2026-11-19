@@ -1,6 +1,6 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpEventType, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
+import { Observable, filter, firstValueFrom, map } from 'rxjs';
 import { PagedList } from '../../shared/list/paged-list.store';
 
 export type JobStatus = 'new' | 'scheduled' | 'inProgress' | 'completed' | 'cancelled';
@@ -100,7 +100,66 @@ export interface Job {
   readonly transitions: readonly JobTransitionOption[];
   /** The quote's approval by the client (SPEC-V2 5.4), and whether the caller can send it now. */
   readonly quote?: JobQuote;
+  /** The client's sign-off on the completed visit (SPEC-V2 5.6). */
+  readonly clientFeedback?: JobFeedback | null;
 }
+
+export type FeedbackKind = 'confirmed' | 'problemReported';
+
+export interface JobFeedback {
+  readonly kind: FeedbackKind;
+  readonly text: string | null;
+  readonly at: string;
+  readonly byName: string | null;
+}
+
+export interface ChecklistItem {
+  readonly id: string;
+  readonly position: number;
+  readonly text: string;
+  readonly required: boolean;
+  readonly done: boolean;
+  readonly doneAt: string | null;
+  readonly doneByName: string | null;
+}
+
+/** The checklist with what the caller may do (SPEC-V2 5.6): `readOnlyReason` explains a completed job's. */
+export interface Checklist {
+  readonly items: readonly ChecklistItem[];
+  readonly canEdit: boolean;
+  readonly readOnlyReason: string | null;
+  readonly maxItems: number;
+}
+
+export interface ChecklistChange {
+  readonly text?: string;
+  readonly required?: boolean;
+  readonly done?: boolean;
+  readonly position?: number;
+}
+
+export interface Photo {
+  readonly id: string;
+  readonly contentType: string;
+  readonly width: number;
+  readonly height: number;
+  readonly bytes: number;
+  readonly createdAt: string;
+  readonly createdByName: string;
+}
+
+export interface Photos {
+  readonly items: readonly Photo[];
+  readonly canAdd: boolean;
+  readonly canRemove: boolean;
+  readonly cannotAdd: string | null;
+  readonly maxPhotos: number;
+}
+
+/** An upload on its way: a share sent (0 to 100), then the stored photo. */
+export type UploadEvent =
+  | { readonly kind: 'progress'; readonly percent: number }
+  | { readonly kind: 'done'; readonly photo: Photo };
 
 export interface JobInput {
   readonly title: string;
@@ -187,6 +246,78 @@ export class JobsApi {
   /** Sends the quote to the client's portal contacts for approval (SPEC-V2 5.4). */
   sendQuote(organizationId: string, id: string): Promise<Job> {
     return firstValueFrom(this.http.post<Job>(`${jobsUrl(organizationId)}/${id}/quote`, {}));
+  }
+
+  checklist(organizationId: string, id: string): Promise<Checklist> {
+    return firstValueFrom(this.http.get<Checklist>(`${jobsUrl(organizationId)}/${id}/checklist`));
+  }
+
+  addChecklistItem(
+    organizationId: string,
+    id: string,
+    text: string,
+    required: boolean,
+  ): Promise<Checklist> {
+    return firstValueFrom(
+      this.http.post<Checklist>(`${jobsUrl(organizationId)}/${id}/checklist`, { text, required }),
+    );
+  }
+
+  changeChecklistItem(
+    organizationId: string,
+    id: string,
+    itemId: string,
+    change: ChecklistChange,
+  ): Promise<Checklist> {
+    return firstValueFrom(
+      this.http.put<Checklist>(`${jobsUrl(organizationId)}/${id}/checklist/${itemId}`, change),
+    );
+  }
+
+  removeChecklistItem(organizationId: string, id: string, itemId: string): Promise<Checklist> {
+    return firstValueFrom(
+      this.http.delete<Checklist>(`${jobsUrl(organizationId)}/${id}/checklist/${itemId}`),
+    );
+  }
+
+  photos(organizationId: string, id: string): Promise<Photos> {
+    return firstValueFrom(this.http.get<Photos>(`${jobsUrl(organizationId)}/${id}/photos`));
+  }
+
+  /** Where a photo (or its thumbnail) is served; same origin, so the session cookie goes along. */
+  photoUrl(organizationId: string, id: string, photoId: string, thumbnail = false): string {
+    return `${jobsUrl(organizationId)}/${id}/photos/${photoId}${thumbnail ? '/thumbnail' : ''}`;
+  }
+
+  /** Uploads one photo as multipart form data, reporting progress (SPEC-V2 5.6). */
+  uploadPhoto(organizationId: string, id: string, file: Blob): Observable<UploadEvent> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http
+      .post<Photo>(`${jobsUrl(organizationId)}/${id}/photos`, form, {
+        reportProgress: true,
+        observe: 'events',
+      })
+      .pipe(
+        filter(
+          (event) =>
+            event.type === HttpEventType.UploadProgress || event.type === HttpEventType.Response,
+        ),
+        map((event): UploadEvent =>
+          event.type === HttpEventType.Response
+            ? { kind: 'done', photo: event.body! }
+            : {
+                kind: 'progress',
+                percent: event.total ? Math.round((100 * event.loaded) / event.total) : 0,
+              },
+        ),
+      );
+  }
+
+  removePhoto(organizationId: string, id: string, photoId: string): Promise<void> {
+    return firstValueFrom(
+      this.http.delete<void>(`${jobsUrl(organizationId)}/${id}/photos/${photoId}`),
+    );
   }
 }
 

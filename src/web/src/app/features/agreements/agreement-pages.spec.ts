@@ -77,6 +77,7 @@ const agreement = (overrides: Partial<Agreement> = {}): Agreement => ({
   ],
   changedByHand: [],
   canManage: true,
+  checklist: [],
   ...overrides,
 });
 

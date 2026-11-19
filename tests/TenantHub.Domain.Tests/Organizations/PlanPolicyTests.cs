@@ -83,7 +83,7 @@ public sealed class PlanPolicyTests
         Assert.Equal(allowed, error is null);
         if (!allowed)
         {
-            Assert.Equal(new LimitBreach(LimitKind.Storage, PlanLimits.For(plan).StorageBytes!.Value, used), Assert.IsType<PlanLimitReachedException>(error).Breach);
+            Assert.Equal(new LimitBreach(LimitKind.Storage, PlanLimits.For(plan).Storage!.Value, used), Assert.IsType<PlanLimitReachedException>(error).Breach);
         }
     }
 
