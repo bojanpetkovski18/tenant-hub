@@ -326,6 +326,27 @@ public sealed class WebhookTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task An_endpoint_can_be_edited_after_deliveries_have_recorded_their_outcome()
+    {
+        // Found in the browser pass: every attempt updates the endpoint's failure window (and its row version), so an
+        // edit carrying the version the page loaded conflicted with the endpoint's own deliveries.
+        await using var setup = await SetupAsync();
+        var (endpointId, _) = await AddEndpointAsync(setup, [WebhookEvents.JobCreated]);
+        var shown = (await EndpointsAsync(setup)).Single(e => e.Id == endpointId);
+        setup.Receiver.Status = 500;
+        await CreateJobAsync(setup, "Fails, and the endpoint records it");
+        await setup.Tenants.Factory.DispatchOutboxAsync();
+
+        var edited = await setup.Owner.SendJsonAsync(
+            HttpMethod.Put,
+            $"/api/orgs/{setup.Tenants.OrgA}/webhooks/{endpointId}",
+            new { url = new Uri(setup.Receiver.Url, "hooks/tenant-hub").ToString(), events = new[] { "job.created", "job.assigned" }, enabled = false, version = shown.Version });
+
+        Assert.Equal(HttpStatusCode.OK, edited.StatusCode);
+        Assert.False((await EndpointsAsync(setup)).Single(e => e.Id == endpointId).Enabled);
+    }
+
+    [Fact]
     public async Task A_downgrade_counts_usable_keys_and_enabled_endpoints_as_integrations_in_use()
     {
         await using var setup = await SetupAsync(); // no endpoints; the fixture's usable key remains
@@ -461,7 +482,7 @@ public sealed class WebhookTests(PostgresFixture postgres)
 
     private sealed record IdOnly(Guid Id);
 
-    private sealed record EndpointView(Guid Id, bool Enabled);
+    private sealed record EndpointView(Guid Id, bool Enabled, uint Version = 0);
 
     private sealed record WithSecret(EndpointView Endpoint, string Secret);
 

@@ -233,6 +233,9 @@ describe('settings page', () => {
 
   it('names the features a downgrade turns off and switches only when the Owner confirms', async () => {
     const element = await open(olivia, overview({ plan: 'team', features: ['portal'] }));
+    const navLinks = () =>
+      [...element.querySelectorAll('nav[aria-label="Main"] a')].map((a) => text(a));
+    expect(navLinks()).toContain('Requests');
     const dialogButton = (label: string) =>
       [...document.querySelectorAll('button')].find(
         (b) => text(b) === label && b.closest('app-confirm-dialog'),
@@ -270,6 +273,8 @@ describe('settings page', () => {
     expect(text(main(element).querySelector('#plan [role="status"]'))).toBe(
       'You are now on the Free plan; Client portal is off.',
     );
+    // The shell learns the new plan too: the portal's inbox leaves the navigation without a reload.
+    expect(navLinks()).not.toContain('Requests');
   });
 
   it('deletes only after the exact name is typed, then returns to the picker', async () => {

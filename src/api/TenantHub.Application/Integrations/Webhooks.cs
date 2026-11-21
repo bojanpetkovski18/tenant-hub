@@ -148,7 +148,6 @@ public sealed record WebhookEndpointView(
     DateTimeOffset? DisabledAt,
     DateTimeOffset? FailingSince,
     bool RotationOverlap,
-    uint Version,
     WebhookDeliveryView? LastDelivery);
 
 /// <summary>A new endpoint or a rotated secret, with the secret shown this once.</summary>
@@ -166,7 +165,11 @@ public sealed record WebhookDeliveryView(
     DateTimeOffset? NextAttemptAt,
     bool Succeeded);
 
-public sealed record WebhookInput(string? Url, IReadOnlyList<string>? Events, bool Enabled = true, uint? Version = null);
+/// <summary>
+/// An endpoint's settings. There is no version to send back: every delivery updates the endpoint's row (its failure
+/// window), so a version would only say a delivery happened. Edits take the row lock deliveries take, one after the other.
+/// </summary>
+public sealed record WebhookInput(string? Url, IReadOnlyList<string>? Events, bool Enabled = true);
 
 /// <summary>
 /// Webhook endpoints (US-111, SPEC-V2 5.8): a Business feature for those with <c>integrations.manage</c>. Secrets are
@@ -215,33 +218,34 @@ public sealed class WebhookCommands(
     {
         await limits.EnsureFeatureAsync(PlanFeature.Integrations, cancellationToken);
         var (url, events) = Validate(input);
-        var endpoint = await LoadAsync(id, cancellationToken);
-        if (input.Version is { } version)
-        {
-            db.Entry(endpoint).Property(e => e.Version).OriginalValue = version;
-        }
-
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var endpoint = await LoadLockedAsync(id, cancellationToken);
         endpoint.Update(url, events, input.Enabled, time.GetUtcNow());
-        await SaveAsync(cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return View(endpoint, null);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
         await limits.EnsureFeatureAsync(PlanFeature.Integrations, cancellationToken);
-        var endpoint = await LoadAsync(id, cancellationToken);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var endpoint = await LoadLockedAsync(id, cancellationToken);
         endpoint.MarkDeleted();
         db.WebhookEndpoints.Remove(endpoint);
         await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task<WebhookWithSecret> RotateSecretAsync(Guid id, CancellationToken cancellationToken)
     {
         await limits.EnsureFeatureAsync(PlanFeature.Integrations, cancellationToken);
-        var endpoint = await LoadAsync(id, cancellationToken);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var endpoint = await LoadLockedAsync(id, cancellationToken);
         var secret = WebhookSignature.NewSecret();
         endpoint.RotateSecret(secrets.Protect(secret), time.GetUtcNow());
-        await SaveAsync(cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return new WebhookWithSecret(View(endpoint, null), secret);
     }
 
@@ -325,16 +329,11 @@ public sealed class WebhookCommands(
         return errors.Count > 0 ? throw new DomainValidationException(errors) : (url!, events);
     }
 
-    private async Task SaveAsync(CancellationToken cancellationToken)
+    /// <summary>The endpoint, with its row locked until the transaction ends (deliveries record their outcome under the same lock).</summary>
+    private async Task<WebhookEndpoint> LoadLockedAsync(Guid id, CancellationToken cancellationToken)
     {
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            throw new DomainException("concurrency-conflict", "Someone else changed this endpoint after you opened it. Reload to see their changes.");
-        }
+        await locks.LockWebhookEndpointAsync(id, cancellationToken);
+        return await LoadAsync(id, cancellationToken);
     }
 
     private async Task<WebhookEndpoint> LoadAsync(Guid id, CancellationToken cancellationToken, bool tracked = true)
@@ -353,7 +352,6 @@ public sealed class WebhookCommands(
         e.DisabledAt,
         e.FailingSince,
         e.PreviousSecretAt(time.GetUtcNow()) is not null,
-        e.Version,
         last is null ? null : DeliveryView(last));
 
     private static WebhookDeliveryView DeliveryView(WebhookDelivery d) =>

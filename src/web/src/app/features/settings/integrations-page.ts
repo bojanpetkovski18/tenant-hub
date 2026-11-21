@@ -11,6 +11,7 @@ import {
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiProblem, toApiProblem } from '../../core/http/api-problem';
+import { CurrentOrganizationStore } from '../../core/session/current-organization.store';
 import { SessionStore } from '../../core/session/session.store';
 import { applyProblem, controlError } from '../../shared/forms/server-errors';
 import { Confirm } from '../../shared/ui/confirm-dialog';
@@ -25,7 +26,7 @@ import {
   deliveryOutcome,
   webhookEvents,
 } from './integrations.api';
-import { ShowOnce } from './shown-once-dialog';
+import { ShowOnce, ShownOnceOptions } from './shown-once-dialog';
 
 const maxEndpoints = 5;
 
@@ -161,7 +162,7 @@ const expiries: readonly (readonly [string, string])[] = [
                 class="th-input"
                 formControlName="name"
                 maxlength="60"
-                placeholder="Booking website"
+                placeholder="e.g. Booking website"
                 [attr.aria-invalid]="!!keyError('name')"
                 [attr.aria-describedby]="keyError('name') ? 'key-name-error' : null"
               />
@@ -267,6 +268,7 @@ const expiries: readonly (readonly [string, string])[] = [
                         <button
                           type="button"
                           class="th-button-secondary"
+                          [id]="'rotate-' + hook.id"
                           [disabled]="busy()"
                           (click)="rotate(hook)"
                         >
@@ -296,7 +298,13 @@ const expiries: readonly (readonly [string, string])[] = [
                       } @else if (log()!.items.length === 0) {
                         <p class="text-sm text-muted">Nothing delivered in the last 30 days.</p>
                       } @else {
-                        <div class="overflow-x-auto">
+                        <!-- relative: the visually hidden header text stays inside the scroll box, not beyond the page. Focusable: on a narrow screen the table scrolls, and keyboards must reach it (axe, M21). -->
+                        <div
+                          class="relative overflow-x-auto"
+                          tabindex="0"
+                          role="region"
+                          [attr.aria-label]="'Delivery log of ' + hook.url"
+                        >
                           <table class="w-full text-left text-sm">
                             <caption class="sr-only">
                               Deliveries to
@@ -390,7 +398,7 @@ const expiries: readonly (readonly [string, string])[] = [
               <ng-container *ngTemplateOutlet="hookFormTemplate; context: { $implicit: null }" />
             </div>
           } @else if (endpoints()!.length < maxEndpoints) {
-            <button type="button" class="th-button mt-4" (click)="edit(null)">
+            <button id="add-endpoint" type="button" class="th-button mt-4" (click)="edit(null)">
               Add an endpoint
             </button>
           } @else {
@@ -470,6 +478,7 @@ export class IntegrationsPage {
 
   private readonly api = inject(IntegrationsApi);
   private readonly session = inject(SessionStore);
+  private readonly currentOrganization = inject(CurrentOrganizationStore);
   private readonly confirm = inject(Confirm);
   private readonly showOnce = inject(ShowOnce);
   private readonly fb = inject(NonNullableFormBuilder);
@@ -503,6 +512,7 @@ export class IntegrationsPage {
     expiry: [''],
   });
   protected readonly keyFormError = signal<string | null>(null);
+  private readonly keyAttempted = signal(false);
 
   /** The endpoint being edited, 'new' for the add form, or null. */
   protected readonly editing = signal<string | null>(null);
@@ -513,6 +523,7 @@ export class IntegrationsPage {
   protected readonly chosen = signal<ReadonlySet<string>>(new Set());
   protected readonly eventsError = signal<string | null>(null);
   protected readonly hookFormError = signal<string | null>(null);
+  private readonly hookAttempted = signal(false);
 
   protected readonly logFor = signal<string | null>(null);
   protected readonly log = signal<DeliveryPage | null>(null);
@@ -524,10 +535,24 @@ export class IntegrationsPage {
   });
 
   constructor() {
+    // The plan's features come with the organization the shell loads: on a plan without integrations the page says
+    // so without asking the API, which would only answer 403.
     effect(() => {
-      if (this.canManage() && this.organizationId()) {
-        void this.load();
+      const organization = this.currentOrganization.organization();
+      if (!this.canManage() || !organization || organization.id !== this.organizationId()) {
+        return;
       }
+      if (organization.features && !organization.features.includes('integrations')) {
+        this.unavailable.set({
+          status: 403,
+          title:
+            'API keys and webhooks are part of the Business plan. An Owner can change the plan in Settings.',
+          code: 'plan-feature-unavailable',
+          fieldErrors: {},
+        });
+        return;
+      }
+      void this.load();
     });
   }
 
@@ -566,16 +591,22 @@ export class IntegrationsPage {
     return events.join(', ');
   }
 
+  // These forms make new things: an empty one is not an error until someone tries to save it.
   protected keyError(field: keyof typeof keyMessages): string | null {
-    return controlError(this.keyForm.controls[field], keyMessages[field]);
+    return this.keyAttempted()
+      ? controlError(this.keyForm.controls[field], keyMessages[field])
+      : null;
   }
 
   protected hookError(field: keyof typeof hookMessages): string | null {
-    return controlError(this.hookForm.controls[field], hookMessages[field]);
+    return this.hookAttempted()
+      ? controlError(this.hookForm.controls[field], hookMessages[field])
+      : null;
   }
 
   protected async createKey(): Promise<void> {
     this.keyFormError.set(null);
+    this.keyAttempted.set(true);
     if (this.keyForm.invalid) {
       this.keyForm.markAllAsTouched();
       document.getElementById('key-name')?.focus();
@@ -585,6 +616,7 @@ export class IntegrationsPage {
     const expiresAt = expiry
       ? new Date(Date.now() + Number(expiry) * 86_400_000).toISOString()
       : null;
+    let shown: ShownOnceOptions | null = null;
     await this.run(async () => {
       try {
         const created = await this.api.createKey(this.organizationId(), {
@@ -594,18 +626,28 @@ export class IntegrationsPage {
         });
         this.keys.update((keys) => [created.apiKey, ...(keys ?? [])]);
         this.keyForm.reset({ name: '', access: 'readOnly', expiry: '' });
-        await this.showOnce.show({
+        this.keyAttempted.set(false);
+        this.announcement.set(`Created the key ${created.apiKey.name}.`);
+        shown = {
           title: `API key “${created.apiKey.name}”`,
           message:
             'Copy the key now and keep it somewhere safe: it is not shown again. If it is lost, revoke it and create another.',
           label: 'API key',
           value: created.key,
-        });
-        this.announcement.set(`Created the key ${created.apiKey.name}.`);
+          returnFocusTo: '#key-name',
+        };
       } catch (error) {
         this.keyFormError.set(applyProblem(this.keyForm, toApiProblem(error)));
       }
     });
+    await this.reveal(shown);
+  }
+
+  /** The shown-once dialog, opened after the action, when its buttons are no longer busy. */
+  private async reveal(options: ShownOnceOptions | null): Promise<void> {
+    if (options) {
+      await this.showOnce.show(options);
+    }
   }
 
   protected async revoke(key: ApiKey): Promise<void> {
@@ -622,11 +664,14 @@ export class IntegrationsPage {
       await this.api.revokeKey(this.organizationId(), key.id);
       this.keys.set(await this.api.keys(this.organizationId()));
       this.announcement.set(`Revoked the key ${key.name}.`);
+      // Its Revoke button is gone: continue from the form for a new key.
+      setTimeout(() => document.getElementById('key-name')?.focus());
     });
   }
 
   protected edit(hook: WebhookEndpoint | null): void {
     this.hookFormError.set(null);
+    this.hookAttempted.set(false);
     this.eventsError.set(null);
     this.hookForm.reset({ url: hook?.url ?? '', enabled: hook?.enabled ?? true });
     this.chosen.set(new Set(hook?.events ?? ['job.created']));
@@ -647,6 +692,7 @@ export class IntegrationsPage {
 
   protected async saveHook(hook: WebhookEndpoint | null): Promise<void> {
     this.hookFormError.set(null);
+    this.hookAttempted.set(true);
     const events = webhookEvents.map(([e]) => e).filter((e) => this.chosen().has(e));
     this.eventsError.set(events.length === 0 ? 'Choose at least one event.' : null);
     if (this.hookForm.invalid || events.length === 0) {
@@ -654,6 +700,7 @@ export class IntegrationsPage {
       return;
     }
     const { url, enabled } = this.hookForm.getRawValue();
+    let shown: ShownOnceOptions | null = null;
     await this.run(async () => {
       try {
         if (hook) {
@@ -661,7 +708,6 @@ export class IntegrationsPage {
             url: url.trim(),
             events,
             enabled,
-            version: hook.version,
           });
           this.announcement.set('Saved the endpoint.');
         } else {
@@ -671,14 +717,15 @@ export class IntegrationsPage {
           });
           this.editing.set(null);
           this.endpoints.set(await this.api.webhooks(this.organizationId()));
-          await this.showOnce.show({
+          this.announcement.set('Added the endpoint.');
+          shown = {
             title: 'The endpoint’s signing secret',
             message:
               'Your receiver checks each event with this secret. Copy it now: it is not shown again (you can make a new one later).',
             label: 'Signing secret',
             value: created.secret,
-          });
-          this.announcement.set('Added the endpoint.');
+            returnFocusTo: '#add-endpoint',
+          };
           return;
         }
         this.editing.set(null);
@@ -692,6 +739,7 @@ export class IntegrationsPage {
         this.hookFormError.set(applyProblem(this.hookForm, problem));
       }
     });
+    await this.reveal(shown);
   }
 
   protected async rotate(hook: WebhookEndpoint): Promise<void> {
@@ -704,17 +752,20 @@ export class IntegrationsPage {
     if (!ok) {
       return;
     }
+    let shown: ShownOnceOptions | null = null;
     await this.run(async () => {
       const rotated = await this.api.rotateSecret(this.organizationId(), hook.id);
       this.endpoints.set(await this.api.webhooks(this.organizationId()));
-      await this.showOnce.show({
+      shown = {
         title: 'The new signing secret',
         message:
           'Copy it now: it is not shown again. The previous secret keeps working for 24 hours.',
         label: 'Signing secret',
         value: rotated.secret,
-      });
+        returnFocusTo: '#rotate-' + hook.id,
+      };
     });
+    await this.reveal(shown);
   }
 
   protected async sendTest(hook: WebhookEndpoint): Promise<void> {
@@ -741,6 +792,7 @@ export class IntegrationsPage {
       }
       this.endpoints.set(await this.api.webhooks(this.organizationId()));
       this.announcement.set('Removed the endpoint.');
+      setTimeout(() => document.getElementById('add-endpoint')?.focus());
     });
   }
 

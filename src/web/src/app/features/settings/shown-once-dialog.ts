@@ -9,6 +9,11 @@ export interface ShownOnceOptions {
   /** The field's label: "API key", "Signing secret". */
   readonly label: string;
   readonly value: string;
+  /**
+   * Where focus goes when the dialog closes (a CSS selector). The button that opened it was disabled while the
+   * request ran, so it lost focus, and the dialog would otherwise return it to the page's body.
+   */
+  readonly returnFocusTo: string;
 }
 
 /**
@@ -78,7 +83,10 @@ export class ShowOnce {
       ariaDescribedBy: 'shown-once-message',
       disableClose: true,
       autoFocus: '#shown-once-value',
+      restoreFocus: false,
     });
     await firstValueFrom(ref.closed);
+    // After the page has rendered what changed (the new key or endpoint in its list).
+    setTimeout(() => document.querySelector<HTMLElement>(options.returnFocusTo)?.focus());
   }
 }

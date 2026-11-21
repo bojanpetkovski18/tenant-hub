@@ -117,8 +117,8 @@ public sealed class ExportTests(PostgresFixture postgres, ITestOutputHelper outp
                 """
                 INSERT INTO audit_entries (organization_id, occurred_at, actor_user_id, actor_name, actor_kind, actor_ref, action, entity_type, entity_id, summary, changes, trace_id)
                 SELECT @org, timestamptz '2025-06-01 00:00:00+00' + g * interval '10 minutes', NULL, 'Load test', 'System', NULL, 'job.updated', 'job', gen_random_uuid(),
-                       'Updated JOB-' || g || ': a summary of ordinary length for an ordinary change to an ordinary job',
-                       '[{"field":"title","from":"Before","to":"After"}]'::jsonb, NULL
+                    'Updated JOB-' || g || ': a summary of ordinary length for an ordinary change to an ordinary job',
+                    '[{"field":"title","from":"Before","to":"After"}]'::jsonb, NULL
                 FROM generate_series(1, @count) g
                 """,
                 connection);

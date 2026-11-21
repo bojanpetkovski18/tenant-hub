@@ -62,7 +62,6 @@ const endpoint = (overrides: Partial<WebhookEndpoint> = {}): WebhookEndpoint => 
   disabledAt: null,
   failingSince: null,
   rotationOverlap: false,
-  version: 7,
   lastDelivery: null,
   ...overrides,
 });
@@ -120,7 +119,10 @@ describe('integrations page', () => {
   let http: HttpTestingController;
   let harness: RouterTestingHarness;
 
-  async function open(user: SessionUser = olivia): Promise<HTMLElement> {
+  async function open(
+    user: SessionUser = olivia,
+    features: readonly string[] = ['portal', 'integrations'],
+  ): Promise<HTMLElement> {
     TestBed.configureTestingModule({
       providers: [
         provideTestHttp(),
@@ -136,6 +138,18 @@ describe('integrations page', () => {
     await loadSession(user);
     harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/o/brightline/settings/integrations');
+    // The shell loads the organization; its plan's features decide whether the page asks for keys at all.
+    http.match(orgUrl).forEach((r) =>
+      r.flush({
+        id: orgId,
+        name: 'Brightline Cleaning Co.',
+        slug: 'brightline',
+        plan: 'team',
+        timeZone: 'Europe/Amsterdam',
+        createdAt: '2026-10-01T09:00:00Z',
+        features,
+      }),
+    );
     await settle(harness.fixture);
     return harness.routeNativeElement as HTMLElement;
   }
@@ -211,6 +225,13 @@ describe('integrations page', () => {
     await settle(harness.fixture);
 
     expect(document.querySelector('app-shown-once-dialog')).toBeNull();
+    // The Create button was busy and lost focus: focus goes back to the form, not to the page's body.
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(document.activeElement?.id).toBe('key-name');
+    // Leaving the empty form is not an error: nothing was tried yet.
+    document.getElementById('key-name')!.dispatchEvent(new Event('blur'));
+    await settle(harness.fixture);
+    expect(main(element).querySelector('#key-name-error')).toBeNull();
     expect(text(main(element))).toContain('Accounting sync');
     expect(text(main(element))).not.toContain('x'.repeat(43));
   });
@@ -298,6 +319,36 @@ describe('integrations page', () => {
     expect(text(main(element))).toContain('https://hooks.example/new');
   });
 
+  it('edits an endpoint without a version: its deliveries change the row all the time', async () => {
+    const element = await open();
+    await answer();
+
+    button(main(element), 'Edit').click();
+    await settle(harness.fixture);
+    const enabled = [
+      ...main(element).querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
+    ].find((b) => b.closest('label')?.textContent?.trim().startsWith('Enabled'))!;
+    enabled.click();
+    button(main(element), 'Save').click();
+    await settle(harness.fixture);
+
+    const saved = http.expectOne((r) => r.url === `${orgUrl}/webhooks/w1` && r.method === 'PUT');
+    expect(saved.request.body).toEqual({
+      url: 'https://hooks.example/tenant-hub',
+      events: ['job.created'],
+      enabled: false,
+    });
+    saved.flush(endpoint({ enabled: false }));
+    await settle(harness.fixture);
+    http
+      .expectOne(`${orgUrl}/webhooks`)
+      .flush([endpoint({ enabled: false, disabledAt: '2026-11-21T10:00:00Z' })]);
+    await settle(harness.fixture);
+    expect(text(main(element).querySelector('[aria-label="Webhook endpoints"]'))).toContain(
+      'Turned off',
+    );
+  });
+
   it('needs an https address and at least one event', async () => {
     const element = await open();
     await answer([], []);
@@ -344,7 +395,17 @@ describe('integrations page', () => {
     expect(text(main(element).querySelector('[aria-live="polite"]'))).toContain('on its way again');
   });
 
-  it('says which plan has integrations when this one does not', async () => {
+  it('says which plan has integrations without asking the API on another plan', async () => {
+    const element = await open(olivia, ['portal']);
+
+    http.expectNone(`${orgUrl}/api-keys`);
+    http.expectNone(`${orgUrl}/webhooks`);
+    expect(text(main(element))).toContain('part of the Business plan');
+    expect(text(main(element))).toContain('See the plans');
+    expect(main(element).querySelector('#key-name')).toBeNull();
+  });
+
+  it('shows the API’s refusal when the plan changed since the page loaded', async () => {
     const element = await open();
     http.expectOne(`${orgUrl}/api-keys`).flush(
       {
@@ -358,7 +419,6 @@ describe('integrations page', () => {
     await settle(harness.fixture);
 
     expect(text(main(element))).toContain('part of the Business plan');
-    expect(text(main(element))).toContain('See the plans');
     expect(main(element).querySelector('#key-name')).toBeNull();
   });
 

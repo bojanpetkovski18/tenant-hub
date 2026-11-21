@@ -41,7 +41,6 @@ export interface WebhookEndpoint {
   readonly failingSince: string | null;
   /** The previous secret still signs too (24 hours after a rotation). */
   readonly rotationOverlap: boolean;
-  readonly version: number;
   readonly lastDelivery: WebhookDelivery | null;
 }
 
@@ -137,7 +136,7 @@ export class IntegrationsApi {
   updateWebhook(
     organizationId: string,
     id: string,
-    input: { url: string; events: readonly string[]; enabled: boolean; version: number },
+    input: { url: string; events: readonly string[]; enabled: boolean },
   ): Promise<WebhookEndpoint> {
     return firstValueFrom(
       this.http.put<WebhookEndpoint>(`${orgUrl(organizationId)}/webhooks/${id}`, input),

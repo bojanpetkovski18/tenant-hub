@@ -10,9 +10,9 @@ namespace TenantHub.Api.Features.Integrations;
 
 public sealed record CreateApiKeyRequest([property: MaxLength(200)] string? Name, ApiKeyAccess? Access, DateTimeOffset? ExpiresAt);
 
-public sealed record WebhookRequest([property: MaxLength(1000)] string? Url, [property: MaxLength(20)] string[]? Events, bool Enabled = true, uint? Version = null)
+public sealed record WebhookRequest([property: MaxLength(1000)] string? Url, [property: MaxLength(20)] string[]? Events, bool Enabled = true)
 {
-    public WebhookInput ToInput() => new(Url, Events, Enabled, Version);
+    public WebhookInput ToInput() => new(Url, Events, Enabled);
 }
 
 /// <summary>API keys and webhooks (SPEC-V2 7): Settings → Integrations, for those with <c>integrations.manage</c>.</summary>

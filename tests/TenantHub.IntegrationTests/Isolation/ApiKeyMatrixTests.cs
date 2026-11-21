@@ -226,6 +226,21 @@ public sealed class ApiKeyMatrixTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task A_body_that_is_not_utf8_json_is_a_400()
+    {
+        // Seen in the acceptance from Git Bash, whose curl sent "é" in a Windows code page. Development throws (so the
+        // developer sees why); every other environment, this one included, answers 400.
+        var tenants = await SharedApiTenants.GetAsync<ApiKeyMatrixTests>(postgres);
+        using var client = KeyClient(tenants, tenants.KeyA);
+        using var body = new ByteArrayContent([.. "{\"title\":\"Caf"u8, 0xE9, .. "\"}"u8]);
+        body.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+
+        var response = await client.Http.PostAsync($"/api/orgs/{tenants.OrgA}/jobs", body, Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Use_is_recorded_at_most_once_a_minute()
     {
         var tenants = await SharedApiTenants.GetAsync<ApiKeyMatrixTests>(postgres);
