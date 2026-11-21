@@ -92,7 +92,7 @@ public sealed class DigestTests(PostgresFixture postgres)
         var adminInbox = await DigestsAsync(tenants, await tenants.ClientForAsync(Role.Admin));
         var viewerInbox = await DigestsAsync(tenants, await tenants.ClientForAsync(Role.Viewer));
         Assert.Equal(["You have 1 overdue job."], memberInbox.Select(i => i.Text));
-        Assert.Equal(["2 jobs are overdue in Alpha Cleaning."], adminInbox.Select(i => i.Text));
+        Assert.Equal(["2 jobs are overdue in the organization."], adminInbox.Select(i => i.Text));
         Assert.Empty(viewerInbox);
         Assert.Equal(NotificationLink.OverdueJobs, memberInbox[0].Link);
 
@@ -109,6 +109,27 @@ public sealed class DigestTests(PostgresFixture postgres)
         clock.Now = Utc("2027-03-28T05:01:00Z");
         await RunAsync(tenants.Factory);
         Assert.Equal(2, (await DigestsAsync(tenants, member)).Count);
+    }
+
+    [Fact]
+    public async Task A_name_ending_in_a_full_stop_reads_once_in_the_subject()
+    {
+        // Found in the browser pass: "17 jobs are overdue in Brightline Cleaning Co.." in the subject.
+        var (tenants, clock, emails) = await CreateAsync();
+        await using var _ = tenants;
+        var owner = await tenants.ClientForAsync(Role.Owner);
+        (await owner.PatchJsonAsync($"/api/orgs/{tenants.OrgA}", new { name = "Alpha Cleaning Co.", timeZone = "Europe/Amsterdam" })).EnsureSuccessStatusCode();
+        await CreateJobAsync(tenants, owner, "Late job", null, new DateOnly(2027, 3, 20));
+        var before = emails.Sent.Count;
+
+        clock.Now = Utc("2027-03-27T06:01:00Z");
+        await RunAsync(tenants.Factory);
+        await tenants.Factory.DispatchOutboxAsync();
+
+        var digests = emails.Sent.Skip(before).Where(m => m.Subject.StartsWith("Alpha Cleaning Co.: ", StringComparison.Ordinal)).ToList();
+        Assert.NotEmpty(digests);
+        Assert.All(digests, m => Assert.DoesNotContain("..", m.Subject, StringComparison.Ordinal));
+        Assert.All(digests, m => Assert.DoesNotContain("..", m.TextBody.Replace("https://", "", StringComparison.Ordinal), StringComparison.Ordinal));
     }
 
     [Fact]

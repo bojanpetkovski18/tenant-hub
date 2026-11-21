@@ -88,7 +88,7 @@ public sealed class NotificationFanOut(
                 var link = links.App(Path(slug, own));
                 var email = lines.Count == 1
                     ? NotificationEmails.Build(profile.Email, profile.DisplayName, organizationName, own.Text, Action(own), link, links.App(PreferencesPath))
-                    : NotificationEmails.Build(profile.Email, $"{organizationName}: {own.Text}", profile.DisplayName, organizationName, lines, Action(own), link, links.App(PreferencesPath));
+                    : NotificationEmails.Build(profile.Email, $"{organizationName}: {own.Text}", profile.DisplayName, lines, Action(own), link, links.App(PreferencesPath));
                 outbox.Add(NotificationEmails.Message, email);
             }
         }

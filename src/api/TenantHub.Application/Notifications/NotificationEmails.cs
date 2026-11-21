@@ -16,7 +16,6 @@ public static class NotificationEmails
         to,
         subject: $"{organizationName}: {Shorten(text, 120)}",
         name,
-        organizationName,
         [text],
         action,
         link,
@@ -26,13 +25,13 @@ public static class NotificationEmails
         string to,
         string subject,
         string name,
-        string organizationName,
         IReadOnlyList<string> lines,
         string action,
         string link,
         string preferencesLink)
     {
-        var footer = $"You get this email because of your notification settings in {organizationName}.";
+        // The settings are the same in every organization, and a name may end in a full stop: no name here.
+        var footer = "You get this email because of your notification settings.";
         var text = $"""
             Hello {name},
 

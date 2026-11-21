@@ -76,7 +76,8 @@ public sealed class OverdueDigest(IAppDbContext db, TenantContext tenant, Notifi
 
             if (managers.Contains(userId))
             {
-                parts.Add(overdue.Count == 1 ? $"1 job is overdue in {organization.Name}." : $"{overdue.Count} jobs are overdue in {organization.Name}.");
+                // Not "in {name}.": the subject starts with the name already, and a name may end in a full stop ("Co.").
+                parts.Add(overdue.Count == 1 ? "1 job is overdue in the organization." : $"{overdue.Count} jobs are overdue in the organization.");
             }
 
             var lines = new List<string> { string.Join(" ", parts) };
