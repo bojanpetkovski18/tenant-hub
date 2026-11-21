@@ -9,9 +9,10 @@ export type NotificationType =
   | 'workRequested'
   | 'problemReported'
   | 'generationPaused'
-  | 'overdueDigest';
+  | 'overdueDigest'
+  | 'webhookDisabled';
 
-export type NotificationLink = 'job' | 'request' | 'agreement' | 'overdueJobs';
+export type NotificationLink = 'job' | 'request' | 'agreement' | 'overdueJobs' | 'integrations';
 
 export interface AppNotification {
   readonly id: string;
@@ -50,6 +51,8 @@ export function notificationRoute(
       return { commands: ['/o', slug, 'requests'] };
     case 'agreement':
       return { commands: ['/o', slug, 'agreements', n.linkId ?? ''] };
+    case 'integrations':
+      return { commands: ['/o', slug, 'settings', 'integrations'] };
     default:
       return { commands: ['/o', slug, 'jobs'], query: { overdue: 'true' } };
   }

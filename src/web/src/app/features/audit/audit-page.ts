@@ -20,7 +20,15 @@ import {
   auditUrlChanges,
   parseAuditQuery,
 } from './audit-query';
-import { AuditApi, AuditEntry, AuditPage, auditActions, entityTypeLabels } from './audit.api';
+import {
+  AuditApi,
+  AuditEntry,
+  AuditPage,
+  auditActions,
+  entityTypeLabels,
+  auditUrl,
+} from './audit.api';
+import { exportHref } from '../settings/integrations.api';
 
 const pageSize = 50;
 
@@ -65,6 +73,29 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
   return 'just now';
 }
 
+const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+
+/**
+ * The days the audit export covers: the filter's (a missing end filled in), or the last 30 days. Null when the range
+ * is longer than the export's 366 days or ends before it starts.
+ */
+export function auditExportRange(
+  query: { readonly from: string; readonly to: string },
+  organizationId: string,
+  today: Date = new Date(),
+): { readonly href: string; readonly label: string } | null {
+  const to = query.to || isoDay(today);
+  const from = query.from || isoDay(new Date(Date.parse(to) - 29 * 86_400_000));
+  const days = (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1;
+  if (days < 1 || days > 366) {
+    return null;
+  }
+  return {
+    href: exportHref(`${auditUrl(organizationId)}/export`, { from, to }),
+    label: `${from} to ${to}`,
+  };
+}
+
 /**
  * US-40: the organization's activity, newest first, for Admins and Owners (`audit.read`). Filters and the page
  * cursor live in the URL. Entries are grouped by day; each shows who, when (relative and absolute), what, a link to
@@ -75,11 +106,29 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
   imports: [DatePipe, RouterLink, EmptyState, ErrorState],
   template: `
     <div class="space-y-5">
-      <div>
-        <h1 class="text-2xl font-semibold tracking-tight">Audit log</h1>
-        <p class="mt-1 text-sm text-muted">
-          Every change in this organization, newest first. Entries are never edited or removed.
-        </p>
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 class="text-2xl font-semibold tracking-tight">Audit log</h1>
+          <p class="mt-1 text-sm text-muted">
+            Every change in this organization, newest first. Entries are never edited or removed.
+          </p>
+        </div>
+        @if (canRead()) {
+          @if (exportRange(); as range) {
+            <div class="text-right">
+              <a
+                class="th-button-secondary"
+                [href]="range.href"
+                download
+                aria-describedby="audit-export-hint"
+                >Export CSV</a
+              >
+              <p id="audit-export-hint" class="th-hint">{{ range.label }}</p>
+            </div>
+          } @else {
+            <p class="th-hint max-w-60">Choose at most 366 days in the filters to export them.</p>
+          }
+        }
       </div>
 
       @if (!canRead()) {
@@ -352,6 +401,10 @@ export class AuditLogPage {
     }),
   );
   protected readonly filterCount = computed(() => activeAuditFilterCount(this.query()));
+  /** The filter's days, or the last 30 when none are chosen; null beyond the export's 366 days (US-112). */
+  protected readonly exportRange = computed(() =>
+    auditExportRange(this.query(), this.membership()?.organizationId ?? ''),
+  );
 
   protected readonly page = signal<AuditPage | null>(null);
   protected readonly loading = signal(false);

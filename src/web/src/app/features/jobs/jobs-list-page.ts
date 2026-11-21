@@ -9,6 +9,7 @@ import {
   input,
   signal,
 } from '@angular/core';
+import { exportHref } from '../settings/integrations.api';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { SessionStore } from '../../core/session/session.store';
 import { createPagedListStore } from '../../shared/list/paged-list.store';
@@ -73,6 +74,16 @@ const pageSize = 25;
           >
             My jobs
           </button>
+          <a
+            class="th-button-secondary"
+            [href]="exportHref()"
+            download
+            aria-describedby="jobs-export-hint"
+            >Export CSV</a
+          >
+          <span id="jobs-export-hint" class="sr-only"
+            >Every job matching the filters, as a spreadsheet file</span
+          >
           @if (canCreate()) {
             <a routerLink="new" class="th-button">New job</a>
           }
@@ -445,6 +456,13 @@ export class JobsListPage {
   private readonly clientsApi = inject(ClientsApi);
 
   private readonly membership = computed(() => this.session.membershipBySlug(this.slug()));
+  /** The list's filters and sort, every page (US-112). */
+  protected readonly exportHref = computed(() => {
+    const params = { ...jobApiParams(this.query(), pageSize) };
+    delete params['page'];
+    delete params['pageSize'];
+    return exportHref(`${jobsUrl(this.membership()?.organizationId ?? '')}/export`, params);
+  });
   protected readonly canCreate = computed(() => this.session.can(this.slug(), 'jobs.create'));
 
   protected readonly query = computed(() =>
