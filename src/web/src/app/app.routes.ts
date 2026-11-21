@@ -64,6 +64,16 @@ export const routes: Routes = [
         canActivate: [authGuard],
         loadComponent: () => import('./features/account/account-page').then((m) => m.AccountPage),
       },
+      {
+        // Linked from every notification email (M20).
+        path: 'account/notifications',
+        title: 'Notifications',
+        canActivate: [authGuard],
+        loadComponent: () =>
+          import('./features/notifications/notification-preferences-page').then(
+            (m) => m.NotificationPreferencesPage,
+          ),
+      },
     ],
   },
   {

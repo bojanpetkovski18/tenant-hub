@@ -113,6 +113,10 @@
           </svg>
         </button>
         <div class="flex-1"></div>
+        <app-notification-bell
+          [organizationId]="membership.organizationId"
+          [slug]="membership.slug"
+        />
         <app-theme-toggle />
         <app-user-menu />
       </header>

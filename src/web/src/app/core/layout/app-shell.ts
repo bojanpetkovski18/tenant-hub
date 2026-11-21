@@ -31,6 +31,7 @@ import { rememberLastOrganization } from '../session/last-organization';
 import { Permission } from '../session/session.models';
 import { SessionStore } from '../session/session.store';
 import { ThemeToggle } from '../theme/theme-toggle';
+import { NotificationBell } from './notification-bell';
 import { OrgNotFound } from './org-not-found';
 import { OrgSwitcher } from './org-switcher';
 import { SkipLink } from './skip-link';
@@ -72,6 +73,7 @@ export const desktopQuery = '(min-width: 1024px)';
     OrgNotFound,
     DemoBanner,
     VerifyEmailBanner,
+    NotificationBell,
   ],
   templateUrl: './app-shell.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
