@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using TenantHub.Application.Tenancy;
 using TenantHub.Domain;
+using TenantHub.Domain.Notifications;
 using TenantHub.Domain.Organizations;
 using TenantHub.Infrastructure.Background;
 using TenantHub.Infrastructure.Identity;
@@ -29,6 +30,8 @@ public sealed class ModelCoverageTests
         // Approved with SPEC-V2 section 8 (M15 brief): infrastructure that only the dispatcher and the scheduler read.
         [typeof(OutboxMessage)] = "side effects waiting for the dispatcher; account emails have no organization (D039)",
         [typeof(ScheduledTask)] = "recurring work for the scheduler, application-wide or per organization (D039)",
+        // Approved with SPEC-V2 section 8 (M20 brief): a person's email choices, the same in every organization.
+        [typeof(NotificationPreference)] = "a person's email choices per notification type, kept with the account",
     };
 
     private static IModel Model()

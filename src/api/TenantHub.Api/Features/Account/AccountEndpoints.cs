@@ -5,9 +5,15 @@ using TenantHub.Api.Common.Auth;
 using TenantHub.Api.Common.Tenancy;
 using TenantHub.Api.Features.Auth;
 using TenantHub.Application.Accounts;
+using TenantHub.Application.Notifications;
+using TenantHub.Domain.Notifications;
 using TenantHub.Infrastructure.Identity;
 
 namespace TenantHub.Api.Features.Account;
+
+public sealed record NotificationPreferenceRequest(NotificationType? Type, bool Email);
+
+public sealed record NotificationPreferencesRequest([property: MaxLength(20)] IReadOnlyList<NotificationPreferenceRequest>? Preferences);
 
 public sealed record UpdateProfileRequest([property: Required(AllowEmptyStrings = true), MaxLength(200)] string DisplayName);
 
@@ -51,6 +57,16 @@ public static class AccountEndpoints
                 return TypedResults.Accepted((string?)null);
             })
             .RequireRateLimiting(RateLimiting.AccountEmailPolicy);
+
+        // Which notifications also come by email (US-101, SPEC-V2 5.7): the person's own, the same in every organization.
+        me.MapGet("/notification-preferences", async (HttpContext context, NotificationPreferences preferences, CancellationToken ct) =>
+            TypedResults.Ok(await preferences.GetAsync(context.User.GetUserId(), ct)));
+
+        me.MapPut("/notification-preferences", async (NotificationPreferencesRequest request, HttpContext context, NotificationPreferences preferences, CancellationToken ct) =>
+            TypedResults.Ok(await preferences.SetAsync(
+                context.User.GetUserId(),
+                [.. (request.Preferences ?? []).Select(p => (p.Type, p.Email))],
+                ct)));
 
         return app;
     }

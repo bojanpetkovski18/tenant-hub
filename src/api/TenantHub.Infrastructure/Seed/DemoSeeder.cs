@@ -13,6 +13,7 @@ using TenantHub.Domain.Agreements;
 using TenantHub.Domain.Clients;
 using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
+using TenantHub.Domain.Notifications;
 using TenantHub.Domain.Organizations;
 using TenantHub.Infrastructure.Background;
 using TenantHub.Infrastructure.Data;
@@ -221,6 +222,8 @@ public sealed partial class DemoSeeder(
         {
             plain.Organizations.Add(organization);
             await plain.SaveChangesAsync(cancellationToken);
+            // Like any organization, it gets its daily digest of overdue jobs (M20).
+            await new RecurringWork(plain).ScheduleDigestAsync(organization.Id, DigestSchedule.Next(organization.TimeZone, now), cancellationToken);
         }
 
         try
@@ -264,7 +267,8 @@ public sealed partial class DemoSeeder(
                     tenant.Enter(organization.Id, actorId, role);
                 }
 
-                await using var context = new AppDbContext(options, tenant, clock);
+                // Months of replayed history notify nobody; the portal story below, which happens "today", does (M20).
+                await using var context = new AppDbContext(options, tenant, clock) { NotifyNothing = true };
                 switch (step)
                 {
                     case CreateClientStep create:

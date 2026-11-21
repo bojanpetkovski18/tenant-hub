@@ -1022,6 +1022,78 @@ namespace TenantHub.Infrastructure.Data.Migrations
                     b.ToTable("memberships", (string)null);
                 });
 
+            modelBuilder.Entity("TenantHub.Domain.Notifications.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("data");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("read_at");
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_id");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("type");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notifications");
+
+                    b.HasIndex("OrganizationId", "SourceId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_notifications_source_user");
+
+                    b.HasIndex("OrganizationId", "UserId", "CreatedAt")
+                        .IsDescending(false, false, true)
+                        .HasDatabaseName("ix_notifications_user_created");
+
+                    b.ToTable("notifications", (string)null);
+                });
+
+            modelBuilder.Entity("TenantHub.Domain.Notifications.NotificationPreference", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("Type")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("type");
+
+                    b.Property<bool>("Email")
+                        .HasColumnType("boolean")
+                        .HasColumnName("email");
+
+                    b.HasKey("UserId", "Type")
+                        .HasName("pk_notification_preferences");
+
+                    b.ToTable("notification_preferences", (string)null);
+                });
+
             modelBuilder.Entity("TenantHub.Domain.Organizations.Organization", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1606,6 +1678,33 @@ namespace TenantHub.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_memberships_users_user_id");
+                });
+
+            modelBuilder.Entity("TenantHub.Domain.Notifications.Notification", b =>
+                {
+                    b.HasOne("TenantHub.Domain.Organizations.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_notifications_organizations_organization_id");
+
+                    b.HasOne("TenantHub.Domain.Memberships.Membership", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_notifications_memberships_organization_id_user_id");
+                });
+
+            modelBuilder.Entity("TenantHub.Domain.Notifications.NotificationPreference", b =>
+                {
+                    b.HasOne("TenantHub.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_notification_preferences_users_user_id");
                 });
 
             modelBuilder.Entity("TenantHub.Domain.Organizations.Organization", b =>

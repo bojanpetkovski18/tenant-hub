@@ -7,6 +7,7 @@ using TenantHub.Domain.Clients;
 using TenantHub.Domain.Invitations;
 using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
+using TenantHub.Domain.Notifications;
 using TenantHub.Domain.Organizations;
 
 namespace TenantHub.Application.Abstractions;
@@ -42,6 +43,11 @@ public interface IAppDbContext
 
     /// <summary>Jobs' photos (SPEC-V2 8 <c>attachments</c>).</summary>
     DbSet<Attachment> Attachments { get; }
+
+    DbSet<Notification> Notifications { get; }
+
+    /// <summary>Per user, not per organization (SPEC-V2 8).</summary>
+    DbSet<NotificationPreference> NotificationPreferences { get; }
 
     /// <summary>For optimistic concurrency: handlers set the version the client last saw as the original value.</summary>
     EntityEntry<TEntity> Entry<TEntity>(TEntity entity)

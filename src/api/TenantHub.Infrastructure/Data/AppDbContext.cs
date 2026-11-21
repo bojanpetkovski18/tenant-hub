@@ -12,6 +12,7 @@ using TenantHub.Domain.Clients;
 using TenantHub.Domain.Invitations;
 using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
+using TenantHub.Domain.Notifications;
 using TenantHub.Domain.Organizations;
 using TenantHub.Infrastructure.Audit;
 using TenantHub.Infrastructure.Background;
@@ -69,6 +70,16 @@ public sealed class AppDbContext(
     public DbSet<ChecklistItem> ChecklistItems => Set<ChecklistItem>();
 
     public DbSet<Attachment> Attachments => Set<Attachment>();
+
+    public DbSet<Notification> Notifications => Set<Notification>();
+
+    public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
+
+    /// <summary>
+    /// Audited changes saved through this context notify nobody. Only the demo seed sets it, for its months of replayed
+    /// history; what the seed does "today" notifies as usual.
+    /// </summary>
+    internal bool NotifyNothing { get; set; }
 
     /// <summary>Side effects waiting for the dispatcher (D039); written through <see cref="IOutbox"/>.</summary>
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();

@@ -80,7 +80,9 @@ public sealed class AgreementFlowTests(PostgresFixture postgres)
         await using var db = PostgresFixture.CreateDbContext(connectionString);
         var dates = await db.Jobs.AcrossTenants().Where(j => j.AgreementId == agreement.Id).Select(j => j.OccurrenceOn!.Value).ToListAsync(Ct);
         Assert.Equal(dates.Count, dates.Distinct().Count());
-        Assert.Equal(Enumerable.Repeat(1, rounds), runs); // one of the two instances ran the organization's task each day
+        // Each day one of the two instances ran each of the organization's daily tasks once: visit generation and, since
+        // M20, the digest of overdue jobs. Doubled runs would show as 4.
+        Assert.Equal(Enumerable.Repeat(2, rounds), runs);
         var today = D("2027-01-09");
         var expected = new Schedule(Recurrence.Weekly([DayOfWeek.Monday, DayOfWeek.Wednesday, DayOfWeek.Friday]), D("2027-01-04"), null, null)
             .Occurrences(D("2027-01-04"), today.AddDays(VisitGeneration.HorizonDays));
@@ -135,13 +137,14 @@ public sealed class AgreementFlowTests(PostgresFixture postgres)
         await using (var db = PostgresFixture.CreateDbContext(org.ConnectionString))
         {
             // 00:05 on 4 April in Auckland, still NZDT (+13).
-            var task = await db.ScheduledTasks.AsNoTracking().SingleAsync(t => t.OrganizationId == org.Id, Ct);
+            var task = await db.ScheduledTasks.AsNoTracking().SingleAsync(t => t.OrganizationId == org.Id && t.Name == IRecurringWork.DailyGeneration, Ct);
             Assert.Equal(DateTimeOffset.Parse("2027-04-03T11:05:00Z", CultureInfo.InvariantCulture), task.DueAt);
         }
 
         // Ten days of downtime: one run on waking covers today's horizon, then the next is due after the next midnight.
+        // The other run is the organization's digest (M20), which likewise runs once and not once per missed day.
         org.Clock.Advance(TimeSpan.FromDays(10));
-        Assert.Equal(1, await RunDueAsync(org.Factory));
+        Assert.Equal(2, await RunDueAsync(org.Factory));
         Assert.Equal(0, await RunDueAsync(org.Factory));
 
         var dates = (await org.VisitsAsync(created.Id)).Select(v => v.OccurrenceOn!.Value).ToList();
@@ -150,7 +153,7 @@ public sealed class AgreementFlowTests(PostgresFixture postgres)
         await using var check = PostgresFixture.CreateDbContext(org.ConnectionString);
         Assert.Equal(
             DateTimeOffset.Parse("2027-04-13T12:05:00Z", CultureInfo.InvariantCulture), // 00:05 on 14 April, NZST (+12)
-            (await check.ScheduledTasks.AsNoTracking().SingleAsync(t => t.OrganizationId == org.Id, Ct)).DueAt);
+            (await check.ScheduledTasks.AsNoTracking().SingleAsync(t => t.OrganizationId == org.Id && t.Name == IRecurringWork.DailyGeneration, Ct)).DueAt);
     }
 
     [Fact]

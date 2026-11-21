@@ -63,5 +63,9 @@ public static class ApplicationSetup
         .AddScoped<DailyVisitGeneration>()
         .AddScoped<ListAuditEntriesQuery>()
         .AddScoped<DashboardQuery>()
+        .AddScoped<Notifications.NotificationFanOut>()
+        .AddScoped<Notifications.NotificationInbox>()
+        .AddScoped<Notifications.NotificationPreferences>()
+        .AddScoped<Notifications.OverdueDigest>()
         .AddScoped<DemoProtection>();
 }

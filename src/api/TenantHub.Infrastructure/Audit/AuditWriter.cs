@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
+using TenantHub.Application.Notifications;
 using TenantHub.Domain;
 using TenantHub.Domain.Audit;
+using TenantHub.Infrastructure.Background;
 using TenantHub.Infrastructure.Data;
 
 namespace TenantHub.Infrastructure.Audit;
@@ -57,6 +59,12 @@ internal sealed class AuditWriter(AppDbContext db, ITenantContext tenant, TimePr
                     ? new ContactActorEvent(change, new AuditActor(ActorKind.Contact, null, contact, _actorName!))
                     : change;
                 db.AuditEntries.Add(AuditEntry.From(named, tenant.UserId, _actorName!, now, traceId));
+
+                // Who should hear about it (SPEC-V2 5.7) travels in the same save: a rolled-back change notifies nobody.
+                if (!db.NotifyNothing && NotificationTriggers.For(change, tenant.UserId, named.Actor?.Name ?? _actorName!) is { } request)
+                {
+                    db.OutboxMessages.Add(Outbox.Plain(NotificationRequest.FanOut, request, change.OrganizationId, now));
+                }
             }
 
             aggregate.ClearDomainEvents();
