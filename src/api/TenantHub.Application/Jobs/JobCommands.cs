@@ -38,6 +38,7 @@ public sealed class JobCommands(
     IDatabaseLocks locks,
     JobViews views,
     PlanLimitsCheck limits,
+    IOutbox outbox,
     TimeProvider time)
 {
     /// <summary>
@@ -95,6 +96,8 @@ public sealed class JobCommands(
     public async Task<JobView> TransitionAsync(Guid id, JobStatus to, string? reason, CancellationToken cancellationToken)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        // The checklist decides whether the job may complete (SPEC-V2 5.6): no item changes between reading it and the move.
+        await locks.LockJobAsync(id, cancellationToken);
         var job = await LoadAsync(id, cancellationToken);
 
         // Closed jobs do not count toward the plan, so reopening one is limit-checked (SPEC 5.5), under the lock.
@@ -167,6 +170,15 @@ public sealed class JobCommands(
             request.ForgetJob();
         }
 
+        // The photos' rows go with the job by cascade; their files once this commits (D043).
+        var keys = await db.Attachments.Where(a => a.JobId == id)
+            .Select(a => new[] { a.StorageKey, a.ThumbnailKey })
+            .ToListAsync(cancellationToken);
+        if (keys.Count > 0)
+        {
+            outbox.Add(FileCleanup.Type, new FileCleanup([.. keys.SelectMany(k => k)]));
+        }
+
         db.Jobs.Remove(job);
         await SaveAsync(cancellationToken);
     }
@@ -208,8 +220,9 @@ public sealed class JobCommands(
         }
     }
 
+    /// <summary>With the checklist: the job's moves and their blocked reasons depend on it (SPEC-V2 5.6).</summary>
     private async Task<Job> LoadAsync(Guid id, CancellationToken cancellationToken) =>
-        await db.Jobs.SingleOrDefaultAsync(j => j.Id == id, cancellationToken) ?? throw JobErrors.NotFound();
+        await db.Jobs.Include(j => j.Checklist).SingleOrDefaultAsync(j => j.Id == id, cancellationToken) ?? throw JobErrors.NotFound();
 
     private async Task SaveAsync(CancellationToken cancellationToken)
     {

@@ -15,6 +15,12 @@ public enum PortalResource
 
     /// <summary>The client's standing job, whose quote waits for a decision.</summary>
     Quote,
+
+    /// <summary>The client's completed visit, not signed off yet (M19).</summary>
+    CompletedVisit,
+
+    /// <summary>The photo on a client's completed visit; the route's visit is always the caller's own (M19).</summary>
+    Photo,
 }
 
 /// <summary>
@@ -45,6 +51,8 @@ public sealed partial record PortalEndpointCase(string Method, string Pattern)
     {
         PortalResource.Visit => "visit-not-found",
         PortalResource.Quote => "quote-not-found",
+        PortalResource.CompletedVisit => "visit-not-found",
+        PortalResource.Photo => "photo-not-found",
         _ => throw new InvalidOperationException($"{Key} takes no id."),
     };
 
@@ -59,19 +67,37 @@ public sealed partial record PortalEndpointCase(string Method, string Pattern)
         new("POST", "/requests") { Allowed = HttpStatusCode.Created, Audited = true, Body = _ => new { title = "Please clean the stairwell" } },
         new("POST", "/quotes/{id:guid}/approve") { Resource = PortalResource.Quote, ShowsOwnJob = true, Audited = true, Body = _ => new { comment = "Go ahead" } },
         new("POST", "/quotes/{id:guid}/decline") { Resource = PortalResource.Quote, ShowsOwnJob = true, Audited = true, Body = _ => new { comment = "Too dear" } },
+
+        // A completed visit's proof and the client's sign-off (M19).
+        new("GET", "/visits/{id:guid}/photos/{photoId:guid}") { Resource = PortalResource.Photo },
+        new("GET", "/visits/{id:guid}/photos/{photoId:guid}/thumbnail") { Resource = PortalResource.Photo },
+        new("POST", "/visits/{id:guid}/confirm") { Resource = PortalResource.CompletedVisit, ShowsOwn = client => client.VisitTitle, Audited = true },
+        new("POST", "/visits/{id:guid}/report-problem")
+        {
+            Resource = PortalResource.CompletedVisit,
+            ShowsOwn = client => client.VisitTitle,
+            Audited = true,
+            Body = _ => new { text = "The hallway was not mopped" },
+        },
     ];
 
     /// <summary>This client's resource of the case's kind.</summary>
     public static Guid ResourceOf(PortalResource resource, PortalClient client) => resource switch
     {
         PortalResource.Visit or PortalResource.Quote => client.JobId,
+        PortalResource.CompletedVisit => client.VisitId,
+        PortalResource.Photo => client.PhotoId,
         _ => throw new InvalidOperationException("No resource."),
     };
 
     /// <summary>Sends the case as <paramref name="browser"/>, with <paramref name="owner"/>'s resource in the route.</summary>
     public async Task<HttpResponseMessage> SendAsync(BrowserClient browser, PortalClient caller, PortalClient owner)
     {
-        var path = PortalAuth.ApiPath + IdSegment().Replace(Pattern, Resource == PortalResource.None ? "" : ResourceOf(Resource, owner).ToString());
+        // A photo's route names the caller's own completed visit and the owner's photo: another client's photo under our
+        // own visit must be "not found" too.
+        var path = PortalAuth.ApiPath + (Resource == PortalResource.Photo
+            ? Pattern.Replace("{id:guid}", caller.VisitId.ToString(), StringComparison.Ordinal).Replace("{photoId:guid}", owner.PhotoId.ToString(), StringComparison.Ordinal)
+            : IdSegment().Replace(Pattern, Resource == PortalResource.None ? "" : ResourceOf(Resource, owner).ToString()));
         if (Method == "GET")
         {
             return await browser.Http.GetAsync(path, TestContext.Current.CancellationToken);

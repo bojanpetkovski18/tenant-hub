@@ -55,7 +55,11 @@ public sealed record AgreementView(
     uint Version,
     IReadOnlyList<VisitItem> UpcomingVisits,
     IReadOnlyList<VisitItem> ChangedByHand,
-    bool CanManage);
+    bool CanManage)
+{
+    /// <summary>The checklist each visit starts with (SPEC-V2 4.5).</summary>
+    public IReadOnlyList<ChecklistEntry> Checklist { get; init; } = [];
+}
 
 public sealed record ListAgreementsRequest(Guid? ClientId, IReadOnlyList<AgreementStatus> Statuses, string? Search, PageRequest Paging);
 
@@ -166,7 +170,10 @@ public sealed class AgreementQueries(IAppDbContext db, ITenantContext tenant, II
             agreement.Version,
             [.. items.Take(UpcomingCount)],
             [.. items.Where(v => v.ChangedByHand)],
-            tenant.HasPermission(Permissions.AgreementsManage));
+            tenant.HasPermission(Permissions.AgreementsManage))
+        {
+            Checklist = agreement.ChecklistTemplate,
+        };
     }
 
     /// <summary>The next visit dates of a schedule, without saving (the form's live preview): from today or the start.</summary>

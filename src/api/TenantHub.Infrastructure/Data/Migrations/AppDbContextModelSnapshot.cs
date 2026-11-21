@@ -137,6 +137,13 @@ namespace TenantHub.Infrastructure.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("assignee_user_id");
 
+                    b.Property<string>("ChecklistTemplate")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("checklist_template")
+                        .HasDefaultValueSql("'[]'::jsonb");
+
                     b.Property<Guid>("ClientId")
                         .HasColumnType("uuid")
                         .HasColumnName("client_id");
@@ -672,6 +679,122 @@ namespace TenantHub.Infrastructure.Data.Migrations
                     b.ToTable("invitations", (string)null);
                 });
 
+            modelBuilder.Entity("TenantHub.Domain.Jobs.Attachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<long>("Bytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("bytes");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("integer")
+                        .HasColumnName("height");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_id");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("storage_key");
+
+                    b.Property<string>("ThumbnailKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("thumbnail_key");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("integer")
+                        .HasColumnName("width");
+
+                    b.HasKey("Id")
+                        .HasName("pk_attachments");
+
+                    b.HasIndex("CreatedByUserId")
+                        .HasDatabaseName("ix_attachments_created_by_user_id");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_attachments_storage_key");
+
+                    b.HasIndex("OrganizationId", "JobId", "CreatedAt")
+                        .HasDatabaseName("ix_attachments_job");
+
+                    b.ToTable("attachments", (string)null);
+                });
+
+            modelBuilder.Entity("TenantHub.Domain.Jobs.ChecklistItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("DoneAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("done_at");
+
+                    b.Property<Guid?>("DoneByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("done_by_user_id");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_id");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<bool>("Required")
+                        .HasColumnType("boolean")
+                        .HasColumnName("required");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("text");
+
+                    b.HasKey("Id")
+                        .HasName("pk_checklist_items");
+
+                    b.HasIndex("DoneByUserId")
+                        .HasDatabaseName("ix_checklist_items_done_by_user_id");
+
+                    b.HasIndex("OrganizationId", "JobId", "Position")
+                        .HasDatabaseName("ix_checklist_items_job");
+
+                    b.ToTable("checklist_items", (string)null);
+                });
+
             modelBuilder.Entity("TenantHub.Domain.Jobs.Job", b =>
                 {
                     b.Property<Guid>("Id")
@@ -720,6 +843,24 @@ namespace TenantHub.Infrastructure.Data.Migrations
                     b.Property<bool>("ChangedByHand")
                         .HasColumnType("boolean")
                         .HasColumnName("changed_by_hand");
+
+                    b.Property<string>("ClientFeedback")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("client_feedback");
+
+                    b.Property<DateTimeOffset?>("ClientFeedbackAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("client_feedback_at");
+
+                    b.Property<Guid?>("ClientFeedbackByContactId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_feedback_by_contact_id");
+
+                    b.Property<string>("ClientFeedbackText")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("client_feedback_text");
 
                     b.Property<Guid>("ClientId")
                         .HasColumnType("uuid")
@@ -815,6 +956,9 @@ namespace TenantHub.Infrastructure.Data.Migrations
 
                     b.HasIndex("OrganizationId", "AssigneeUserId")
                         .HasDatabaseName("ix_jobs_organization_id_assignee_user_id");
+
+                    b.HasIndex("OrganizationId", "ClientFeedbackByContactId")
+                        .HasDatabaseName("ix_jobs_organization_id_client_feedback_by_contact_id");
 
                     b.HasIndex("OrganizationId", "ClientId")
                         .HasDatabaseName("ix_jobs_organization_id_client_id");
@@ -1334,6 +1478,55 @@ namespace TenantHub.Infrastructure.Data.Migrations
                         .HasConstraintName("fk_invitations_organizations_organization_id");
                 });
 
+            modelBuilder.Entity("TenantHub.Domain.Jobs.Attachment", b =>
+                {
+                    b.HasOne("TenantHub.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_attachments_users_created_by_user_id");
+
+                    b.HasOne("TenantHub.Domain.Organizations.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_attachments_organizations_organization_id");
+
+                    b.HasOne("TenantHub.Domain.Jobs.Job", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "JobId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_attachments_jobs_organization_id_job_id");
+                });
+
+            modelBuilder.Entity("TenantHub.Domain.Jobs.ChecklistItem", b =>
+                {
+                    b.HasOne("TenantHub.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("DoneByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_checklist_items_users_done_by_user_id");
+
+                    b.HasOne("TenantHub.Domain.Organizations.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_checklist_items_organizations_organization_id");
+
+                    b.HasOne("TenantHub.Domain.Jobs.Job", null)
+                        .WithMany("Checklist")
+                        .HasForeignKey("OrganizationId", "JobId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_checklist_items_jobs_organization_id_job_id");
+                });
+
             modelBuilder.Entity("TenantHub.Domain.Jobs.Job", b =>
                 {
                     b.HasOne("TenantHub.Infrastructure.Identity.AppUser", null)
@@ -1375,6 +1568,13 @@ namespace TenantHub.Infrastructure.Data.Migrations
                         .HasForeignKey("OrganizationId", "AssigneeUserId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_jobs_memberships_organization_id_assignee_user_id");
+
+                    b.HasOne("TenantHub.Domain.Clients.ClientContact", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "ClientFeedbackByContactId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_jobs_client_contacts_organization_id_client_feedback_by_con");
 
                     b.HasOne("TenantHub.Domain.Clients.Client", null)
                         .WithMany()
@@ -1434,6 +1634,11 @@ namespace TenantHub.Infrastructure.Data.Migrations
                         .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .HasConstraintName("fk_scheduled_tasks_organizations_organization_id");
+                });
+
+            modelBuilder.Entity("TenantHub.Domain.Jobs.Job", b =>
+                {
+                    b.Navigation("Checklist");
                 });
 #pragma warning restore 612, 618
         }

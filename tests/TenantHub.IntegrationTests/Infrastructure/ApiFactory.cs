@@ -42,6 +42,9 @@ public class ApiFactory(
 
     public CapturedLogs Logs { get; } = new();
 
+    /// <summary>This factory's photo store (D043): a directory of its own under the system's temporary directory.</summary>
+    public string FilesRoot { get; } = Path.Combine(Path.GetTempPath(), "tenant-hub-tests", Guid.NewGuid().ToString("N"));
+
     /// <summary>Delivers every outbox message that is due, as the background dispatcher would. Returns how many it claimed.</summary>
     public async Task<int> DispatchOutboxAsync()
     {
@@ -77,6 +80,7 @@ public class ApiFactory(
         builder.UseSetting("RateLimiting:PortalSignInPermitLimit", "1000");
         // The outbox dispatcher and the scheduler run only when a test drives them (DispatchOutboxAsync, Scheduler).
         builder.UseSetting(BackgroundWork.EnabledSetting, "false");
+        builder.UseSetting("Files:Root", FilesRoot);
         foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
         {
             builder.UseSetting(key, value);
@@ -88,6 +92,20 @@ public class ApiFactory(
             services?.Invoke(testServices);
         });
         builder.ConfigureLogging(logging => logging.AddProvider(Logs));
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        await base.DisposeAsync();
+        try
+        {
+            Directory.Delete(FilesRoot, recursive: true);
+        }
+        catch (DirectoryNotFoundException)
+        {
+        }
+
+        GC.SuppressFinalize(this);
     }
 
     private sealed class TestEndpoints : IEndpointMapper

@@ -48,6 +48,18 @@ public static class RowSecuritySql
                 WITH CHECK ({CurrentClient} IS NULL OR {column} = {CurrentClient});
             """);
 
+    /// <summary>
+    /// The client boundary for a job's own rows (checklist items, photos; SPEC-V2 3.2, 5.6), which have no client of their
+    /// own: in a portal session a row is visible only while its job is. The subquery reads <c>jobs</c> under that table's
+    /// policies, its client policy included, so this follows the job's client wherever the job moves.
+    /// </summary>
+    public static void EnableClientIsolationThroughJob(this MigrationBuilder migrationBuilder, string table) =>
+        migrationBuilder.Sql($"""
+            CREATE POLICY {ClientPolicy} ON {table} AS RESTRICTIVE
+                USING ({CurrentClient} IS NULL OR EXISTS (SELECT 1 FROM jobs j WHERE j.organization_id = {table}.organization_id AND j.id = {table}.job_id))
+                WITH CHECK ({CurrentClient} IS NULL OR EXISTS (SELECT 1 FROM jobs j WHERE j.organization_id = {table}.organization_id AND j.id = {table}.job_id));
+            """);
+
     public static void DisableClientIsolation(this MigrationBuilder migrationBuilder, string table) =>
         migrationBuilder.Sql($"DROP POLICY {ClientPolicy} ON {table};");
 

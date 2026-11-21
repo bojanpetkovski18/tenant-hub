@@ -18,6 +18,8 @@ export interface PlanLimits {
   readonly activeClients: number | null;
   readonly openJobs: number | null;
   readonly activeAgreements: number | null;
+  /** Photo storage in bytes (SPEC-V2 4.8). */
+  readonly storage: number | null;
 }
 
 export interface PlanUsage {
@@ -25,6 +27,7 @@ export interface PlanUsage {
   readonly activeClients: number;
   readonly openJobs: number;
   readonly activeAgreements: number;
+  readonly storage: number;
 }
 
 export const planLabels: Readonly<Record<PlanName, string>> = {
@@ -46,6 +49,7 @@ export const limitLabels: Readonly<
     title: 'Active agreements',
     unit: (n) => (n === 1 ? 'active agreement' : 'active agreements'),
   },
+  storage: { title: 'Photo storage', unit: () => '' },
 };
 
 export const limitNames: readonly LimitName[] = [
@@ -53,10 +57,36 @@ export const limitNames: readonly LimitName[] = [
   'activeClients',
   'openJobs',
   'activeAgreements',
+  'storage',
 ];
 
-/** "3 of 3 seats", or "12 active clients, no limit". */
+/** Bytes as the API's messages say them (binary units, at most one decimal): "100 MB", "4.2 GB". */
+export function formatBytes(bytes: number): string {
+  const units: readonly [number, string][] = [
+    [1024 ** 3, 'GB'],
+    [1024 ** 2, 'MB'],
+    [1024, 'KB'],
+  ];
+  for (const [size, unit] of units) {
+    if (bytes >= size) {
+      return `${Math.round((bytes / size) * 10) / 10} ${unit}`;
+    }
+  }
+  return bytes === 1 ? '1 byte' : `${bytes} bytes`;
+}
+
+/** A limit's amount in its own unit: a count, or bytes for storage. */
+export function amountText(limit: LimitName, amount: number): string {
+  return limit === 'storage' ? formatBytes(amount) : String(amount);
+}
+
+/** "3 of 3 seats", "12 active clients, no limit", or "4.2 MB of 5 GB". */
 export function usageText(limit: LimitName, used: number, allowed: number | null): string {
+  if (limit === 'storage') {
+    return allowed === null
+      ? `${formatBytes(used)}, no limit`
+      : `${formatBytes(used)} of ${formatBytes(allowed)}`;
+  }
   const unit = limitLabels[limit].unit;
   return allowed === null
     ? `${used} ${unit(used)}, no limit`

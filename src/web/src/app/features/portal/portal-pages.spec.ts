@@ -12,7 +12,7 @@ import { routes } from '../../app.routes';
 import { provideCspSafeCdkStyles } from '../../core/layout/csp-safe-style-loader';
 import { authInterceptor } from '../../core/session/auth.interceptor';
 import { loadSession, settle } from '../../testing/session';
-import { PortalSession, PortalVisit } from './portal.api';
+import { PortalSession, PortalVisit, PortalVisitDetail } from './portal.api';
 import { portalSessionInterceptor } from './portal-session';
 
 const signedOut: PortalSession = {
@@ -264,6 +264,100 @@ describe('portal pages', () => {
       await answerSession(signedOut);
 
       expect(TestBed.inject(Router).url).toBe('/portal/brightline/sign-in?notice=ended');
+    });
+
+    describe('a completed visit (M19)', () => {
+      const completed = (overrides: Partial<PortalVisitDetail> = {}): PortalVisitDetail => ({
+        ...visit({ status: 'completed' }),
+        description: null,
+        dueOn: null,
+        completedAt: '2026-11-18T15:00:00Z',
+        checklist: [
+          { text: 'Vacuum all floors', required: true, done: true },
+          { text: 'Water the plants', required: false, done: false },
+        ],
+        photos: [{ id: 'p1', width: 1600, height: 1200 }],
+        feedback: null,
+        canGiveFeedback: true,
+        ...overrides,
+      });
+
+      it('shows what was done and the photos, and confirms the visit after asking', async () => {
+        const page = await open('/portal/brightline/visits/v1', signedIn);
+        http.expectOne('/api/portal/visits/v1').flush(completed());
+        await settle(harness.fixture);
+
+        expect(text(main(page))).toContain('Vacuum all floors (done)');
+        expect(text(main(page))).toContain('Water the plants (not done)');
+        expect(page.querySelector('img')?.getAttribute('src')).toBe(
+          '/api/portal/visits/v1/photos/p1/thumbnail',
+        );
+
+        [...page.querySelectorAll('button')].find((b) => text(b) === 'Looks good')!.click();
+        await settle(harness.fixture);
+        [...document.querySelectorAll('[role="alertdialog"] button')]
+          .find((b) => text(b) === 'Looks good')!
+          .dispatchEvent(new MouseEvent('click'));
+        await settle(harness.fixture);
+        http.expectOne('/api/portal/visits/v1/confirm').flush(
+          completed({
+            canGiveFeedback: false,
+            feedback: {
+              kind: 'confirmed',
+              text: null,
+              at: '2026-11-19T09:00:00Z',
+              byName: 'Dana Reyes',
+            },
+          }),
+        );
+        await settle(harness.fixture);
+
+        expect(text(main(page).querySelector('[role="status"]'))).toContain(
+          'Dana Reyes confirmed this visit',
+        );
+        expect([...page.querySelectorAll('button')].some((b) => text(b) === 'Looks good')).toBe(
+          false,
+        );
+      });
+
+      it('asks for the problem in words before sending it', async () => {
+        const page = await open('/portal/brightline/visits/v1', signedIn);
+        http.expectOne('/api/portal/visits/v1').flush(completed());
+        await settle(harness.fixture);
+
+        [...page.querySelectorAll('button')].find((b) => text(b) === 'Report a problem')!.click();
+        await settle(harness.fixture);
+        expect(document.activeElement?.id).toBe('problem');
+        page.querySelector('form')!.dispatchEvent(new Event('submit'));
+        await settle(harness.fixture);
+        expect(text(page.querySelector('#problem-error'))).toContain('Describe the problem');
+        http.expectNone('/api/portal/visits/v1/report-problem');
+
+        const field = page.querySelector<HTMLTextAreaElement>('#problem')!;
+        field.value = '  The hallway was missed  ';
+        field.dispatchEvent(new Event('input'));
+        page.querySelector('form')!.dispatchEvent(new Event('submit'));
+        await settle(harness.fixture);
+        const sent = http.expectOne('/api/portal/visits/v1/report-problem');
+        expect(sent.request.body).toEqual({ text: 'The hallway was missed' });
+      });
+
+      it('shows no sign-off before the visit is completed', async () => {
+        const page = await open('/portal/brightline/visits/v1', signedIn);
+        http.expectOne('/api/portal/visits/v1').flush(
+          completed({
+            status: 'scheduled',
+            completedAt: null,
+            checklist: [],
+            photos: [],
+            canGiveFeedback: false,
+          }),
+        );
+        await settle(harness.fixture);
+
+        expect(text(main(page))).not.toContain('Your sign-off');
+        expect(page.querySelector('img')).toBeNull();
+      });
     });
 
     it('approves a quote with an optional comment', async () => {

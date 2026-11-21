@@ -138,6 +138,25 @@ import { Agreement, AgreementsApi, holdMessages } from './agreements.api';
                 <dd class="whitespace-pre-line">{{ a.description }}</dd>
               </div>
             }
+            <div class="sm:col-span-2">
+              <dt class="text-xs font-semibold uppercase tracking-wide text-muted">Checklist</dt>
+              <dd>
+                @if (a.checklist.length === 0) {
+                  None
+                } @else {
+                  <ul class="mt-1 list-disc space-y-0.5 pl-5">
+                    @for (entry of a.checklist; track $index) {
+                      <li>
+                        {{ entry.text }}
+                        @if (entry.required) {
+                          <span class="th-badge ml-1">Required</span>
+                        }
+                      </li>
+                    }
+                  </ul>
+                }
+              </dd>
+            </div>
           </dl>
         </section>
 

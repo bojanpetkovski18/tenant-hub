@@ -27,7 +27,9 @@ import {
   PlanLimits,
   PlanName,
   SettingsApi,
+  amountText,
   featureLabels,
+  formatBytes,
   limitLabels,
   limitNames,
   planFeatures,
@@ -52,7 +54,8 @@ export { usageText } from '../../shared/plan/plan';
 
 /** One line per limit that blocks a downgrade: "Seats: 4 in use, Free allows 3". */
 export function blockingText(detail: PlanLimitDetail, target: string): string {
-  return `${limitLabels[detail.limit].title}: ${detail.usage} in use, ${target} allows ${detail.allowed}`;
+  const amount = (n: number) => amountText(detail.limit, n);
+  return `${limitLabels[detail.limit].title}: ${amount(detail.usage)} in use, ${target} allows ${amount(detail.allowed)}`;
 }
 
 /**
@@ -330,6 +333,11 @@ export class SettingsPage {
 
   protected allowance(limit: LimitName, limits: PlanLimits): string {
     const allowed = limits[limit];
+    if (limit === 'storage') {
+      return allowed === null
+        ? 'Unlimited photo storage'
+        : `${formatBytes(allowed)} of photo storage`;
+    }
     return allowed === null
       ? `Unlimited ${limitLabels[limit].unit(2)}`
       : `${allowed.toLocaleString('en-US')} ${limitLabels[limit].unit(allowed)}`;

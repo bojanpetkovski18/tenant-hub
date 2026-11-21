@@ -83,5 +83,20 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<Job>
             .HasForeignKey(j => new { j.OrganizationId, j.AgreementId })
             .HasPrincipalKey(a => new { a.OrganizationId, a.Id })
             .OnDelete(DeleteBehavior.NoAction);
+
+        // The checklist belongs to the job (SPEC-V2 5.6): loaded with it where its rules apply, deleted with it.
+        job.HasMany(j => j.Checklist).WithOne()
+            .HasForeignKey(i => new { i.OrganizationId, i.JobId })
+            .HasPrincipalKey(j => new { j.OrganizationId, j.Id })
+            .OnDelete(DeleteBehavior.Cascade);
+        job.Navigation(j => j.Checklist).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        // The client's sign-off (SPEC-V2 5.6), by a contact of the job's organization.
+        job.Property(j => j.ClientFeedback).HasConversion<string>().HasMaxLength(20);
+        job.Property(j => j.ClientFeedbackText).HasMaxLength(ClientFeedbacks.TextMaxLength);
+        job.HasOne<ClientContact>().WithMany()
+            .HasForeignKey(j => new { j.OrganizationId, j.ClientFeedbackByContactId })
+            .HasPrincipalKey(c => new { c.OrganizationId, c.Id })
+            .OnDelete(DeleteBehavior.NoAction);
     }
 }

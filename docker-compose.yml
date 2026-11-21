@@ -62,7 +62,11 @@ services:
       # Local plain http only (see the header). Cookies stay HttpOnly and SameSite=Strict.
       Auth__RequireHttps: "false"
       ForwardedHeaders__Enabled: "false"
+    volumes:
+      # Photos (D043): kept apart from the database, like its volume.
+      - files:/app/data/files
     # The image's health check (dotnet TenantHub.Api.dll --health-check) asks /health, database included.
 
 volumes:
   pgdata:
+  files:

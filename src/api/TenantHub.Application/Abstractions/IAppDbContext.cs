@@ -37,6 +37,12 @@ public interface IAppDbContext
 
     DbSet<WorkRequest> WorkRequests { get; }
 
+    /// <summary>Items of jobs' checklists; changed through <see cref="Job"/>, read directly by views.</summary>
+    DbSet<ChecklistItem> ChecklistItems { get; }
+
+    /// <summary>Jobs' photos (SPEC-V2 8 <c>attachments</c>).</summary>
+    DbSet<Attachment> Attachments { get; }
+
     /// <summary>For optimistic concurrency: handlers set the version the client last saw as the original value.</summary>
     EntityEntry<TEntity> Entry<TEntity>(TEntity entity)
         where TEntity : class;

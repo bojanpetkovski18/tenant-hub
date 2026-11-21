@@ -21,8 +21,15 @@ public sealed class PlanLimitsCheck(IAppDbContext db, ITenantContext tenant, Tim
         var clients = await db.Clients.CountAsync(c => c.Status == ClientStatus.Active, cancellationToken);
         var jobs = await db.Jobs.CountAsync(j => j.Status != JobStatus.Completed && j.Status != JobStatus.Cancelled, cancellationToken);
         var agreements = await db.Agreements.CountAsync(a => a.Status == AgreementStatus.Active, cancellationToken);
-        return new PlanUsage(seats, clients, jobs, agreements);
+        return new PlanUsage(seats, clients, jobs, agreements, await StorageBytesAsync(cancellationToken));
     }
+
+    /// <summary>
+    /// The stored photos' bytes (SPEC-V2 4.8): a sum over the organization's rows rather than a counter, so it cannot
+    /// drift from the rows when jobs or organizations are deleted by cascade (D043). Exact under the organization lock.
+    /// </summary>
+    public async Task<long> StorageBytesAsync(CancellationToken cancellationToken) =>
+        await db.Attachments.SumAsync(a => (long?)a.Bytes, cancellationToken) ?? 0;
 
     public async Task<int> SeatsAsync(CancellationToken cancellationToken)
     {
@@ -52,7 +59,7 @@ public sealed class PlanLimitsCheck(IAppDbContext db, ITenantContext tenant, Tim
     /// organization lock. <paramref name="alreadyCounted"/> is usage the change replaces (an invitation becoming a
     /// membership), so it is not counted twice.
     /// </summary>
-    public async Task EnsureRoomForAsync(LimitKind kind, CancellationToken cancellationToken, int adding = 1, int alreadyCounted = 0)
+    public async Task EnsureRoomForAsync(LimitKind kind, CancellationToken cancellationToken, long adding = 1, int alreadyCounted = 0)
     {
         var usage = await UsageAsync(cancellationToken);
         var counted = kind switch

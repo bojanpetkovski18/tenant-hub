@@ -1,6 +1,6 @@
 # TenantHub v2: Specification
 
-Status: proposed on 2026-11-16 (M13) for the owner's approval; implementation starts at M14 once it is approved. This document extends `SPEC.md`, which describes v1.0.0 as built. Where v2 changes a v1 rule, it says so and names the `SPEC.md` section. At v2.0.0 (M23) the two are merged into one `SPEC.md` describing the product as built. Decisions are D037–D047 in `DECISIONS.md`.
+Status: proposed on 2026-11-16 (M13) for the owner's approval; implementation starts at M14 once it is approved. This document extends `SPEC.md`, which describes v1.0.0 as built. Where v2 changes a v1 rule, it says so and names the `SPEC.md` section. At v2.0.0 (M23) the two are merged into one `SPEC.md` describing the product as built. Decisions are D037–D049 in `DECISIONS.md`.
 
 ## 1. Purpose and positioning
 
@@ -110,6 +110,8 @@ Fixed, not role-based. A contact sees their own client's visits (upcoming, and t
 - **Plan entitlements** start here (4.8): the portal is a Team and Business feature.
 
 ### 4.5 Completion proof (M19)
+As built: D043 (photos, SkiaSharp, the file store), D048 (checklists and sign-off).
+
 - **Checklists:** items on a job, copied from the agreement's template or added by hand; each item may be required. Completing a job requires every required item to be done.
 - **Photos:** added to a job by whoever may work on it, re-encoded and stripped of metadata on upload, stored outside the database and served only through authorized endpoints.
 - **Client sign-off:** in the portal, a completed visit shows its checklist and photos; the contact confirms it ("Looks good") or reports a problem, which notifies staff (M20) and does not reopen the job by itself.
@@ -314,13 +316,13 @@ Key access is also enabled on the v1 endpoints `GET /clients`, `GET /clients/{id
 Tenant-owned tables get a query filter, an index starting with `organization_id`, a row-level security policy (3.1), and composite foreign keys for references inside the tenant, as in v1.
 
 - **agreements** (tenant-owned): `id`, `organization_id`, `client_id` (composite foreign key), `title`, `description`, `assignee_user_id` (composite foreign key to memberships), `priority`, `quoted_amount` (`numeric(12,2)`), `estimated_minutes`, `checklist_template` (`jsonb`, added with checklists in M19), `recurrence` (`jsonb`, validated by the domain), `starts_on`, `ends_on`, `max_visits`, `status` (active, paused, ended), `paused_reason`, `generated_through`, `created_at`, `updated_at`, `xmin`.
-- **jobs** gain: `agreement_id` and `occurrence_on` (composite foreign key; unique `(organization_id, agreement_id, occurrence_on)` where `agreement_id` is set), `changed_by_hand`, `estimated_minutes`, `approval_status`, `approval_sent_at`, `approval_sent_by_user_id`, `approved_amount`, `approval_decided_at`, `approval_decided_by_contact_id`, `approval_comment`, `client_feedback`, `client_feedback_text`, `client_feedback_at`.
-- **organizations** gain `daily_capacity_minutes` and `storage_bytes_used`.
+- **jobs** gain: `agreement_id` and `occurrence_on` (composite foreign key; unique `(organization_id, agreement_id, occurrence_on)` where `agreement_id` is set), `changed_by_hand`, `estimated_minutes`, `approval_status`, `approval_sent_at`, `approval_sent_by_user_id`, `approved_amount`, `approval_decided_at`, `approval_decided_by_contact_id`, `approval_comment`, `client_feedback`, `client_feedback_text`, `client_feedback_at`, `client_feedback_by_contact_id` (composite foreign key; added in M19 so staff see who signed off, D048).
+- **organizations** gain `daily_capacity_minutes`. (`storage_bytes_used` was planned here; as built, the storage limit is a sum over `attachments` under the organization lock, which cannot drift when rows go by cascade. D043.)
 - **client_contacts** (tenant-owned): `id`, `organization_id`, `client_id` (composite foreign key), `name`, `email`, `normalized_email`, `created_at`, `created_by_user_id`, `removed_at`, `last_sign_in_at`. Partial unique index on `(organization_id, client_id, normalized_email)` where active.
 - **portal_sign_in_tokens** (tenant-owned): `token_hash` (unique), `organization_id`, `contact_id`, `expires_at`, `used_at`.
 - **work_requests** (tenant-owned): `id`, `organization_id`, `client_id`, `contact_id`, `title`, `description`, `preferred_on`, `status`, `job_id`, `decline_reason`, `created_at`, `decided_at`, `decided_by_user_id`.
 - **checklist_items** (tenant-owned): `id`, `organization_id`, `job_id` (composite foreign key), `position`, `text`, `required`, `done_at`, `done_by_user_id`.
-- **attachments** (tenant-owned): `id`, `organization_id`, `job_id`, `storage_key`, `content_type`, `bytes`, `width`, `height`, `thumbnail_key`, `created_at`, `created_by_user_id`.
+- **attachments** (tenant-owned): `id`, `organization_id`, `job_id`, `storage_key`, `content_type`, `bytes` (the photo and its thumbnail together, as the storage limit counts them), `width`, `height`, `thumbnail_key`, `created_at`, `created_by_user_id`. With `checklist_items`, its client policy reads the job's (D048).
 - **notifications** (tenant-owned): `id`, `organization_id`, `user_id`, `type`, `data` (`jsonb`), `created_at`, `read_at`. Index `(organization_id, user_id, created_at desc)`.
 - **notification_preferences** (not tenant-owned, per user): `user_id`, `type`, `email`.
 - **api_keys** (tenant-owned): `id`, `organization_id`, `name`, `prefix`, `key_hash` (unique), `access`, `created_at`, `created_by_user_id`, `expires_at`, `last_used_at`, `revoked_at`.

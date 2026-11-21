@@ -54,6 +54,8 @@ public static class ApplicationSetup
         .AddScoped<GetJobQuery>()
         .AddScoped<JobHistoryQuery>()
         .AddScoped<JobCommands>()
+        .AddScoped<ChecklistCommands>()
+        .AddScoped<PhotoCommands>()
         .AddScoped<BoardQuery>()
         .AddScoped<VisitGenerator>()
         .AddScoped<AgreementCommands>()

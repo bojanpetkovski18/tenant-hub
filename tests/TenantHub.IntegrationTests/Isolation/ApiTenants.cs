@@ -3,7 +3,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using TenantHub.Api.Features.Auth;
+using TenantHub.Application.Abstractions;
 using TenantHub.Application.Invitations;
 using TenantHub.Application.Tenancy;
 using TenantHub.Domain.Agreements;
@@ -73,6 +75,18 @@ public sealed class ApiTenants : IAsyncDisposable
 
     /// <summary>B's standing open work request, from <see cref="ContactB"/>.</summary>
     public Guid RequestB { get; private set; }
+
+    /// <summary>A checklist item and a photo on each standing job (M19).</summary>
+    public Guid ChecklistItemA { get; private set; }
+
+    public Guid ChecklistItemB { get; private set; }
+
+    public Guid PhotoA { get; private set; }
+
+    public Guid PhotoB { get; private set; }
+
+    /// <summary>The job each checklist item or photo the fixture made belongs to, and that job's organization.</summary>
+    private readonly Dictionary<Guid, (Guid Job, Guid Organization)> _parents = [];
 
     public string OrgBOwnerEmail { get; } = $"owner-{Guid.NewGuid():N}@bravo.example";
 
@@ -150,7 +164,17 @@ public sealed class ApiTenants : IAsyncDisposable
             .OrderBy(r => r.Id)
             .Select(r => new { r.Id, r.Status, r.JobId, r.DeclineReason, r.Version })
             .ToListAsync(Ct);
-        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit, invitations, jobs, agreements, contacts, requests, next = organization.NextJobNumber });
+        var checklist = await db.ChecklistItems.AcrossTenants().AsNoTracking()
+            .Where(i => i.OrganizationId == OrgB)
+            .OrderBy(i => i.Id)
+            .Select(i => new { i.Id, i.JobId, i.Position, i.Text, i.Required, i.DoneAt })
+            .ToListAsync(Ct);
+        var photos = await db.Attachments.AcrossTenants().AsNoTracking()
+            .Where(a => a.OrganizationId == OrgB)
+            .OrderBy(a => a.Id)
+            .Select(a => new { a.Id, a.JobId, a.StorageKey, a.Bytes })
+            .ToListAsync(Ct);
+        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit, invitations, jobs, agreements, contacts, requests, checklist, photos, next = organization.NextJobNumber });
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
     }
 
@@ -491,6 +515,66 @@ public sealed class ApiTenants : IAsyncDisposable
         await CreateSignInLinkAsync(OrgB, ContactB);
         RequestB = await CreateRequestAsync(OrgB, ContactB);
         await CreateRequestAsync(OrgA);
+        ChecklistItemA = await CreateChecklistItemAsync(OrgA, JobA);
+        ChecklistItemB = await CreateChecklistItemAsync(OrgB, JobB);
+        PhotoA = await CreatePhotoAsync(OrgA, JobA);
+        PhotoB = await CreatePhotoAsync(OrgB, JobB);
+    }
+
+    public Guid ChecklistItemIn(Guid organizationId) =>
+        organizationId == OrgA ? ChecklistItemA : organizationId == OrgB ? ChecklistItemB : Guid.NewGuid();
+
+    public Guid PhotoIn(Guid organizationId) =>
+        organizationId == OrgA ? PhotoA : organizationId == OrgB ? PhotoB : Guid.NewGuid();
+
+    /// <summary>
+    /// The job a route's first id names for a checklist item or photo: its own job when it is in the organization the
+    /// route names, otherwise that organization's standing job (another organization's item under our own job).
+    /// </summary>
+    public Guid JobForRoute(Guid organizationId, Guid resourceId) =>
+        _parents.TryGetValue(resourceId, out var parent) && parent.Organization == organizationId ? parent.Job : JobIn(organizationId);
+
+    /// <summary>A required checklist item on a job of A or B (a new job assigned to <paramref name="assignTo"/> unless given).</summary>
+    public async Task<Guid> CreateChecklistItemAsync(Guid organizationId, Guid? jobId = null, Role? assignTo = null)
+    {
+        if (organizationId != OrgA && organizationId != OrgB)
+        {
+            return Guid.NewGuid();
+        }
+
+        var job = jobId ?? await CreateJobAsync(organizationId, assignTo);
+        var ownerId = await OwnerIdAsync(organizationId);
+        await using var db = ContextAs(organizationId, ownerId);
+        var tracked = await db.Jobs.Include(j => j.Checklist).SingleAsync(j => j.Id == job, Ct);
+        var item = tracked.AddChecklistItem(ChecklistEntry.Validate($"Item {Guid.NewGuid():N}"[..20], true), JobActor.From(ownerId, Role.Owner), DateTimeOffset.UtcNow);
+        await db.SaveChangesAsync(Ct);
+        _parents[item.Id] = (job, organizationId);
+        return item.Id;
+    }
+
+    /// <summary>A photo on a job of A or B, processed and stored like an upload (a new job assigned to <paramref name="assignTo"/> unless given).</summary>
+    public async Task<Guid> CreatePhotoAsync(Guid organizationId, Guid? jobId = null, Role? assignTo = null)
+    {
+        if (organizationId != OrgA && organizationId != OrgB)
+        {
+            return Guid.NewGuid();
+        }
+
+        var job = jobId ?? await CreateJobAsync(organizationId, assignTo);
+        var processed = Factory.Services.GetRequiredService<IPhotoProcessor>().Process(TestImages.Jpeg());
+        var files = Factory.Services.GetRequiredService<IFileStore>();
+        var stored = new StoredPhoto(FileKeys.New(organizationId, "jpg"), FileKeys.New(organizationId, "jpg"), "image/jpeg", processed.Bytes, processed.Width, processed.Height);
+        await files.WriteAsync(stored.StorageKey, processed.Image, Ct);
+        await files.WriteAsync(stored.ThumbnailKey, processed.Thumbnail, Ct);
+        var ownerId = await OwnerIdAsync(organizationId);
+        await using var db = ContextAs(organizationId, ownerId);
+        var tracked = await db.Jobs.SingleAsync(j => j.Id == job, Ct);
+        var count = await db.Attachments.CountAsync(a => a.JobId == job, Ct);
+        var photo = tracked.AddPhoto(stored, count, JobActor.From(ownerId, Role.Owner), DateTimeOffset.UtcNow);
+        db.Attachments.Add(photo);
+        await db.SaveChangesAsync(Ct);
+        _parents[photo.Id] = (job, organizationId);
+        return photo.Id;
     }
 
     /// <summary>An open work request in A or B, as its contact submits it (a new contact at a new client unless given).</summary>

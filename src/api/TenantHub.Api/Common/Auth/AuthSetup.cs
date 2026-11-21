@@ -43,7 +43,14 @@ public static class AuthSetup
             // Replacing Events drops Identity's default security-stamp hook, so it is wired back explicitly.
             options.Events = new CookieAuthenticationEvents
             {
-                OnValidatePrincipal = SecurityStampValidator.ValidatePrincipalAsync,
+                OnValidatePrincipal = async context =>
+                {
+                    await SecurityStampValidator.ValidatePrincipalAsync(context);
+                    // The validator asks to reissue the cookie after every check, and with a zero interval that is every
+                    // request: a new Set-Cookie and "no-store" on every response, so not even a photo could be cached
+                    // (M19). Sliding expiration still renews the cookie once half its lifetime has passed.
+                    context.ShouldRenew = false;
+                },
                 OnRedirectToLogin = context => SetStatus(context.Response, StatusCodes.Status401Unauthorized),
                 OnRedirectToAccessDenied = context => SetStatus(context.Response, StatusCodes.Status403Forbidden),
             };

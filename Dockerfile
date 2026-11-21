@@ -23,14 +23,19 @@ COPY src/api/ src/api/
 # The SPA becomes the API's web root; publish fingerprints and pre-compresses it (Brotli, gzip) for MapStaticAssets.
 COPY --from=web /src/web/dist/web/browser/ src/api/TenantHub.Api/wwwroot/
 RUN dotnet publish src/api/TenantHub.Api/TenantHub.Api.csproj --configuration Release --no-restore --output /app
+# The photo store's directory (D043): made here, since the runtime image has no shell, and owned by the app user, so a
+# named volume mounted on it starts out writable.
+RUN mkdir -p /data/files
 
 # 3. Runtime: Ubuntu chiseled (no shell, no package manager), running as the image's non-root "app" user. The
 # "extra" variant adds tzdata and ICU: organizations work in IANA time zones, and plain chiseled has no zoneinfo.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.15-noble-chiseled-extra AS runtime
 WORKDIR /app
 COPY --from=api /app ./
+COPY --from=api --chown=$APP_UID:$APP_UID /data /app/data
 ENV ASPNETCORE_ENVIRONMENT=Production \
-    ASPNETCORE_HTTP_PORTS=8080
+    ASPNETCORE_HTTP_PORTS=8080 \
+    Files__Root=/app/data/files
 USER $APP_UID
 EXPOSE 8080
 # No curl in a chiseled image: the app's own binary asks /health (database included) and exits 0 or 1.

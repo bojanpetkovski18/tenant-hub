@@ -6,8 +6,10 @@ namespace TenantHub.Api.Common;
 /// </summary>
 public sealed class SecurityHeadersMiddleware(RequestDelegate next, IHostEnvironment environment)
 {
+    // img-src: photos are same-origin (/api/...), so 'self' serves them; blob: is only for the local preview of a photo
+    // while it uploads (M19, D043). Blob URLs are created by this page's own scripts; nothing else is widened.
     internal const string ContentSecurityPolicy =
-        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; " +
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; " +
         "connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
     internal const string PermissionsPolicy =

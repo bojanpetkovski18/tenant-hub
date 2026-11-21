@@ -23,6 +23,8 @@ import {
   statusLabels,
   transitionLabels,
 } from './jobs.api';
+import { JobChecklist } from './job-checklist';
+import { JobPhotos } from './job-photos';
 import { JobQuotePanel } from './job-quote-panel';
 import { AskReason } from './reason-dialog';
 
@@ -37,6 +39,13 @@ const fieldLabels: Readonly<Record<string, string>> = {
   scheduledOn: 'Scheduled',
   dueOn: 'Due',
   quotedAmount: 'Quoted amount',
+  item: 'Item',
+  required: 'Required',
+  done: 'Done',
+  place: 'Place',
+  photos: 'Photos',
+  clientFeedback: 'Client sign-off',
+  problem: 'Problem',
 };
 
 /**
@@ -55,6 +64,8 @@ const fieldLabels: Readonly<Record<string, string>> = {
     OverdueMarker,
     LimitReached,
     JobQuotePanel,
+    JobChecklist,
+    JobPhotos,
   ],
   template: `
     <a [routerLink]="listLink()" class="text-sm text-muted hover:text-fg">← Jobs</a>
@@ -156,7 +167,8 @@ const fieldLabels: Readonly<Record<string, string>> = {
             @if (option.blockedReason) {
               <p [id]="'blocked-' + option.to" class="th-hint">
                 {{ label(job, option) }}: {{ option.blockedReason }}
-                @if (job.canEdit) {
+                @if (job.canEdit && option.to !== 'completed') {
+                  <!-- Complete waits for the checklist below, which the edit form does not hold. -->
                   <a routerLink="edit" class="text-accent underline">Edit the job</a>
                 }
               </p>
@@ -228,6 +240,47 @@ const fieldLabels: Readonly<Record<string, string>> = {
           </div>
         </dl>
       </section>
+
+      @if (job.clientFeedback; as feedback) {
+        <section class="th-card mt-5" aria-labelledby="feedback-heading">
+          <h2 id="feedback-heading" class="text-lg font-semibold">Client sign-off</h2>
+          @if (feedback.kind === 'confirmed') {
+            <p class="mt-2 text-sm">
+              <span class="th-badge bg-success/15 text-fg">Confirmed</span>
+              {{ feedback.byName ?? 'The client' }} confirmed the visit on
+              {{ feedback.at | date: 'd MMM y, HH:mm' }}: looks good.
+            </p>
+          } @else {
+            <div class="th-alert-error mt-2" role="status">
+              <p class="font-medium">
+                {{ feedback.byName ?? 'The client' }} reported a problem on
+                {{ feedback.at | date: 'd MMM y, HH:mm' }}
+              </p>
+              <p class="mt-1 whitespace-pre-line">{{ feedback.text }}</p>
+            </div>
+            <p class="mt-2 text-sm text-muted">
+              The job stays completed. Reopen it to put things right; the client can then sign it
+              off again.
+            </p>
+          }
+        </section>
+      }
+
+      <app-job-checklist
+        [organizationId]="organizationId()"
+        [jobId]="job.id"
+        [jobVersion]="job.version"
+        (changed)="proofChanged()"
+      />
+
+      <app-job-photos
+        [organizationId]="organizationId()"
+        [slug]="slug()"
+        [jobId]="job.id"
+        [jobLabel]="job.label"
+        [jobVersion]="job.version"
+        (changed)="proofChanged()"
+      />
 
       <app-job-quote-panel
         [job]="job"
@@ -343,6 +396,19 @@ export class JobDetailPage {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  /**
+   * The checklist or photos changed: the moves (Complete waits for the required items) and the history follow. Quietly,
+   * without the page's loading state, so the sections keep their place.
+   */
+  protected async proofChanged(): Promise<void> {
+    try {
+      this.job.set(await this.api.get(this.membership()!.organizationId, this.id()));
+    } catch {
+      // The sections show their own errors; the next action reloads the job.
+    }
+    void this.loadHistory();
   }
 
   /** The quote went to the client: the job (now Pending) and its history change. */

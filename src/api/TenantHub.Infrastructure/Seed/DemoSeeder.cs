@@ -33,9 +33,30 @@ public sealed partial class DemoSeeder(
     UserManager<AppUser> users,
     IIdentityService identity,
     DbContextOptions<AppDbContext> options,
+    IFileStore files,
+    IPhotoProcessor photos,
     TimeProvider time,
     ILogger<DemoSeeder> logger)
 {
+    /// <summary>What a Brightline visit asks for (M19): copied from its agreement, ticked by the cleaner before completing.</summary>
+    private static readonly IReadOnlyList<(string? Text, bool? Required)> VisitChecklist =
+    [
+        ("Vacuum all floors", true),
+        ("Empty the bins", true),
+        ("Wipe kitchen surfaces", true),
+        ("Water the plants", false),
+    ];
+
+    /// <summary>A one-off job's proof, added by whoever completes it.</summary>
+    private static readonly IReadOnlyList<(string Text, bool Required)> JobChecklist =
+    [
+        ("Agree the scope with the client on arrival", true),
+        ("Leave the site tidy", true),
+    ];
+
+    /// <summary>How far back completed work has photos: enough for the portal's past visits, few enough files.</summary>
+    private static readonly TimeSpan PhotosSince = TimeSpan.FromDays(21);
+
     public const string PasswordSetting = "DEMO_PASSWORD";
 
     public const string BrightlineSlug = "brightline-cleaning-co";
@@ -275,15 +296,34 @@ public sealed partial class DemoSeeder(
                         jobIds[plan.Job] = job.Id;
                         break;
                     case MoveJobStep move:
-                        (await context.Jobs.SingleAsync(j => j.Id == jobIds[move.Job], cancellationToken))
-                            .TransitionTo(move.To, JobActor.From(actorId, role), move.Reason, step.At);
+                        var moving = await context.Jobs.Include(j => j.Checklist).SingleAsync(j => j.Id == jobIds[move.Job], cancellationToken);
+                        if (move.To == JobStatus.Completed && seed.Slug == BrightlineSlug && step.At >= now - PhotosSince)
+                        {
+                            var actor = JobActor.From(actorId, role);
+                            foreach (var (text, required) in JobChecklist)
+                            {
+                                var item = moving.AddChecklistItem(ChecklistEntry.Validate(text, required), actor, step.At.AddMinutes(-90));
+                                moving.ChangeChecklistItem(item.Id, new ChecklistChange(null, null, true, null), actor, step.At.AddMinutes(-20));
+                            }
+
+                            await AddPhotoAsync(context, moving, actor, step.At.AddMinutes(-10), cancellationToken);
+                        }
+
+                        moving.TransitionTo(move.To, JobActor.From(actorId, role), move.Reason, step.At);
                         break;
                     case CreateAgreementStep create:
                         var home = await context.Organizations.SingleAsync(o => o.Id == organization.Id, cancellationToken);
                         var agreement = Agreement.Create(
                             organization.Id,
                             clientIds[create.Client],
-                            AgreementTemplate.Validate(create.Plan.Title, null, ids[create.Plan.AssigneeEmail], JobPriority.Normal, create.Plan.QuotedAmount, create.Plan.EstimatedMinutes),
+                            AgreementTemplate.Validate(
+                                create.Plan.Title,
+                                null,
+                                ids[create.Plan.AssigneeEmail],
+                                JobPriority.Normal,
+                                create.Plan.QuotedAmount,
+                                create.Plan.EstimatedMinutes,
+                                seed.Slug == BrightlineSlug ? VisitChecklist : null),
                             new Schedule(create.Plan.Recurrence, create.StartsOn, null, null),
                             home.TodayAt(step.At),
                             actorId,
@@ -296,13 +336,25 @@ public sealed partial class DemoSeeder(
                         break;
                     case CompleteVisitStep visit:
                         // Absent only when the plan's open-jobs limit left it out (Harbor & Pine is on Free): nothing to do then.
-                        if (await context.Jobs.SingleOrDefaultAsync(j => j.AgreementId == agreementIds[visit.Agreement] && j.OccurrenceOn == visit.Date, cancellationToken) is not { } done)
+                        if (await context.Jobs.Include(j => j.Checklist).SingleOrDefaultAsync(j => j.AgreementId == agreementIds[visit.Agreement] && j.OccurrenceOn == visit.Date, cancellationToken) is not { } done)
                         {
                             break;
                         }
 
-                        done.TransitionTo(JobStatus.InProgress, JobActor.From(actorId, role), null, step.At.AddHours(-2));
-                        done.TransitionTo(JobStatus.Completed, JobActor.From(actorId, role), null, step.At);
+                        var worker = JobActor.From(actorId, role);
+                        done.TransitionTo(JobStatus.InProgress, worker, null, step.At.AddHours(-2));
+                        // The checklist copied from the agreement is worked through before the visit is completed (M19).
+                        foreach (var item in done.OrderedChecklist())
+                        {
+                            done.ChangeChecklistItem(item.Id, new ChecklistChange(null, null, true, null), worker, step.At.AddMinutes(-30 + (item.Position * 5)));
+                        }
+
+                        if (step.At >= now - PhotosSince)
+                        {
+                            await AddPhotoAsync(context, done, worker, step.At.AddMinutes(-5), cancellationToken);
+                        }
+
+                        done.TransitionTo(JobStatus.Completed, worker, null, step.At);
                         break;
                     case GenerateVisitsStep:
                         var current = await context.Organizations.SingleAsync(o => o.Id == organization.Id, cancellationToken);
@@ -329,6 +381,23 @@ public sealed partial class DemoSeeder(
             await cleanup.Organizations.Where(o => o.Id == organization.Id).ExecuteDeleteAsync(CancellationToken.None);
             throw;
         }
+    }
+
+    /// <summary>A generated picture, processed and stored exactly like an upload (M19).</summary>
+    private async Task AddPhotoAsync(AppDbContext context, Job job, JobActor actor, DateTimeOffset at, CancellationToken cancellationToken)
+    {
+        var processed = photos.Process(DemoPhotos.For(job.Number));
+        var extension = PhotoRules.Extension(processed.Format);
+        var stored = new StoredPhoto(
+            FileKeys.New(job.OrganizationId, extension),
+            FileKeys.New(job.OrganizationId, extension),
+            PhotoRules.ContentType(processed.Format),
+            processed.Bytes,
+            processed.Width,
+            processed.Height);
+        await files.WriteAsync(stored.StorageKey, processed.Image, cancellationToken);
+        await files.WriteAsync(stored.ThumbnailKey, processed.Thumbnail, cancellationToken);
+        context.Attachments.Add(job.AddPhoto(stored, photosOnJob: 0, actor, at));
     }
 
     /// <summary>The application's generator over a seed context, so seeded visits follow the same rules as real ones.</summary>

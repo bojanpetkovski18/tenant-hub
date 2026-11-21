@@ -203,7 +203,7 @@ public sealed class GetJobQuery(IAppDbContext db, JobViews views)
 {
     public async Task<JobView> HandleAsync(Guid id, CancellationToken cancellationToken)
     {
-        var job = await db.Jobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == id, cancellationToken)
+        var job = await db.Jobs.AsNoTracking().Include(j => j.Checklist).SingleOrDefaultAsync(j => j.Id == id, cancellationToken)
             ?? throw JobErrors.NotFound();
         return await views.ForAsync(job, cancellationToken);
     }

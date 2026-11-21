@@ -33,6 +33,12 @@ public sealed class PipelineTests(OfflineApiFactory factory) : IClassFixture<Off
         Assert.Contains("frame-ancestors 'none'", csp, StringComparison.Ordinal);
         Assert.Contains("script-src 'self'", csp, StringComparison.Ordinal);
         Assert.DoesNotContain("unsafe-inline", csp, StringComparison.Ordinal);
+
+        // M19: blob: only for images (the preview of a photo while it uploads); no other directive is widened.
+        var directives = csp.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .ToDictionary(d => d.Split(' ')[0], d => d, StringComparer.Ordinal);
+        Assert.Equal("img-src 'self' data: blob:", directives["img-src"]);
+        Assert.All(directives.Where(d => d.Key != "img-src"), d => Assert.DoesNotContain("blob:", d.Value, StringComparison.Ordinal));
     }
 
     [Fact]

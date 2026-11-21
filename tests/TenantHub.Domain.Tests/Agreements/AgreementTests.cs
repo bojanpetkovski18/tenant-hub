@@ -148,6 +148,49 @@ public sealed class AgreementTests
     }
 
     [Fact]
+    public void Visits_start_with_the_template_checklist_and_follow_it_until_someone_works_on_it()
+    {
+        // SPEC-V2 4.5: the agreement's checklist is copied into each generated visit.
+        var agreement = Create(AgreementTemplate.Validate("Office cleaning", null, Maya, JobPriority.Normal, 120m, 90, [("Vacuum", true), (" Water  the plants ", null)]));
+        var visits = Generate(agreement);
+        var ticked = visits[1];
+        ticked.ChangeChecklistItem(ticked.OrderedChecklist()[0].Id, new ChecklistChange(null, null, true, null), Manager, Now);
+        var edited = visits[2];
+        edited.AddChecklistItem(ChecklistEntry.Validate("Windows", false), Manager, Now);
+
+        agreement.Update(
+            AgreementTemplate.Validate("Office cleaning", null, Maya, JobPriority.Normal, 120m, 90, [("Vacuum", true), ("Mop", true)]),
+            agreement.Schedule,
+            Names,
+            Now);
+
+        Assert.All(visits.Skip(3), v => Assert.Equal([("Vacuum", true, 0), ("Water the plants", false, 1)], v.OrderedChecklist().Select(i => (i.Text, i.Required, i.Position))));
+        Assert.Contains(new FieldChange("checklist", null, "2 items"), ((JobEvent)visits[0].DomainEvents[0]).Changes);
+        Assert.Contains(
+            new FieldChange("checklist", "Vacuum (required); Water the plants", "Vacuum (required); Mop (required)"),
+            ((AgreementEvent)agreement.DomainEvents[^1]).Changes);
+        Assert.True(visits[3].FollowAgreement(agreement, Names, Now));
+        Assert.Equal([("Vacuum", true), ("Mop", true)], visits[3].OrderedChecklist().Select(i => (i.Text, i.Required)));
+        // Ticking is work, not an edit, but the visit keeps the checklist it is being worked through with.
+        Assert.False(ticked.ChangedByHand);
+        Assert.False(ticked.FollowAgreement(agreement, Names, Now));
+        Assert.Equal(["Vacuum", "Water the plants"], ticked.OrderedChecklist().Select(i => i.Text));
+        Assert.True(edited.ChangedByHand);
+    }
+
+    [Fact]
+    public void A_template_checklist_has_at_most_30_valid_items()
+    {
+        var tooMany = Enumerable.Range(1, 31).Select(i => ((string?)$"Item {i}", (bool?)false)).ToList();
+
+        var overLimit = Assert.Throws<DomainValidationException>(() => AgreementTemplate.Validate("Cleaning", null, null, null, null, null, tooMany));
+        var empty = Assert.Throws<DomainValidationException>(() => AgreementTemplate.Validate("Cleaning", null, null, null, null, null, [("Vacuum", true), ("  ", true)]));
+
+        Assert.Equal(["checklist"], overLimit.Errors.Keys);
+        Assert.Equal(["checklist[1].text"], empty.Errors.Keys);
+    }
+
+    [Fact]
     public void Skipping_cancels_one_visit_with_the_reason_and_keeps_its_date()
     {
         var visit = Generate(Create())[0];

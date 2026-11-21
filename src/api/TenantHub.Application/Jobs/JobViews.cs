@@ -43,7 +43,11 @@ public sealed record JobView(
     bool CanDelete,
     bool CanSkip,
     IReadOnlyList<JobTransitionOption> Transitions,
-    JobQuoteView Quote);
+    JobQuoteView Quote,
+    JobFeedbackView? ClientFeedback = null);
+
+/// <summary>The client's sign-off on the completed visit (SPEC-V2 5.6): confirmed, or a problem in their words, and who.</summary>
+public sealed record JobFeedbackView(ClientFeedback Kind, string? Text, DateTimeOffset At, string? ByName);
 
 /// <summary>
 /// The quote panel (SPEC-V2 5.4): where the approval stands, who decided, and whether the caller can send it now.
@@ -148,7 +152,21 @@ public sealed class JobViews(IAppDbContext db, ITenantContext tenant, IIdentityS
             CanSkip: job.AgreementId is not null && tenant.HasPermission(Permissions.AgreementsManage)
                 && job.AllowedFor(actor).Contains(JobStatus.Cancelled),
             job.OptionsFor(actor),
-            await QuoteAsync(job, names, cancellationToken));
+            await QuoteAsync(job, names, cancellationToken),
+            await FeedbackAsync(job, cancellationToken));
+    }
+
+    private async Task<JobFeedbackView?> FeedbackAsync(Job job, CancellationToken cancellationToken)
+    {
+        if (job.ClientFeedback is not { } kind)
+        {
+            return null;
+        }
+
+        var by = job.ClientFeedbackByContactId is { } contact
+            ? await db.ClientContacts.Where(c => c.Id == contact).Select(c => c.Name).SingleOrDefaultAsync(cancellationToken)
+            : null;
+        return new JobFeedbackView(kind, job.ClientFeedbackText, job.ClientFeedbackAt!.Value, by);
     }
 
     private async Task<JobQuoteView> QuoteAsync(Job job, IReadOnlyDictionary<Guid, string> names, CancellationToken cancellationToken)

@@ -10,7 +10,7 @@ namespace TenantHub.Api.Common;
 
 /// <summary>
 /// Turns the application's expected failures into problem details: <see cref="RequestValidationException"/>
-/// becomes a 400 validation problem with field errors, <see cref="DomainException"/> a 400, 403, 404 or 409 with
+/// becomes a 400 validation problem with field errors, <see cref="DomainException"/> a 400, 403, 404, 409 or 413 with
 /// its stable <c>code</c> (SPEC 7; 403 for a rule about who may do what to whom). A
 /// <see cref="TenantIsolationException"/> is logged as a security event and answered with a bare 500. Anything else
 /// falls through to the generic 500 without exception details.
@@ -52,6 +52,7 @@ public sealed partial class ApiExceptionHandler(IProblemDetailsService problemDe
                     DomainErrorKind.Validation => StatusCodes.Status400BadRequest,
                     DomainErrorKind.NotFound => StatusCodes.Status404NotFound,
                     DomainErrorKind.Forbidden => StatusCodes.Status403Forbidden,
+                    DomainErrorKind.TooLarge => StatusCodes.Status413PayloadTooLarge,
                     _ => StatusCodes.Status409Conflict,
                 },
                 Title = domain.Message,
@@ -91,6 +92,12 @@ internal static class ProblemExtensions
         {
             case InvalidJobTransitionException transition:
                 problem.Extensions["allowed"] = transition.Allowed.Select(s => Camel(s.ToString())).ToList();
+                break;
+            case ChecklistIncompleteException incomplete:
+                // SPEC-V2 5.6: the open items, so the page can point at them.
+                problem.Extensions["openItems"] = incomplete.Open
+                    .Select(i => new Dictionary<string, object> { ["id"] = i.Id, ["text"] = i.Text })
+                    .ToList();
                 break;
             case PlanLimitReachedException reached:
                 problem.Extensions["plan"] = Camel(reached.Plan.ToString());

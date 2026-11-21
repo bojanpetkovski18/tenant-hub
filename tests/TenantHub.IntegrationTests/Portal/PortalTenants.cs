@@ -10,7 +10,10 @@ using TenantHub.IntegrationTests.Infrastructure;
 
 namespace TenantHub.IntegrationTests.Portal;
 
-/// <summary>One client of an organization, with its contact and its standing job (a visit the contact may see).</summary>
+/// <summary>
+/// One client of an organization, with its contact, its standing job (a visit the contact may see, its quote pending),
+/// a request, and a completed visit with a ticked checklist item and a photo (M19).
+/// </summary>
 public sealed record PortalClient(
     string Name,
     Guid OrganizationId,
@@ -22,7 +25,10 @@ public sealed record PortalClient(
     Guid JobId,
     string JobTitle,
     Guid RequestId,
-    string RequestTitle);
+    string RequestTitle,
+    Guid VisitId,
+    string VisitTitle,
+    Guid PhotoId);
 
 /// <summary>
 /// The portal matrix's world (SPEC-V2 3.2): two organizations on Team, two clients in each, one contact per client,
@@ -115,7 +121,7 @@ public sealed class PortalTenants : IAsyncDisposable
         var jobs = await db.Jobs.AcrossTenants().AsNoTracking()
             .Where(j => j.ClientId != except.ClientId)
             .OrderBy(j => j.Id)
-            .Select(j => new { j.Id, j.Title, j.Status, j.Version })
+            .Select(j => new { j.Id, j.Title, j.Status, j.ClientFeedback, j.Version })
             .ToListAsync(Ct);
         var contacts = await db.ClientContacts.AcrossTenants().AsNoTracking()
             .Where(c => c.ClientId != except.ClientId)
@@ -189,7 +195,18 @@ public sealed class PortalTenants : IAsyncDisposable
             await db.ClientContacts.SingleAsync(c => c.Id == contact, Ct), requestTitle, null, null, 0, DateOnly.FromDateTime(DateTime.UtcNow), DateTimeOffset.UtcNow);
         db.WorkRequests.Add(request);
         await db.SaveChangesAsync(Ct);
-        return new PortalClient(name, organizationId, organizationName, slug, client, contact, email, job, jobTitle, request.Id, requestTitle);
+
+        // A completed visit with its proof: a required item ticked and a photo, the way the assignee records them.
+        var visitTitle = $"{name} finished visit";
+        var visit = await IdOfAsync(await owner.PostJsonAsync($"{url}/jobs", new { title = visitTitle, clientId = client, assigneeUserId = _ownerIds[organizationId] }));
+        var visitUrl = $"{url}/jobs/{visit}";
+        (await owner.PostJsonAsync($"{visitUrl}/transitions", new { to = "inProgress" })).EnsureSuccessStatusCode();
+        var checklist = await owner.PostJsonAsync($"{visitUrl}/checklist", new { text = "Polish the brass", required = true });
+        var item = JsonDocument.Parse(await checklist.Content.ReadAsStringAsync(Ct)).RootElement.GetProperty("items")[0].GetProperty("id").GetGuid();
+        (await owner.SendJsonAsync(HttpMethod.Put, $"{visitUrl}/checklist/{item}", new { done = true })).EnsureSuccessStatusCode();
+        var photo = await IdOfAsync(await owner.UploadAsync($"{visitUrl}/photos", TestImages.Jpeg()));
+        (await owner.PostJsonAsync($"{visitUrl}/transitions", new { to = "completed" })).EnsureSuccessStatusCode();
+        return new PortalClient(name, organizationId, organizationName, slug, client, contact, email, job, jobTitle, request.Id, requestTitle, visit, visitTitle, photo);
     }
 
     private static async Task<Guid> IdOfAsync(HttpResponseMessage response)

@@ -1,6 +1,8 @@
 using System.ComponentModel.DataAnnotations;
 using TenantHub.Api.Common.Tenancy;
+using TenantHub.Api.Features.Jobs;
 using TenantHub.Application.Agreements;
+using TenantHub.Application.Jobs;
 using TenantHub.Application.Paging;
 using TenantHub.Domain.Agreements;
 using TenantHub.Domain.Jobs;
@@ -33,10 +35,12 @@ public sealed record AgreementRequest(
     DateOnly? StartsOn,
     DateOnly? EndsOn,
     int? MaxVisits,
-    uint? Version)
+    uint? Version,
+    [property: MaxLength(100)] IReadOnlyList<ChecklistItemRequest>? Checklist = null)
 {
     public AgreementInput ToInput() =>
-        new(ClientId, Title, Description, AssigneeUserId, Priority, QuotedAmount, EstimatedMinutes, Recurrence?.ToInput(), StartsOn, EndsOn, MaxVisits);
+        new(ClientId, Title, Description, AssigneeUserId, Priority, QuotedAmount, EstimatedMinutes, Recurrence?.ToInput(), StartsOn, EndsOn, MaxVisits,
+            Checklist?.Select(i => new ChecklistItemInput(i.Text, i.Required)).ToList());
 }
 
 public sealed record PreviewRequestBody(RecurrenceRequest? Recurrence, DateOnly? StartsOn, DateOnly? EndsOn, int? MaxVisits);

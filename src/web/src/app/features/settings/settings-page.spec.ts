@@ -31,23 +31,47 @@ const overview = (overrides: Partial<OrganizationOverview> = {}): OrganizationOv
   timeZone: 'Europe/Amsterdam',
   dailyCapacityMinutes: 480,
   createdAt: '2026-10-01T09:00:00Z',
-  usage: { seats: 3, activeClients: 20, openJobs: 12, activeAgreements: 1 },
-  limits: { seats: 3, activeClients: 25, openJobs: 50, activeAgreements: 3 },
+  usage: { seats: 3, activeClients: 20, openJobs: 12, activeAgreements: 1, storage: 52_428_800 },
+  limits: {
+    seats: 3,
+    activeClients: 25,
+    openJobs: 50,
+    activeAgreements: 3,
+    storage: 100 * 1024 ** 2,
+  },
   features: [],
   plans: [
     {
       plan: 'free',
-      limits: { seats: 3, activeClients: 25, openJobs: 50, activeAgreements: 3 },
+      limits: {
+        seats: 3,
+        activeClients: 25,
+        openJobs: 50,
+        activeAgreements: 3,
+        storage: 100 * 1024 ** 2,
+      },
       features: [],
     },
     {
       plan: 'team',
-      limits: { seats: 10, activeClients: 500, openJobs: 2000, activeAgreements: 200 },
+      limits: {
+        seats: 10,
+        activeClients: 500,
+        openJobs: 2000,
+        activeAgreements: 200,
+        storage: 5 * 1024 ** 3,
+      },
       features: ['portal'],
     },
     {
       plan: 'business',
-      limits: { seats: 50, activeClients: null, openJobs: null, activeAgreements: null },
+      limits: {
+        seats: 50,
+        activeClients: null,
+        openJobs: null,
+        activeAgreements: null,
+        storage: 50 * 1024 ** 3,
+      },
       features: ['portal', 'integrations'],
     },
   ],
@@ -64,6 +88,12 @@ describe('settings texts', () => {
     expect(usageText('seats', 3, 3)).toBe('3 of 3 seats');
     expect(usageText('activeClients', 1, 25)).toBe('1 of 25 active clients');
     expect(usageText('openJobs', 12, null)).toBe('12 open jobs, no limit');
+    // Storage is in bytes and reads like the API's messages (binary units).
+    expect(usageText('storage', 4_404_019, 5 * 1024 ** 3)).toBe('4.2 MB of 5 GB');
+    expect(usageText('storage', 0, 100 * 1024 ** 2)).toBe('0 bytes of 100 MB');
+    expect(
+      blockingText({ limit: 'storage', allowed: 100 * 1024 ** 2, usage: 150 * 1024 ** 2 }, 'Free'),
+    ).toBe('Photo storage: 150 MB in use, Free allows 100 MB');
     expect(blockingText({ limit: 'seats', allowed: 3, usage: 4 }, 'Free')).toBe(
       'Seats: 4 in use, Free allows 3',
     );
@@ -110,6 +140,7 @@ describe('settings page', () => {
       '20 of 25 active clients',
       '12 of 50 open jobs',
       '1 of 3 active agreements',
+      '50 MB of 100 MB',
     ]);
     expect(meters[0]!.firstElementChild!.className).toContain('bg-danger');
     expect(meters[0]!.firstElementChild!.className).toContain('w-full');
@@ -160,7 +191,13 @@ describe('settings page', () => {
       olivia,
       overview({
         plan: 'team',
-        limits: { seats: 10, activeClients: 500, openJobs: 2000, activeAgreements: 200 },
+        limits: {
+          seats: 10,
+          activeClients: 500,
+          openJobs: 2000,
+          activeAgreements: 200,
+          storage: 5 * 1024 ** 3,
+        },
       }),
     );
 
