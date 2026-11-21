@@ -793,3 +793,32 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
   - So every staff response carried a new `Set-Cookie`, and the handler marks such responses `no-store`.
 - **Decision:** after the validator runs, `ShouldRenew` is set back to false. The stamp is still checked on every request, and sliding expiration still renews the cookie once half of its seven days have passed. The photo test fails without the change; the account and session tests pass with it.
 - **Alternatives:** a cache header only on photo routes (overwritten by the handler anyway); a longer validation interval (a changed password would leave other sessions open for that long).
+
+## D050: Notifications come from audited changes through the outbox (M20)
+- **Date:** 2026-11-21
+- **Decision:**
+  - **Where they start.** The audit writer already sees every domain event at save time. For the changes in SPEC-V2 5.7 it also writes a `notifications.fan-out` outbox message in the same save, so a rolled-back command notifies nobody (a stale-version edit is the test). The changes are:
+    - a job created with, or given, an assignee;
+    - a rescheduled or cancelled job with an assignee;
+    - a quote approved or declined;
+    - a request submitted;
+    - a problem reported;
+    - an agreement held at its limit.
+
+    Changes the system makes for an agreement (generated or following visits) notify nobody, or one edited agreement would send a message per future visit.
+  - **Who.** The handler runs as the system inside the organization. It takes the people the change names (assignee, quote sender) and, where SPEC-V2 5.7 says so, the managers (whoever holds `jobs.manage`). It keeps active members only and drops the actor.
+  - **Once.** Each notification records its source (the outbox message id, or the organization and day for the digest), and a unique index on organization, source and person backs it. A message delivered twice notifies nobody twice.
+  - **Email.** An email is queued in the same save when the person's preference for that type is on. SPEC-V2's defaults apply until they choose: everything on except rescheduled or cancelled visits. Emails link into the app and to `account/notifications`; they carry no token and no tracking.
+  - **The digest.** A per-organization scheduler task (`notifications.digest`):
+    - It is created with the organization (and by the migration for existing ones) and moved when the time zone changes.
+    - It runs at 07:00 local, daylight-saving days included.
+    - It sends assignees their overdue jobs and managers the organization's count, and nothing when nothing is overdue.
+    - The same run deletes the organization's notifications older than 90 days, so retention needs no cross-tenant task.
+  - **Reading.** `GET /notifications` is the caller's own, newest first, with the unread count. `POST /notifications/read` takes ids or `all`; ids that are not the caller's are ignored. Marking read is a person's reading state, not organization data, so it writes no audit entry (the matrix records why).
+  - **Preferences.** `GET/PUT /api/me/notification-preferences`. One row per person and type in `notification_preferences`, which is not tenant-owned (approved with SPEC-V2 8).
+  - **The seed.** Its replayed months of history notify nobody (`NotifyNothing` on the replay's contexts). The portal story that happens "today" does, so the demo's managers find a few real notifications under the bell.
+  - **The bell.** It asks for the count on every navigation and every minute while the tab is visible, and not at all while it is hidden (checked in Chromium: no request in 65 s hidden, one on return). The panel is a CDK connected overlay pushed into the viewport. Following an item marks it read; Escape or a click outside closes the panel and returns focus to the bell.
+- **Findings in the browser pass:**
+  - At 375 px the panel ran off the left edge. Neither axe nor the overflow check can see a fixed overlay, so a bounding-box check was added and the overlay now pushes into the viewport.
+  - "Brightline Cleaning Co." ended a digest sentence and every email footer with a doubled full stop. A regression test was shown failing first; the texts no longer end with the name.
+- **Alternatives:** explicit calls from each handler (easy to forget one, and the audit writer already sees every change); a separate retention task across tenants (would need a bypass); push or websockets (out of scope; the 60 s count is enough).
