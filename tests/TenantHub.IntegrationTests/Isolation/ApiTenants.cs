@@ -13,6 +13,7 @@ using TenantHub.Domain.Clients;
 using TenantHub.Domain.Invitations;
 using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
+using TenantHub.Domain.Notifications;
 using TenantHub.Domain.Organizations;
 using TenantHub.Infrastructure.Data;
 using TenantHub.Infrastructure.Identity;
@@ -99,10 +100,10 @@ public sealed class ApiTenants : IAsyncDisposable
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    public static async Task<ApiTenants> CreateAsync(PostgresFixture postgres)
+    public static async Task<ApiTenants> CreateAsync(PostgresFixture postgres, Action<IServiceCollection>? services = null)
     {
         var connectionString = await postgres.CreateDatabaseAsync();
-        var tenants = new ApiTenants(new ApiFactory(connectionString), connectionString);
+        var tenants = new ApiTenants(new ApiFactory(connectionString, services: services), connectionString);
         await tenants.ArrangeAsync();
         return tenants;
     }
@@ -174,7 +175,12 @@ public sealed class ApiTenants : IAsyncDisposable
             .OrderBy(a => a.Id)
             .Select(a => new { a.Id, a.JobId, a.StorageKey, a.Bytes })
             .ToListAsync(Ct);
-        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit, invitations, jobs, agreements, contacts, requests, checklist, photos, next = organization.NextJobNumber });
+        var notifications = await db.Notifications.AcrossTenants().AsNoTracking()
+            .Where(n => n.OrganizationId == OrgB)
+            .OrderBy(n => n.Id)
+            .Select(n => new { n.Id, n.UserId, n.ReadAt })
+            .ToListAsync(Ct);
+        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit, invitations, jobs, agreements, contacts, requests, checklist, photos, notifications, next = organization.NextJobNumber });
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
     }
 
@@ -519,6 +525,27 @@ public sealed class ApiTenants : IAsyncDisposable
         ChecklistItemB = await CreateChecklistItemAsync(OrgB, JobB);
         PhotoA = await CreatePhotoAsync(OrgA, JobA);
         PhotoB = await CreatePhotoAsync(OrgB, JobB);
+        await CreateNotificationAsync(OrgA);
+        await CreateNotificationAsync(OrgB);
+    }
+
+    /// <summary>A notification for the organization's Owner (M20), written as the system writes them.</summary>
+    public async Task<Guid> CreateNotificationAsync(Guid organizationId, Guid? userId = null)
+    {
+        var recipient = userId ?? await OwnerIdAsync(organizationId);
+        var tenant = new TenantContext();
+        tenant.EnterAsSystem(organizationId);
+        await using var db = PostgresFixture.CreateDbContext(ConnectionString, tenant);
+        var notification = Notification.Create(
+            organizationId,
+            recipient,
+            NotificationType.Assigned,
+            new NotificationContent($"Fixture notification {Guid.NewGuid():N}", NotificationLink.Job, JobIn(organizationId)),
+            Guid.NewGuid(),
+            DateTimeOffset.UtcNow);
+        db.Notifications.Add(notification);
+        await db.SaveChangesAsync(Ct);
+        return notification.Id;
     }
 
     public Guid ChecklistItemIn(Guid organizationId) =>

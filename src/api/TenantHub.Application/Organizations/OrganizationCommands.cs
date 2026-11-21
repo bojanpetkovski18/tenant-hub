@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
+using TenantHub.Application.Agreements;
 using TenantHub.Application.Demo;
 using TenantHub.Application.Jobs;
+using TenantHub.Domain.Notifications;
 using TenantHub.Domain.Organizations;
 
 namespace TenantHub.Application.Organizations;
@@ -21,14 +23,25 @@ public sealed class OrganizationCommands(
     PlanLimitsCheck limits,
     GetOrganizationQuery overview,
     DemoProtection demo,
-    IOutbox outbox)
+    IOutbox outbox,
+    IRecurringWork recurring,
+    TimeProvider time)
 {
     public async Task<OrganizationOverview> UpdateSettingsAsync(string? name, string? timeZone, int? dailyCapacityMinutes, CancellationToken cancellationToken)
     {
         var organization = await LoadAsync(cancellationToken);
+        var zone = organization.TimeZone;
         if (organization.UpdateSettings(name, timeZone, dailyCapacityMinutes))
         {
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
+            // The digest is at 07:00 where the organization is (SPEC-V2 5.7): a new zone moves it.
+            if (organization.TimeZone != zone)
+            {
+                await recurring.ScheduleDigestAsync(organization.Id, DigestSchedule.Next(organization.TimeZone, time.GetUtcNow()), cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
         }
 
         return await overview.HandleAsync(cancellationToken);

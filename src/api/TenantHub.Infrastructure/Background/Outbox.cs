@@ -29,6 +29,29 @@ internal sealed class Outbox(AppDbContext db, IDataProtectionProvider protection
         });
     }
 
+    /// <summary>
+    /// A message without a secret, for code that writes to the context directly (the audit writer, which the outbox
+    /// itself depends on through the context).
+    /// </summary>
+    internal static OutboxMessage Plain<TPayload>(OutboxMessageType type, TPayload payload, Guid organizationId, DateTimeOffset now)
+        where TPayload : notnull
+    {
+        if (type.CarriesSecret || !type.PerOrganization)
+        {
+            throw new ArgumentException("Plain messages are an organization's and carry no secret.", nameof(type));
+        }
+
+        return new OutboxMessage
+        {
+            Id = Guid.CreateVersion7(now),
+            OrganizationId = organizationId,
+            Type = type.Name,
+            Payload = OutboxEnvelope.Serialize(payload),
+            CreatedAt = now,
+            AvailableAt = now,
+        };
+    }
+
     /// <summary>One purpose per message type: a payload of one type cannot be decrypted as another.</summary>
     internal static IDataProtector Protector(IDataProtectionProvider protection, OutboxMessageType type) =>
         protection.CreateProtector("TenantHub.Outbox", type.Name);

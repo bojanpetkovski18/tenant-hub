@@ -1,6 +1,6 @@
 # TenantHub v2: Specification
 
-Status: proposed on 2026-11-16 (M13) for the owner's approval; implementation starts at M14 once it is approved. This document extends `SPEC.md`, which describes v1.0.0 as built. Where v2 changes a v1 rule, it says so and names the `SPEC.md` section. At v2.0.0 (M23) the two are merged into one `SPEC.md` describing the product as built. Decisions are D037–D049 in `DECISIONS.md`.
+Status: proposed on 2026-11-16 (M13) for the owner's approval; implementation starts at M14 once it is approved. This document extends `SPEC.md`, which describes v1.0.0 as built. Where v2 changes a v1 rule, it says so and names the `SPEC.md` section. At v2.0.0 (M23) the two are merged into one `SPEC.md` describing the product as built. Decisions are D037–D050 in `DECISIONS.md`.
 
 ## 1. Purpose and positioning
 
@@ -117,6 +117,8 @@ As built: D043 (photos, SkiaSharp, the file store), D048 (checklists and sign-of
 - **Client sign-off:** in the portal, a completed visit shows its checklist and photos; the contact confirms it ("Looks good") or reports a problem, which notifies staff (M20) and does not reopen the job by itself.
 
 ### 4.6 Notifications (M20)
+As built: D050 (fan-out from audited changes through the outbox, the digest task, retention in the same run).
+
 - **In the app:** a bell in the shell with an unread count, a list, mark as read and mark all as read.
 - **By email:** each user chooses, per notification type, whether to also receive it by email.
 - **Daily digest** of overdue jobs at 07:00 in the organization's time zone.

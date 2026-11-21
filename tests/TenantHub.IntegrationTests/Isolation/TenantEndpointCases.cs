@@ -422,6 +422,14 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
             Body = _ => Task.FromResult<object>(new { reason = "Not a service we offer" }),
         },
 
+        // Notifications (SPEC-V2 7, M20): every member's own.
+        new("GET", "/notifications/", Permissions.OrgRead),
+        new("POST", "/notifications/read", Permissions.OrgRead)
+        {
+            NotAuditedBecause = "marks the caller's own notifications as read: a person's reading state, not the organization's data",
+            Body = _ => Task.FromResult<object>(new { all = true }),
+        },
+
         new("GET", "/audit/", Permissions.AuditRead),
         new("GET", "/dashboard", Permissions.OrgRead),
 

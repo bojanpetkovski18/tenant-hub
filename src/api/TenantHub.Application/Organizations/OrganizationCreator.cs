@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
+using TenantHub.Application.Agreements;
 using TenantHub.Application.Tenancy;
 using TenantHub.Domain;
 using TenantHub.Domain.Memberships;
+using TenantHub.Domain.Notifications;
 using TenantHub.Domain.Organizations;
 
 namespace TenantHub.Application.Organizations;
@@ -13,7 +15,7 @@ namespace TenantHub.Application.Organizations;
 /// savepoint, so the next slug candidate can be tried in the same transaction. Once the organization exists, the
 /// scope enters it as its Owner, so the membership insert passes the tenant guard like any other tenant write.
 /// </summary>
-public sealed class OrganizationCreator(IAppDbContext db, IDatabaseErrors errors, TenantContext tenant, TimeProvider time)
+public sealed class OrganizationCreator(IAppDbContext db, IDatabaseErrors errors, TenantContext tenant, IRecurringWork recurring, TimeProvider time)
 {
     public const string SlugIndex = "ix_organizations_slug";
     private const int Attempts = 3;
@@ -53,6 +55,8 @@ public sealed class OrganizationCreator(IAppDbContext db, IDatabaseErrors errors
             tenant.Enter(organization.Id, ownerUserId, Role.Owner);
             db.Memberships.Add(organization.AddOwner(ownerUserId, now));
             await db.SaveChangesAsync(cancellationToken);
+            // Every organization has its daily digest (SPEC-V2 5.7); it sends nothing until something is overdue.
+            await recurring.ScheduleDigestAsync(organization.Id, DigestSchedule.Next(organization.TimeZone, now), cancellationToken);
             return organization;
         }
     }

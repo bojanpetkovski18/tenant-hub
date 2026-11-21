@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Agreements;
+using TenantHub.Application.Notifications;
 using TenantHub.Infrastructure.Data;
 
 namespace TenantHub.Infrastructure.Background;
@@ -17,6 +18,15 @@ internal sealed class AgreementGenerationTask(DailyVisitGeneration generation) :
 /// <summary>Writes per-organization scheduler rows in the caller's transaction (the agreement that needs one).</summary>
 internal sealed class RecurringWork(AppDbContext db) : IRecurringWork
 {
+    public async Task ScheduleDigestAsync(Guid organizationId, DateTimeOffset due, CancellationToken cancellationToken) =>
+        await db.Database.ExecuteSqlAsync(
+            $"""
+            INSERT INTO scheduled_tasks (id, name, organization_id, due_at)
+            VALUES ({Guid.CreateVersion7(due)}, {OverdueDigest.TaskName}, {organizationId}, {due})
+            ON CONFLICT (name, organization_id) DO UPDATE SET due_at = EXCLUDED.due_at
+            """,
+            cancellationToken);
+
     public async Task EnsureDailyGenerationAsync(Guid organizationId, DateTimeOffset firstDue, CancellationToken cancellationToken) =>
         await db.Database.ExecuteSqlAsync(
             $"""

@@ -8,6 +8,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { toApiProblem } from '../../core/http/api-problem';
 import { SessionStore } from '../../core/session/session.store';
 import { focusFirstInvalid } from '../../shared/forms/focus-first-invalid';
@@ -16,7 +17,7 @@ import { applyProblem, controlError } from '../../shared/forms/server-errors';
 /** US-04: the signed-in user's name and password. */
 @Component({
   selector: 'app-account-page',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, RouterLink],
   template: `
     <div class="mx-auto max-w-xl space-y-8">
       <div>
@@ -118,6 +119,14 @@ import { applyProblem, controlError } from '../../shared/forms/server-errors';
             {{ changingPassword() ? 'Changing…' : 'Change password' }}
           </button>
         </form>
+      </section>
+
+      <section class="th-card" aria-labelledby="notifications-heading">
+        <h2 id="notifications-heading" class="text-lg font-semibold">Notifications</h2>
+        <p class="mt-1 text-sm text-muted">Choose which notifications also come by email.</p>
+        <a routerLink="/account/notifications" class="th-button-secondary mt-3"
+          >Email preferences</a
+        >
       </section>
     </div>
   `,

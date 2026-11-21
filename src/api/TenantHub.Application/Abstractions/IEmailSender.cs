@@ -29,4 +29,7 @@ public interface IAppLinks
 
     /// <summary>The one-time sign-in link; the token goes in the fragment (D028).</summary>
     string PortalSignIn(string organizationSlug, string token);
+
+    /// <summary>A page of the app ("o/brightline/jobs/…"), for links in notification emails.</summary>
+    string App(string path);
 }

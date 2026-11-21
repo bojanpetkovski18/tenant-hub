@@ -19,6 +19,12 @@ public interface IRecurringWork
     /// the caller's transaction, so it exists exactly when the agreement that needs it does.
     /// </summary>
     Task EnsureDailyGenerationAsync(Guid organizationId, DateTimeOffset firstDue, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Makes sure the organization's daily digest task exists (SPEC-V2 5.7), first due at <paramref name="due"/>, or moves
+    /// it there (the organization's time zone changed). In the caller's transaction.
+    /// </summary>
+    Task ScheduleDigestAsync(Guid organizationId, DateTimeOffset due, CancellationToken cancellationToken);
 }
 
 /// <summary>

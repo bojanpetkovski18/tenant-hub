@@ -115,7 +115,9 @@ describe('board page', () => {
     element?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
   const boardRequest = () => http.expectOne((r) => r.url === boardUrl);
   const buttons = (root: ParentNode) => [...root.querySelectorAll<HTMLButtonElement>('button')];
-  const announcement = (page: HTMLElement) => text(page.querySelector('[aria-live="polite"]'));
+  // The board's own live region; the shell's notification bell has one too (M20).
+  const announcement = (page: HTMLElement) =>
+    text(page.querySelector('app-board-page [aria-live="polite"]'));
 
   async function openLoaded(
     view: BoardView = board(),

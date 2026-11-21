@@ -102,6 +102,8 @@ describe('SignUpPage', () => {
     http.expectOne(`/api/orgs/${olivia.memberships[0]!.organizationId}`);
     // The Owner manages the portal: the shell asks for the open work requests for the sidebar.
     http.expectOne(`/api/orgs/${olivia.memberships[0]!.organizationId}/requests/open-count`);
+    // And the bell asks for the unread count (M20).
+    http.expectOne(`/api/orgs/${olivia.memberships[0]!.organizationId}/notifications?pageSize=1`);
     http.expectOne(`/api/orgs/${olivia.memberships[0]!.organizationId}/dashboard`);
   });
 });

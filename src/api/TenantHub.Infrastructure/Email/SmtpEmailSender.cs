@@ -84,4 +84,6 @@ internal sealed class AppLinks(AppOptions options) : IAppLinks
 
     public string PortalSignIn(string organizationSlug, string token) =>
         new Uri(_baseUrl, $"portal/{Uri.EscapeDataString(organizationSlug)}/sign-in#{Uri.EscapeDataString(token)}").ToString();
+
+    public string App(string path) => new Uri(_baseUrl, path.TrimStart('/')).ToString();
 }
