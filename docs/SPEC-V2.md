@@ -125,6 +125,8 @@ As built: D050 (fan-out from audited changes through the outbox, the digest task
 - Delivered through the outbox (4.9). Nobody is notified about their own action.
 
 ### 4.7 API keys, webhooks and exports (M21)
+As built: D044 (keys found inside the route's organization, events from audited changes through the outbox, the connection-time guard) and D051 (CSV format and streaming). Developer guide: `docs/INTEGRATIONS.md`.
+
 - **API keys** for the key-enabled endpoints (3.3), with the OpenAPI document describing the bearer scheme.
 - **Webhooks** for chosen events, signed, retried and logged, with redelivery.
 - **Exports:** the audit log as CSV for a date range, and the jobs list as CSV for the current filters.
@@ -295,6 +297,7 @@ Conventions as in `SPEC.md` 7: problem details with `traceId` and stable codes; 
 | POST | `/webhooks/{id}/rotate-secret` | `integrations.manage` |
 | GET | `/webhooks/{id}/deliveries` | `integrations.manage` |
 | POST | `/webhooks/{id}/deliveries/{deliveryId}/redeliver` | `integrations.manage` |
+| POST | `/webhooks/{id}/test` | `integrations.manage`: sends `webhook.ping` (as built, US-111) |
 | GET | `/audit/export` | `audit.read`: `from`, `to` (required, at most 366 days) |
 | GET | `/jobs/export` | `jobs.read`, key: the list filters |
 
