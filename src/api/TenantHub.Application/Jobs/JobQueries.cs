@@ -57,6 +57,58 @@ public sealed partial class ListJobsQuery(IAppDbContext db, ITenantContext tenan
     public async Task<PagedList<JobListItem>> HandleAsync(ListJobsRequest request, CancellationToken cancellationToken)
     {
         var today = await views.TodayAsync(cancellationToken);
+        var jobs = await FilteredAsync(request, today, cancellationToken);
+
+        var total = await jobs.CountAsync(cancellationToken);
+        var sorted = Sorted(jobs, request.Sort);
+
+        var rows = await sorted
+            .Skip(request.Paging.Skip)
+            .Take(request.Paging.PageSize)
+            .Select(j => new
+            {
+                j.Id,
+                j.Number,
+                j.Title,
+                j.ClientId,
+                ClientName = db.Clients.Where(c => c.Id == j.ClientId).Select(c => c.Name).FirstOrDefault(),
+                j.AssigneeUserId,
+                j.Status,
+                j.Priority,
+                j.ScheduledOn,
+                j.DueOn,
+                IsOverdue = j.DueOn < today && j.Status != JobStatus.Completed && j.Status != JobStatus.Cancelled,
+                j.UpdatedAt,
+                j.AgreementId,
+            })
+            .ToListAsync(cancellationToken);
+
+        var people = await identity.FindProfilesAsync([.. rows.Select(r => r.AssigneeUserId).OfType<Guid>().Distinct()], cancellationToken);
+        var items = rows
+            .Select(r => new JobListItem(
+                r.Id,
+                r.Number,
+                Job.FormatNumber(r.Number),
+                r.Title,
+                r.ClientId,
+                r.ClientName ?? "Unknown client",
+                r.AssigneeUserId,
+                r.AssigneeUserId is { } id ? people.GetValueOrDefault(id)?.DisplayName ?? "A former member" : null,
+                r.Status,
+                r.Priority,
+                r.ScheduledOn,
+                r.DueOn,
+                r.IsOverdue,
+                r.UpdatedAt,
+                r.AgreementId))
+            .ToList();
+
+        return new PagedList<JobListItem>(items, request.Paging.Page, request.Paging.PageSize, total);
+    }
+
+    /// <summary>The list's filters (US-33) as a query, without sorting or paging; the CSV export applies the same ones.</summary>
+    public async Task<IQueryable<Job>> FilteredAsync(ListJobsRequest request, DateOnly today, CancellationToken cancellationToken)
+    {
         var jobs = db.Jobs.AsNoTracking();
 
         if (request.Statuses.Count > 0)
@@ -128,52 +180,11 @@ public sealed partial class ListJobsQuery(IAppDbContext db, ITenantContext tenan
 #pragma warning restore CA1304, CA1311, CA1862
         }
 
-        var total = await jobs.CountAsync(cancellationToken);
-        var sorted = Sort(jobs, request.Sort);
-
-        var rows = await sorted
-            .Skip(request.Paging.Skip)
-            .Take(request.Paging.PageSize)
-            .Select(j => new
-            {
-                j.Id,
-                j.Number,
-                j.Title,
-                j.ClientId,
-                ClientName = db.Clients.Where(c => c.Id == j.ClientId).Select(c => c.Name).FirstOrDefault(),
-                j.AssigneeUserId,
-                j.Status,
-                j.Priority,
-                j.ScheduledOn,
-                j.DueOn,
-                IsOverdue = j.DueOn < today && j.Status != JobStatus.Completed && j.Status != JobStatus.Cancelled,
-                j.UpdatedAt,
-                j.AgreementId,
-            })
-            .ToListAsync(cancellationToken);
-
-        var people = await identity.FindProfilesAsync([.. rows.Select(r => r.AssigneeUserId).OfType<Guid>().Distinct()], cancellationToken);
-        var items = rows
-            .Select(r => new JobListItem(
-                r.Id,
-                r.Number,
-                Job.FormatNumber(r.Number),
-                r.Title,
-                r.ClientId,
-                r.ClientName ?? "Unknown client",
-                r.AssigneeUserId,
-                r.AssigneeUserId is { } id ? people.GetValueOrDefault(id)?.DisplayName ?? "A former member" : null,
-                r.Status,
-                r.Priority,
-                r.ScheduledOn,
-                r.DueOn,
-                r.IsOverdue,
-                r.UpdatedAt,
-                r.AgreementId))
-            .ToList();
-
-        return new PagedList<JobListItem>(items, request.Paging.Page, request.Paging.PageSize, total);
+        return jobs;
     }
+
+    /// <summary>The list's sort, from the fixed allow-list.</summary>
+    public static IQueryable<Job> Sorted(IQueryable<Job> jobs, string? sort) => Sort(jobs, sort);
 
     private static IQueryable<Job> Sort(IQueryable<Job> jobs, string? sort) =>
         (Sorts.Contains(sort) ? sort : DefaultSort) switch

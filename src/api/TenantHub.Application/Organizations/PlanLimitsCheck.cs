@@ -42,10 +42,25 @@ public sealed class PlanLimitsCheck(IAppDbContext db, ITenantContext tenant, Tim
 
     /// <summary>
     /// Features the organization uses, which a downgrade would turn off (SPEC-V2 4.8): the portal while any client has
-    /// an active contact.
+    /// an active contact; integrations while an API key is usable or a webhook endpoint is enabled.
     /// </summary>
-    public async Task<IReadOnlyList<PlanFeature>> FeaturesInUseAsync(CancellationToken cancellationToken) =>
-        await db.ClientContacts.AnyAsync(c => c.RemovedAt == null, cancellationToken) ? [PlanFeature.Portal] : [];
+    public async Task<IReadOnlyList<PlanFeature>> FeaturesInUseAsync(CancellationToken cancellationToken)
+    {
+        var now = time.GetUtcNow();
+        var features = new List<PlanFeature>();
+        if (await db.ClientContacts.AnyAsync(c => c.RemovedAt == null, cancellationToken))
+        {
+            features.Add(PlanFeature.Portal);
+        }
+
+        if (await db.ApiKeys.AnyAsync(k => k.RevokedAt == null && (k.ExpiresAt == null || k.ExpiresAt > now), cancellationToken)
+            || await db.WebhookEndpoints.AnyAsync(e => e.DisabledAt == null, cancellationToken))
+        {
+            features.Add(PlanFeature.Integrations);
+        }
+
+        return features;
+    }
 
     /// <summary>Refuses with 403 <c>plan-feature-unavailable</c> when the organization's plan lacks the feature.</summary>
     public async Task EnsureFeatureAsync(PlanFeature feature, CancellationToken cancellationToken) =>

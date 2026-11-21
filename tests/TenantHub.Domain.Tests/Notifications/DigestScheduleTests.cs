@@ -27,7 +27,7 @@ public sealed class DigestScheduleTests
     public void Email_is_on_by_default_except_for_changed_visits()
     {
         Assert.Equal([NotificationType.VisitChanged], NotificationTypes.All.Where(t => !NotificationTypes.EmailByDefault(t)));
-        Assert.Equal(7, NotificationTypes.All.Select(NotificationTypes.Label).Distinct().Count());
+        Assert.Equal(8, NotificationTypes.All.Select(NotificationTypes.Label).Distinct().Count());
     }
 
     [Fact]

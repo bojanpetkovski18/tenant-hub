@@ -12,7 +12,7 @@ namespace TenantHub.Application.Notifications;
 /// Delivers a <see cref="NotificationRequest"/> (SPEC-V2 5.7), as the system inside the change's organization:
 /// <list type="bullet">
 /// <item>the recipients are the named people and, when asked, the managers (whoever holds <c>jobs.manage</c>), all of them
-/// active members, never the actor;</item>
+/// active members, never the actor (Owners alone for an endpoint the system disabled);</item>
 /// <item>one notification each, and an email to those whose preference is on, written in one save;</item>
 /// <item>a message delivered twice notifies nobody twice: its id is every notification's <c>SourceId</c>, checked first
 /// and unique per person.</item>
@@ -41,6 +41,7 @@ public sealed class NotificationFanOut(
         var active = members.Select(m => m.UserId).ToHashSet();
         var recipients = request.Users
             .Concat(request.Managers ? members.Where(m => Permissions.For(m.Role).Contains(Permissions.JobsManage)).Select(m => m.UserId) : [])
+            .Concat(request.Owners ? members.Where(m => m.Role == Role.Owner).Select(m => m.UserId) : [])
             .Where(active.Contains)
             .Where(id => id != request.ActorUserId)
             .Distinct()
@@ -104,6 +105,7 @@ public sealed class NotificationFanOut(
         NotificationLink.Job => $"o/{slug}/jobs/{content.LinkId}",
         NotificationLink.Request => $"o/{slug}/requests",
         NotificationLink.Agreement => $"o/{slug}/agreements/{content.LinkId}",
+        NotificationLink.Integrations => $"o/{slug}/settings/integrations",
         _ => $"o/{slug}/jobs?overdue=true",
     };
 
@@ -112,6 +114,7 @@ public sealed class NotificationFanOut(
         NotificationLink.Job => "Open the job",
         NotificationLink.Request => "Open the requests",
         NotificationLink.Agreement => "Open the agreement",
+        NotificationLink.Integrations => "Open the integrations",
         _ => "See the overdue jobs",
     };
 
@@ -146,6 +149,11 @@ public sealed class NotificationFanOut(
                     .Select(r => new { r.Title, Client = db.Clients.Where(c => c.Id == r.ClientId).Select(c => c.Name).Single() })
                     .SingleOrDefaultAsync(cancellationToken);
                 return work is null ? null : new NotificationContent($"{actor} of {work.Client} asked for work: “{work.Title}”.", NotificationLink.Request, request.EntityId);
+            case NotificationLink.Integrations:
+                var endpoint = await db.WebhookEndpoints.AsNoTracking().AnyAsync(e => e.Id == request.EntityId, cancellationToken);
+                return endpoint
+                    ? new NotificationContent($"The webhook endpoint {request.Detail} was disabled: deliveries to it failed for three days.", NotificationLink.Integrations, request.EntityId)
+                    : null;
             default:
                 var agreement = await db.Agreements.AsNoTracking().Where(a => a.Id == request.EntityId)
                     .Select(a => a.Title).SingleOrDefaultAsync(cancellationToken);

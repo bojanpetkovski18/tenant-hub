@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
 using TenantHub.Application.Tenancy;
+using TenantHub.Domain.Integrations;
 using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
 using TenantHub.Domain.Notifications;
@@ -32,6 +33,10 @@ public sealed class OverdueDigest(IAppDbContext db, TenantContext tenant, Notifi
         var organization = await db.Organizations.AsNoTracking().SingleAsync(o => o.Id == organizationId, cancellationToken);
         var before = now - NotificationTypes.Retention;
         await db.Notifications.Where(n => n.CreatedAt < before).ExecuteDeleteAsync(cancellationToken);
+
+        // The webhook delivery log goes after 30 days (SPEC-V2 5.8), in the same daily run of the organization.
+        var deliveriesBefore = now - WebhookDelivery.Retention;
+        await db.WebhookDeliveries.Where(d => d.CreatedAt < deliveriesBefore).ExecuteDeleteAsync(cancellationToken);
 
         var today = organization.TodayAt(now);
         var sourceId = SourceId(organizationId, today);

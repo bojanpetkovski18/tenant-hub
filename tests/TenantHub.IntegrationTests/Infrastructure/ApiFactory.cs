@@ -89,6 +89,8 @@ public class ApiFactory(
         builder.ConfigureTestServices(testServices =>
         {
             testServices.AddSingleton<IEndpointMapper, TestEndpoints>();
+            // Webhooks never reach the network from a test: every name is unknown unless the test maps it (M21).
+            testServices.AddSingleton<TenantHub.Infrastructure.Integrations.IHostResolver>(new FakeResolver());
             services?.Invoke(testServices);
         });
         builder.ConfigureLogging(logging => logging.AddProvider(Logs));

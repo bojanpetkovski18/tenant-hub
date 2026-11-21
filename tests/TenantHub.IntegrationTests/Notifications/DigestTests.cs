@@ -39,6 +39,9 @@ public sealed class DigestTests(PostgresFixture postgres)
         });
         await tenants.Factory.DispatchOutboxAsync();
         await NotificationTests.ClearNotificationsAsync(tenants.ConnectionString);
+        // The fixture's webhook endpoints point at a name that does not resolve: months on, they would be disabled and
+        // their Owners told (M21), which is not what these tests are about.
+        await NotificationTests.ClearWebhooksAsync(tenants.ConnectionString);
         return (tenants, clock, emails);
     }
 

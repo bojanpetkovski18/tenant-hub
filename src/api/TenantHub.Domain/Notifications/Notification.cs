@@ -23,6 +23,9 @@ public enum NotificationType
 
     /// <summary>The daily digest of overdue jobs (each assignee, and managers a count).</summary>
     OverdueDigest,
+
+    /// <summary>A webhook endpoint was disabled after three days of failures (Owners; SPEC-V2 5.8).</summary>
+    WebhookDisabled,
 }
 
 /// <summary>The types in the order screens list them, with whether email is on until a person chooses (SPEC-V2 5.7).</summary>
@@ -43,6 +46,7 @@ public static class NotificationTypes
         NotificationType.WorkRequested => "A client asks for work",
         NotificationType.ProblemReported => "A client reports a problem with a visit",
         NotificationType.GenerationPaused => "An agreement stops at the plan's limit",
+        NotificationType.WebhookDisabled => "A webhook endpoint is disabled after failing",
         _ => "Daily digest of overdue jobs",
     };
 }
@@ -54,6 +58,9 @@ public enum NotificationLink
     Request,
     Agreement,
     OverdueJobs,
+
+    /// <summary>Settings → Integrations.</summary>
+    Integrations,
 }
 
 /// <summary>What a notification says and where it leads; written once, with the names as they were then.</summary>

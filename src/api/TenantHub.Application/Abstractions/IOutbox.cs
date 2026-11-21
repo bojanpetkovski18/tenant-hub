@@ -6,9 +6,10 @@ namespace TenantHub.Application.Abstractions;
 /// A kind of outbox message (D039): its stable name, stored in every row, and whether its payload carries a secret
 /// (a link that signs someone in or resets a password). Secret payloads are encrypted at rest under a purpose of
 /// their own and deleted once delivered. <c>PerOrganization</c> types take the current tenant's organization and go
-/// with it; the others (account emails) belong to a person and have none.
+/// with it; the others (account emails) belong to a person and have none. <c>RetryDelays</c> replaces the dispatcher's
+/// schedule for a type whose receiver may be away longer (webhooks: about a day).
 /// </summary>
-public sealed record OutboxMessageType(string Name, bool CarriesSecret, bool PerOrganization = true);
+public sealed record OutboxMessageType(string Name, bool CarriesSecret, bool PerOrganization = true, IReadOnlyList<TimeSpan>? RetryDelays = null);
 
 /// <summary>
 /// Side effects that must leave the request safely (SPEC-V2 4.9). A message added here is written by the next

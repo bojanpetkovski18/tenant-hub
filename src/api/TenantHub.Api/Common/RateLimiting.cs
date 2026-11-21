@@ -39,6 +39,11 @@ public sealed class RateLimitOptions
     public int PortalSignInPermitLimit { get; init; } = 5;
 
     public int PortalSignInWindowSeconds { get; init; } = 600;
+
+    /// <summary>Requests per API key per window (SPEC-V2 5.8), whichever endpoint they call.</summary>
+    public int ApiKeyPermitLimit { get; init; } = 120;
+
+    public int ApiKeyWindowSeconds { get; init; } = 60;
 }
 
 public static class RateLimiting
@@ -63,6 +68,8 @@ public static class RateLimiting
                 AccountEmailWindowSeconds = options.AccountEmailWindowSeconds,
                 PortalSignInPermitLimit = options.PortalSignInPermitLimit,
                 PortalSignInWindowSeconds = options.PortalSignInWindowSeconds,
+                ApiKeyPermitLimit = options.ApiKeyPermitLimit,
+                ApiKeyWindowSeconds = options.ApiKeyWindowSeconds,
             };
         }
 
@@ -89,6 +96,16 @@ public static class RateLimiting
                     },
                 });
             };
+
+            // Every request made with an API key counts against that key; sessions are not limited here.
+            limiter.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context => context.User.KeyId() is { } key
+                ? RateLimitPartition.GetFixedWindowLimiter("key:" + key, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = options.ApiKeyPermitLimit,
+                    Window = TimeSpan.FromSeconds(options.ApiKeyWindowSeconds),
+                    QueueLimit = 0,
+                })
+                : RateLimitPartition.GetNoLimiter("session"));
 
             // Per client IP. Per-account brute force is covered by Identity's lockout (5 failures, 15 minutes).
             // Behind a reverse proxy this needs forwarded headers (configured with the deployment, M11).

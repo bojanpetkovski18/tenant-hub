@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using TenantHub.Domain.Agreements;
 using TenantHub.Domain.Audit;
 using TenantHub.Domain.Clients;
+using TenantHub.Domain.Integrations;
 using TenantHub.Domain.Invitations;
 using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
@@ -48,6 +49,12 @@ public interface IAppDbContext
 
     /// <summary>Per user, not per organization (SPEC-V2 8).</summary>
     DbSet<NotificationPreference> NotificationPreferences { get; }
+
+    DbSet<ApiKey> ApiKeys { get; }
+
+    DbSet<WebhookEndpoint> WebhookEndpoints { get; }
+
+    DbSet<WebhookDelivery> WebhookDeliveries { get; }
 
     /// <summary>For optimistic concurrency: handlers set the version the client last saw as the original value.</summary>
     EntityEntry<TEntity> Entry<TEntity>(TEntity entity)

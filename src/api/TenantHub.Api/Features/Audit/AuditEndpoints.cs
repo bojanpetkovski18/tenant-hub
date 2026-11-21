@@ -1,5 +1,7 @@
 using TenantHub.Api.Common.Tenancy;
+using TenantHub.Api.Features.Integrations;
 using TenantHub.Application.Audit;
+using TenantHub.Application.Exports;
 using TenantHub.Domain.Memberships;
 
 namespace TenantHub.Api.Features.Audit;
@@ -23,6 +25,12 @@ public static class AuditEndpoints
                 ListAuditEntriesQuery query,
                 CancellationToken ct) =>
             TypedResults.Ok(await query.HandleAsync(new AuditListRequest(actor, action, entityType, entityId, from, to, before, pageSize), ct)))
+            .RequirePermission(Permissions.AuditRead);
+
+        // CSV for a range of days (US-112): from and to required, at most 366 days; streamed.
+        audit.MapGet("/export", async (DateOnly? from, DateOnly? to, ExportAuditQuery query, CancellationToken ct) =>
+                new CsvResult(await query.PrepareAsync(new AuditExportRequest(from, to), ct)))
+            .Produces(StatusCodes.Status200OK, contentType: CsvWriter.ContentType)
             .RequirePermission(Permissions.AuditRead);
 
         return app;

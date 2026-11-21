@@ -137,7 +137,8 @@ public sealed class BrowserClient : IDisposable
 
     private async Task EnsureXsrfAsync()
     {
-        if (Cookies.GetCookies(BaseAddress)["XSRF-TOKEN"] is null)
+        // A client with an API key is a machine, not a browser: it has no session to fetch a token from (M21).
+        if (Cookies.GetCookies(BaseAddress)["XSRF-TOKEN"] is null && Http.DefaultRequestHeaders.Authorization is null)
         {
             await SessionAsync();
         }

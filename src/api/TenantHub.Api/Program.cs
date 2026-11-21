@@ -12,6 +12,7 @@ using TenantHub.Api.Features.Auth;
 using TenantHub.Api.Features.Board;
 using TenantHub.Api.Features.Clients;
 using TenantHub.Api.Features.Demo;
+using TenantHub.Api.Features.Integrations;
 using TenantHub.Api.Features.Invitations;
 using TenantHub.Api.Features.Jobs;
 using TenantHub.Api.Features.Notifications;
@@ -19,8 +20,10 @@ using TenantHub.Api.Features.Organizations;
 using TenantHub.Api.Features.Portal;
 using TenantHub.Api.Features.Requests;
 using TenantHub.Application;
+using TenantHub.Application.Integrations;
 using TenantHub.Infrastructure;
 using TenantHub.Infrastructure.Data;
+using TenantHub.Infrastructure.Integrations;
 using TenantHub.Infrastructure.Seed;
 
 if (args.Contains(HealthProbe.Argument))
@@ -48,8 +51,11 @@ builder.Services.AddValidation();
 // Enums travel as camelCase strings ("owner"), matching the SPA's types.
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options => options.AddApiKeyScheme());
 builder.Services.AddInfrastructure(builder.Configuration);
+// Webhook addresses (SPEC-V2 5.8): https only; a named local receiver is allowed in Development and nowhere else.
+var webhooks = builder.Configuration.GetSection(WebhookOptions.Section).Get<WebhookOptions>() ?? new WebhookOptions();
+builder.Services.AddSingleton(new WebhookAddresses(builder.Environment.IsDevelopment() ? webhooks.AllowedReceiver : null));
 builder.Services.AddApplication();
 builder.AddAppAuth();
 builder.Services.AddAppForwardedHeaders(builder.Configuration);
@@ -101,6 +107,7 @@ app.MapDashboardEndpoints();
 app.MapDemoEndpoints();
 app.MapPortalEndpoints();
 app.MapRequestEndpoints();
+app.MapIntegrationEndpoints();
 foreach (var mapper in app.Services.GetServices<IEndpointMapper>())
 {
     mapper.Map(app);

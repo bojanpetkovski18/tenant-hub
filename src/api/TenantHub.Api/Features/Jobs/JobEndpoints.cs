@@ -1,5 +1,8 @@
 using System.ComponentModel.DataAnnotations;
+using TenantHub.Api.Common.Auth;
 using TenantHub.Api.Common.Tenancy;
+using TenantHub.Api.Features.Integrations;
+using TenantHub.Application.Exports;
 using TenantHub.Application.Jobs;
 using TenantHub.Application.Paging;
 using TenantHub.Domain.Jobs;
@@ -80,6 +83,41 @@ public static class JobEndpoints
                     PageRequest.From(page, pageSize),
                     agreementId),
                 ct)))
+            .AllowApiKey()
+            .RequirePermission(Permissions.JobsRead);
+
+        // The list as CSV (US-112): the same filters and sort, every page, streamed.
+        jobs.MapGet("/export", async (
+                string? q,
+                string[]? status,
+                string[]? priority,
+                string? assignee,
+                Guid? clientId,
+                Guid? agreementId,
+                bool? overdue,
+                DateOnly? dueFrom,
+                DateOnly? dueTo,
+                DateOnly? completedFrom,
+                string? sort,
+                ExportJobsQuery query,
+                CancellationToken ct) =>
+            new CsvResult(await query.PrepareAsync(
+                new ListJobsRequest(
+                    q,
+                    Parse<JobStatus>(status),
+                    Parse<JobPriority>(priority),
+                    assignee,
+                    clientId,
+                    overdue ?? false,
+                    dueFrom,
+                    dueTo,
+                    completedFrom,
+                    sort,
+                    PageRequest.From(1, PageRequest.MaxPageSize),
+                    agreementId),
+                ct)))
+            .Produces(StatusCodes.Status200OK, contentType: CsvWriter.ContentType)
+            .AllowApiKey()
             .RequirePermission(Permissions.JobsRead);
 
         jobs.MapPost("/", async (JobRequest request, HttpContext context, JobCommands commands, CancellationToken ct) =>
@@ -87,10 +125,12 @@ public static class JobEndpoints
                 var job = await commands.CreateAsync(request.ToInput(), ct);
                 return TypedResults.Created($"{context.Request.Path.Value!.TrimEnd('/')}/{job.Id}", job);
             })
+            .AllowApiKey()
             .RequirePermission(Permissions.JobsCreate);
 
         jobs.MapGet("/{id:guid}", async (Guid id, GetJobQuery query, CancellationToken ct) =>
                 TypedResults.Ok(await query.HandleAsync(id, ct)))
+            .AllowApiKey()
             .RequirePermission(Permissions.JobsRead);
 
         jobs.MapGet("/{id:guid}/history", async (Guid id, JobHistoryQuery query, CancellationToken ct) =>
@@ -100,10 +140,12 @@ public static class JobEndpoints
         // jobs.work is the route's permission; whether this job is the caller's is a rule of the domain (resource-level).
         jobs.MapPut("/{id:guid}", async (Guid id, UpdateJobRequest request, JobCommands commands, CancellationToken ct) =>
                 TypedResults.Ok(await commands.UpdateAsync(id, request.Version, request.ToInput(), ct)))
+            .AllowApiKey()
             .RequirePermission(Permissions.JobsWork);
 
         jobs.MapPost("/{id:guid}/transitions", async (Guid id, TransitionRequest request, JobCommands commands, CancellationToken ct) =>
                 TypedResults.Ok(await commands.TransitionAsync(id, request.To, request.Reason, ct)))
+            .AllowApiKey()
             .RequirePermission(Permissions.JobsWork);
 
         // A board move (SPEC-V2 5.2): assignee and day in one transaction; managers only, like assigning anywhere.

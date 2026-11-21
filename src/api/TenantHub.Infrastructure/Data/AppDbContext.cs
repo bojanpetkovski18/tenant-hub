@@ -9,6 +9,7 @@ using TenantHub.Domain;
 using TenantHub.Domain.Agreements;
 using TenantHub.Domain.Audit;
 using TenantHub.Domain.Clients;
+using TenantHub.Domain.Integrations;
 using TenantHub.Domain.Invitations;
 using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
@@ -74,6 +75,12 @@ public sealed class AppDbContext(
     public DbSet<Notification> Notifications => Set<Notification>();
 
     public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
+
+    public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+
+    public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
+
+    public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
 
     /// <summary>
     /// Audited changes saved through this context notify nobody. Only the demo seed sets it, for its months of replayed

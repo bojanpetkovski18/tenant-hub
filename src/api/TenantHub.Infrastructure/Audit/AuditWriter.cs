@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Application.Abstractions;
+using TenantHub.Application.Integrations;
 using TenantHub.Application.Notifications;
 using TenantHub.Domain;
 using TenantHub.Domain.Audit;
@@ -54,16 +55,30 @@ internal sealed class AuditWriter(AppDbContext db, ITenantContext tenant, TimePr
         {
             foreach (var change in aggregate.DomainEvents.OfType<IAuditableEvent>())
             {
-                // A portal session acts as its contact (SPEC-V2 5.9), unless the event names its own actor.
-                var named = change.Actor is null && tenant.ContactId is { } contact
-                    ? new ContactActorEvent(change, new AuditActor(ActorKind.Contact, null, contact, _actorName!))
+                // A portal session acts as its contact, an API key as itself (SPEC-V2 5.9), unless the event names its own actor.
+                IAuditableEvent named = change.Actor is not null ? change
+                    : tenant.ContactId is { } contact ? new ContactActorEvent(change, new AuditActor(ActorKind.Contact, null, contact, _actorName!))
+                    : tenant.ApiKeyId is { } key ? new ContactActorEvent(change, new AuditActor(ActorKind.ApiKey, null, key, $"API key {tenant.ApiKeyName}"))
                     : change;
                 db.AuditEntries.Add(AuditEntry.From(named, tenant.UserId, _actorName!, now, traceId));
 
                 // Who should hear about it (SPEC-V2 5.7) travels in the same save: a rolled-back change notifies nobody.
-                if (!db.NotifyNothing && NotificationTriggers.For(change, tenant.UserId, named.Actor?.Name ?? _actorName!) is { } request)
+                // A key's change is nobody's own, so even the key's creator hears about it.
+                var actorUser = tenant.ApiKeyId is null ? tenant.UserId : null;
+                if (!db.NotifyNothing && NotificationTriggers.For(change, actorUser, named.Actor?.Name ?? _actorName!) is { } request)
                 {
                     db.OutboxMessages.Add(Outbox.Plain(NotificationRequest.FanOut, request, change.OrganizationId, now));
+                }
+
+                // Catalog events for webhooks (SPEC-V2 5.8), with what they carry as it is now; the id stays the event's
+                // through every retry. The fan-out finds the subscribers, if any, outside this request.
+                if (!db.NotifyNothing)
+                {
+                    foreach (var (type, data) in WebhookTriggers.For(change))
+                    {
+                        var webhookEvent = new WebhookEventMessage(Guid.CreateVersion7(now), type, now, data);
+                        db.OutboxMessages.Add(Outbox.Plain(WebhookEventMessage.FanOut, webhookEvent, change.OrganizationId, now));
+                    }
                 }
             }
 

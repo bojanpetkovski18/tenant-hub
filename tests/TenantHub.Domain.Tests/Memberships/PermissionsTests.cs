@@ -28,6 +28,7 @@ public sealed class PermissionsTests
         { "agreements.read", true, true, true, true },
         { "agreements.manage", true, true, false, false },
         { "portal.manage", true, true, false, false },
+        { "integrations.manage", true, true, false, false },
     };
 
     [Theory]

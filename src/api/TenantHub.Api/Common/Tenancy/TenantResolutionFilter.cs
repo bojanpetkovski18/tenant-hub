@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using TenantHub.Api.Common.Auth;
 using TenantHub.Application.Abstractions;
+using TenantHub.Application.Integrations;
 using TenantHub.Application.Tenancy;
+using TenantHub.Domain.Integrations;
 
 namespace TenantHub.Api.Common.Tenancy;
 
@@ -13,6 +15,8 @@ namespace TenantHub.Api.Common.Tenancy;
 /// not exist, so other tenants' existence is not revealed;</item>
 /// <item>missing permission → 403 <c>permission-denied</c>.</item>
 /// </list>
+/// A request authenticated with an API key (<see cref="ApiKeyMiddleware"/>) was already matched to this organization; it
+/// enters as the key, with the key's fixed permissions instead of a role's (SPEC-V2 3.3).
 /// Logs from the handler carry the organization and user ids.
 /// <para>
 /// The request keeps one database connection from resolution to the end (EF Core closes an explicitly opened
@@ -24,6 +28,7 @@ namespace TenantHub.Api.Common.Tenancy;
 public sealed partial class TenantResolutionFilter(
     ResolveTenantQuery resolve,
     ITenantContext tenant,
+    TenantContext tenantContext,
     IAppDbContext db,
     ILogger<TenantResolutionFilter> logger) : IEndpointFilter
 {
@@ -37,8 +42,9 @@ public sealed partial class TenantResolutionFilter(
             ?? throw new InvalidOperationException($"Tenant-scoped endpoint {http.Request.Path} declares no permission.");
 
         await db.Database.OpenConnectionAsync(http.RequestAborted);
+        var key = http.GetApiKey();
         if (!Guid.TryParse(http.Request.RouteValues["orgId"] as string, out var organizationId)
-            || !await resolve.TryEnterAsync(organizationId, http.User.GetUserId(), http.RequestAborted))
+            || (key is not null ? !EnterAsKey(key, organizationId) : !await resolve.TryEnterAsync(organizationId, http.User.GetUserId(), http.RequestAborted)))
         {
             return TypedResults.Problem(
                 statusCode: StatusCodes.Status404NotFound,
@@ -59,6 +65,17 @@ public sealed partial class TenantResolutionFilter(
         {
             return await next(context);
         }
+    }
+
+    private bool EnterAsKey(ApiKeyIdentity key, Guid organizationId)
+    {
+        if (key.OrganizationId != organizationId)
+        {
+            return false;
+        }
+
+        tenantContext.EnterAsApiKey(organizationId, key.KeyId, key.Name, ApiKeyPermissions.For(key.Access), key.CreatorUserId);
+        return true;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Permission {Permission} denied in organization {OrganizationId}.")]

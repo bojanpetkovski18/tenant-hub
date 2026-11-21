@@ -6,6 +6,7 @@ using TenantHub.Application.Abstractions;
 using TenantHub.Application.Accounts;
 using TenantHub.Application.Agreements;
 using TenantHub.Application.Demo;
+using TenantHub.Application.Integrations;
 using TenantHub.Application.Jobs;
 using TenantHub.Application.Notifications;
 using TenantHub.Application.Portal;
@@ -14,6 +15,7 @@ using TenantHub.Infrastructure.Data;
 using TenantHub.Infrastructure.Email;
 using TenantHub.Infrastructure.Files;
 using TenantHub.Infrastructure.Identity;
+using TenantHub.Infrastructure.Integrations;
 using TenantHub.Infrastructure.Seed;
 
 namespace TenantHub.Infrastructure;
@@ -39,6 +41,12 @@ public static class InfrastructureSetup
         services.AddSingleton(configuration.GetSection(FileStoreOptions.Section).Get<FileStoreOptions>() ?? new FileStoreOptions());
         services.AddSingleton<IFileStore, LocalFileStore>();
         services.AddSingleton<IPhotoProcessor, SkiaPhotoProcessor>();
+        // Webhooks (SPEC-V2 5.8): one guarded client for the process; WebhookAddresses comes from the Api, which knows
+        // whether this is Development (the only place a local receiver is allowed).
+        services.AddSingleton(configuration.GetSection(WebhookOptions.Section).Get<WebhookOptions>() ?? new WebhookOptions());
+        services.AddSingleton<IHostResolver, DnsHostResolver>();
+        services.AddSingleton<IWebhookSender, GuardedWebhookSender>();
+        services.AddSingleton<IWebhookSecretProtector, WebhookSecretProtector>();
         services.AddBackgroundWork(configuration, demo);
         return services;
     }
@@ -55,6 +63,8 @@ public static class InfrastructureSetup
             AccountEmails.PasswordReset, AccountEmails.Verification, PortalEmails.Invitation, PortalEmails.SignIn, NotificationEmails.Message);
         services.AddOutboxHandler<NotificationFanOutHandler>(NotificationRequest.FanOut);
         services.AddOutboxHandler<FileCleanupHandler>(FileCleanup.Type);
+        services.AddOutboxHandler<WebhookFanOutHandler>(WebhookEventMessage.FanOut);
+        services.AddOutboxHandler<WebhookDeliveryHandler>(WebhookDeliveryMessage.Deliver);
         services.AddScheduledTask<OutboxRetentionTask>(OutboxRetentionTask.Name);
         services.AddScheduledTask<FileSweepTask>(FileSweepTask.Name);
         services.AddScheduledTask<OverdueDigestTask>(OverdueDigest.TaskName, perOrganization: true);
