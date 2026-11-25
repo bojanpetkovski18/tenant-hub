@@ -157,4 +157,4 @@ what it did); Complete is disabled with the open items named rather than refused
 ## Known limits (v2)
 
 - Screen readers, Firefox and Safari were not tested, as in M10. 200 % zoom is checked as a 640 px wide viewport.
-- The board scores below the other pages in Lighthouse and the portal's visits page shifts its footer (K6).
+- The board scored below the other pages in Lighthouse and the portal's visits page shifted its footer (K6). Fixed in M23: the board draws one layout per screen (focus returns to the card in the layout shown after its dialog, with a test), and the portal's visits skeleton fills the screen. 368/368 again after the fix.
