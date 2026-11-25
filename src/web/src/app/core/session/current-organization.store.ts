@@ -17,6 +17,12 @@ export const CurrentOrganizationStore = signalStore(
   { providedIn: 'root' },
   withState<CurrentOrganizationState>({ organization: null, loading: false }),
   withMethods((store, http = inject(HttpClient)) => ({
+    /** A fresher copy from a page that changed it (a new plan changes the features the shell and pages offer). */
+    replace(organization: Organization): void {
+      if (store.organization()?.id === organization.id) {
+        patchState(store, { organization });
+      }
+    },
     async load(organizationId: string): Promise<void> {
       if (store.organization()?.id === organizationId) {
         return;

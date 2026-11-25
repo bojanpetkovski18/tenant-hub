@@ -2,6 +2,7 @@ using TenantHub.Application.Abstractions;
 using TenantHub.Domain;
 using TenantHub.Domain.Agreements;
 using TenantHub.Domain.Clients;
+using TenantHub.Domain.Integrations;
 using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Notifications;
 
@@ -10,7 +11,7 @@ namespace TenantHub.Application.Notifications;
 /// <summary>
 /// A change that someone should hear about (SPEC-V2 5.7), as the outbox carries it from the change's transaction to the
 /// fan-out. <see cref="Users"/> are the people named by the change (the assignee, the quote's sender); with
-/// <see cref="Managers"/> the organization's managers are added. Who is told is decided at delivery, inside the tenant:
+/// <see cref="Managers"/> the organization's managers are added, with <see cref="Owners"/> its Owners. Who is told is decided at delivery, inside the tenant:
 /// never the actor, never someone who is no longer a member.
 /// </summary>
 public sealed record NotificationRequest(
@@ -21,7 +22,8 @@ public sealed record NotificationRequest(
     string ActorName,
     IReadOnlyList<Guid> Users,
     bool Managers,
-    string? Detail = null)
+    string? Detail = null,
+    bool Owners = false)
 {
     public static readonly OutboxMessageType FanOut = new("notifications.fan-out", CarriesSecret: false);
 }
@@ -40,6 +42,8 @@ public static class NotificationTriggers
             new(NotificationType.WorkRequested, NotificationLink.Request, request.Request.Id, actorUserId, actorName, [], Managers: true),
         AgreementEvent { Action: "agreement.generation_held" } held =>
             new(NotificationType.GenerationPaused, NotificationLink.Agreement, held.Agreement.Id, null, actorName, [], Managers: true),
+        WebhookEndpointEvent { Action: "webhook.disabled" } disabled =>
+            new(NotificationType.WebhookDisabled, NotificationLink.Integrations, disabled.Endpoint.Id, null, actorName, [], Managers: false, Detail: disabled.Endpoint.Host, Owners: true),
         _ => null,
     };
 

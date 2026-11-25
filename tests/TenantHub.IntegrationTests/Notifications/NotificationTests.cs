@@ -236,6 +236,15 @@ public sealed class NotificationTests(PostgresFixture postgres)
         await command.ExecuteNonQueryAsync(Ct);
     }
 
+    /// <summary>Removes every webhook endpoint (their deliveries go with them) and the webhook messages still queued.</summary>
+    internal static async Task ClearWebhooksAsync(string connectionString)
+    {
+        await using var connection = new Npgsql.NpgsqlConnection(PostgresFixture.AdminConnectionStringFor(connectionString));
+        await connection.OpenAsync(Ct);
+        await using var command = new Npgsql.NpgsqlCommand("DELETE FROM webhook_endpoints; DELETE FROM outbox_messages WHERE type LIKE 'webhooks.%'", connection);
+        await command.ExecuteNonQueryAsync(Ct);
+    }
+
     private static async Task<Guid> CreateJobAsync(ApiTenants tenants, BrowserClient client, string title, Guid? assignee)
     {
         var response = await client.PostJsonAsync($"/api/orgs/{tenants.OrgA}/jobs", new { title, clientId = tenants.ClientA, assigneeUserId = assignee, priority = "normal" });

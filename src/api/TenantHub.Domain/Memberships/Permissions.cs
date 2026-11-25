@@ -27,6 +27,9 @@ public static class Permissions
     // SPEC-V2 2.2: contacts, quotes for approval and work requests; Owners and Admins.
     public const string PortalManage = "portal.manage";
 
+    // SPEC-V2 2.2: API keys and webhooks; Owners and Admins.
+    public const string IntegrationsManage = "integrations.manage";
+
     public static IReadOnlyList<string> All { get; } =
     [
         OrgRead, OrgManage, OrgDelete, BillingManage, MembersManage,
@@ -35,6 +38,7 @@ public static class Permissions
         AuditRead,
         AgreementsRead, AgreementsManage,
         PortalManage,
+        IntegrationsManage,
     ];
 
     private static readonly IReadOnlySet<string> OwnerPermissions = new HashSet<string>(All, StringComparer.Ordinal);
@@ -47,6 +51,7 @@ public static class Permissions
             AuditRead,
             AgreementsRead, AgreementsManage,
             PortalManage,
+            IntegrationsManage,
         ],
         StringComparer.Ordinal);
 

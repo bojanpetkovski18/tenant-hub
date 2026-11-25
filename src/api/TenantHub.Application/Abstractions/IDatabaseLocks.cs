@@ -17,6 +17,9 @@ public interface IDatabaseLocks
     /// the entered organization's jobs.
     /// </summary>
     Task LockJobAsync(Guid jobId, CancellationToken cancellationToken);
+
+    /// <summary>Serializes the recording of deliveries to one webhook endpoint: its failure window and disabling.</summary>
+    Task LockWebhookEndpointAsync(Guid endpointId, CancellationToken cancellationToken);
 }
 
 /// <summary>Recognizes provider-specific database errors without the application referencing the provider.</summary>

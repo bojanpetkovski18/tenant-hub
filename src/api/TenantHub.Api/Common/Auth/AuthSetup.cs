@@ -83,6 +83,7 @@ public static class AuthSetup
     {
         app.UseAuthentication();
         app.UseMiddleware<PortalPrincipalMiddleware>();
+        app.UseMiddleware<ApiKeyMiddleware>();
         app.UseAuthorization();
         app.UseMiddleware<AntiforgeryValidationMiddleware>();
         return app;

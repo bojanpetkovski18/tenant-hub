@@ -5,8 +5,9 @@ namespace TenantHub.Api.Common.Auth;
 /// <summary>
 /// CSRF protection for the cookie-authenticated JSON API (D009). The built-in antiforgery middleware only
 /// validates form posts, so unsafe <c>/api</c> requests are checked here: the <c>X-XSRF-TOKEN</c> header must
-/// match the antiforgery cookie. Sign-in and sign-up are included (login CSRF). Endpoints that authenticate
-/// differently would opt out with <c>.DisableAntiforgery()</c>; there are none yet.
+/// match the antiforgery cookie. Sign-in and sign-up are included (login CSRF). A request authenticated with an API
+/// key is not checked: it carries no cookie (a key and a cookie together are refused before this), so there is
+/// nothing a forged request could ride on (SPEC-V2 3.3).
 /// </summary>
 public sealed partial class AntiforgeryValidationMiddleware(
     RequestDelegate next,
@@ -51,7 +52,7 @@ public sealed partial class AntiforgeryValidationMiddleware(
             return false;
         }
 
-        if (!context.Request.Path.StartsWithSegments("/api"))
+        if (!context.Request.Path.StartsWithSegments("/api") || context.User.IsApiKey())
         {
             return false;
         }

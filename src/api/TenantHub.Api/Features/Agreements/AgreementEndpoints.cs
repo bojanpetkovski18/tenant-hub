@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using TenantHub.Api.Common.Auth;
 using TenantHub.Api.Common.Tenancy;
 using TenantHub.Api.Features.Jobs;
 using TenantHub.Application.Agreements;
@@ -62,6 +63,7 @@ public static class AgreementEndpoints
                         q,
                         PageRequest.From(page, pageSize)),
                     ct)))
+            .AllowApiKey()
             .RequirePermission(Permissions.AgreementsRead);
 
         agreements.MapPost("/", async (AgreementRequest request, HttpContext context, AgreementCommands commands, AgreementQueries query, CancellationToken ct) =>
@@ -79,6 +81,7 @@ public static class AgreementEndpoints
 
         agreements.MapGet("/{id:guid}", async (Guid id, AgreementQueries query, CancellationToken ct) =>
                 TypedResults.Ok(await query.GetAsync(id, ct)))
+            .AllowApiKey()
             .RequirePermission(Permissions.AgreementsRead);
 
         agreements.MapPut("/{id:guid}", async (Guid id, AgreementRequest request, AgreementCommands commands, AgreementQueries query, CancellationToken ct) =>

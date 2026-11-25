@@ -6,10 +6,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TenantHub.Api.Features.Auth;
 using TenantHub.Application.Abstractions;
+using TenantHub.Application.Integrations;
 using TenantHub.Application.Invitations;
 using TenantHub.Application.Tenancy;
 using TenantHub.Domain.Agreements;
 using TenantHub.Domain.Clients;
+using TenantHub.Domain.Integrations;
 using TenantHub.Domain.Invitations;
 using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
@@ -88,6 +90,29 @@ public sealed class ApiTenants : IAsyncDisposable
 
     /// <summary>The job each checklist item or photo the fixture made belongs to, and that job's organization.</summary>
     private readonly Dictionary<Guid, (Guid Job, Guid Organization)> _parents = [];
+
+    /// <summary>The webhook endpoint each delivery the fixture made belongs to, and that endpoint's organization.</summary>
+    private readonly Dictionary<Guid, (Guid Endpoint, Guid Organization)> _deliveryParents = [];
+
+    public const string WebhookUrl = "https://hooks.example/tenant-hub";
+
+    /// <summary>A standing read-write API key of each organization (M21), with the key itself for bearer requests.</summary>
+    public Guid ApiKeyA { get; private set; }
+
+    public Guid ApiKeyB { get; private set; }
+
+    public string KeyA { get; private set; } = "";
+
+    public string KeyB { get; private set; } = "";
+
+    /// <summary>A standing webhook endpoint of each organization, each with one recorded delivery.</summary>
+    public Guid WebhookA { get; private set; }
+
+    public Guid WebhookB { get; private set; }
+
+    public Guid DeliveryA { get; private set; }
+
+    public Guid DeliveryB { get; private set; }
 
     public string OrgBOwnerEmail { get; } = $"owner-{Guid.NewGuid():N}@bravo.example";
 
@@ -180,7 +205,22 @@ public sealed class ApiTenants : IAsyncDisposable
             .OrderBy(n => n.Id)
             .Select(n => new { n.Id, n.UserId, n.ReadAt })
             .ToListAsync(Ct);
-        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit, invitations, jobs, agreements, contacts, requests, checklist, photos, notifications, next = organization.NextJobNumber });
+        var apiKeys = await db.ApiKeys.AcrossTenants().AsNoTracking()
+            .Where(k => k.OrganizationId == OrgB)
+            .OrderBy(k => k.Id)
+            .Select(k => new { k.Id, k.Name, k.Access, k.RevokedAt, k.ExpiresAt })
+            .ToListAsync(Ct);
+        var webhooks = await db.WebhookEndpoints.AcrossTenants().AsNoTracking()
+            .Where(e => e.OrganizationId == OrgB)
+            .OrderBy(e => e.Id)
+            .Select(e => new { e.Id, e.Url, e.Events, e.SecretEncrypted, e.DisabledAt, e.Version })
+            .ToListAsync(Ct);
+        var deliveries = await db.WebhookDeliveries.AcrossTenants().AsNoTracking()
+            .Where(d => d.OrganizationId == OrgB)
+            .OrderBy(d => d.Id)
+            .Select(d => new { d.Id, d.EndpointId, d.Attempt })
+            .ToListAsync(Ct);
+        var json = JsonSerializer.Serialize(new { organization, memberships, clients, audit, invitations, jobs, agreements, contacts, requests, checklist, photos, notifications, apiKeys, webhooks, deliveries, next = organization.NextJobNumber });
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
     }
 
@@ -527,7 +567,110 @@ public sealed class ApiTenants : IAsyncDisposable
         PhotoB = await CreatePhotoAsync(OrgB, JobB);
         await CreateNotificationAsync(OrgA);
         await CreateNotificationAsync(OrgB);
+        (ApiKeyA, KeyA) = await CreateApiKeyAsync(OrgA);
+        (ApiKeyB, KeyB) = await CreateApiKeyAsync(OrgB);
+        WebhookA = await CreateWebhookAsync(OrgA);
+        WebhookB = await CreateWebhookAsync(OrgB);
+        DeliveryA = await CreateDeliveryAsync(OrgA, WebhookA);
+        DeliveryB = await CreateDeliveryAsync(OrgB, WebhookB);
     }
+
+    public Guid WebhookIn(Guid organizationId) =>
+        organizationId == OrgA ? WebhookA : organizationId == OrgB ? WebhookB : Guid.NewGuid();
+
+    public Guid DeliveryIn(Guid organizationId) =>
+        organizationId == OrgA ? DeliveryA : organizationId == OrgB ? DeliveryB : Guid.NewGuid();
+
+    /// <summary>
+    /// An API key of A or B, issued as the Owner issues one (M21). <paramref name="expired"/> moves its expiry into the
+    /// past afterwards, which the API cannot do. Returns the key's id and the key itself.
+    /// </summary>
+    public async Task<(Guid Id, string Key)> CreateApiKeyAsync(Guid organizationId, ApiKeyAccess access = ApiKeyAccess.ReadWrite, bool revoked = false, bool expired = false)
+    {
+        if (organizationId != OrgA && organizationId != OrgB)
+        {
+            return (Guid.NewGuid(), ApiKeySecrets.New().Key);
+        }
+
+        var ownerId = await OwnerIdAsync(organizationId);
+        var (key, prefix, hash) = ApiKeySecrets.New();
+        var now = DateTimeOffset.UtcNow;
+        await using var db = ContextAs(organizationId, ownerId);
+        var apiKey = ApiKey.Issue(organizationId, $"Key {Guid.NewGuid():N}"[..20], access, expired ? now.AddDays(1) : null, prefix, hash, ownerId, now);
+        db.ApiKeys.Add(apiKey);
+        if (revoked)
+        {
+            apiKey.Revoke(now);
+        }
+
+        await db.SaveChangesAsync(Ct);
+        if (expired)
+        {
+            db.Entry(apiKey).Property(k => k.ExpiresAt).CurrentValue = now.AddMinutes(-1);
+            await db.SaveChangesAsync(Ct);
+        }
+
+        return (apiKey.Id, key);
+    }
+
+    /// <summary>
+    /// A webhook endpoint of A or B (at most five each): endpoints other than the standing ones are removed first, so
+    /// the cases that add or use up endpoints can run any number of times.
+    /// </summary>
+    public async Task<Guid> CreateWebhookAsync(Guid organizationId)
+    {
+        if (organizationId != OrgA && organizationId != OrgB)
+        {
+            return Guid.NewGuid();
+        }
+
+        await TrimWebhooksAsync(organizationId);
+        await using var db = await OwnerContextAsync(organizationId);
+        var secret = Factory.Services.GetRequiredService<IWebhookSecretProtector>().Protect(WebhookSignature.NewSecret());
+        var existing = await db.WebhookEndpoints.CountAsync(Ct);
+        var endpoint = WebhookEndpoint.Add(organizationId, new Uri(WebhookUrl), [WebhookEvents.JobCreated, WebhookEvents.JobStatusChanged], secret, existing, DateTimeOffset.UtcNow);
+        db.WebhookEndpoints.Add(endpoint);
+        await db.SaveChangesAsync(Ct);
+        return endpoint.Id;
+    }
+
+    /// <summary>Removes the endpoints of A or B other than the standing ones (and their deliveries with them).</summary>
+    public async Task TrimWebhooksAsync(Guid organizationId)
+    {
+        if (organizationId != OrgA && organizationId != OrgB)
+        {
+            return;
+        }
+
+        await using var db = await OwnerContextAsync(organizationId);
+        await db.WebhookEndpoints.Where(e => e.Id != WebhookA && e.Id != WebhookB).ExecuteDeleteAsync(Ct);
+    }
+
+    /// <summary>A failed delivery attempt recorded for an endpoint of A or B, as the deliverer records one.</summary>
+    public async Task<Guid> CreateDeliveryAsync(Guid organizationId, Guid endpointId)
+    {
+        var tenant = new TenantContext();
+        tenant.EnterAsSystem(organizationId);
+        await using var db = PostgresFixture.CreateDbContext(ConnectionString, tenant);
+        var endpoint = await db.WebhookEndpoints.AsNoTracking().SingleAsync(e => e.Id == endpointId, Ct);
+        var now = DateTimeOffset.UtcNow;
+        var eventId = Guid.CreateVersion7(now);
+        var body = WebhookDeliveryMessage.BodyFor(eventId, WebhookEvents.JobCreated, now, organizationId, JsonSerializer.SerializeToElement(new { id = JobIn(organizationId) }));
+        var delivery = WebhookDelivery.Record(endpoint, eventId, WebhookEvents.JobCreated, body, 1, 500, 42, "http-500", now.AddMinutes(1), now);
+        db.WebhookDeliveries.Add(delivery);
+        await db.SaveChangesAsync(Ct);
+        _deliveryParents[delivery.Id] = (endpointId, organizationId);
+        return delivery.Id;
+    }
+
+    /// <summary>
+    /// The first id of a two-id route: the job of a checklist item or photo, or the endpoint of a delivery, when it is in
+    /// the organization the route names; otherwise that organization's standing one (a foreign resource under our own).
+    /// </summary>
+    public Guid ParentForRoute(Guid organizationId, Guid resourceId) =>
+        _deliveryParents.TryGetValue(resourceId, out var delivery)
+            ? delivery.Organization == organizationId ? delivery.Endpoint : WebhookIn(organizationId)
+            : JobForRoute(organizationId, resourceId);
 
     /// <summary>A notification for the organization's Owner (M20), written as the system writes them.</summary>
     public async Task<Guid> CreateNotificationAsync(Guid organizationId, Guid? userId = null)

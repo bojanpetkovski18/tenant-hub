@@ -601,6 +601,208 @@ namespace TenantHub.Infrastructure.Data.Migrations
                     b.ToTable("work_requests", (string)null);
                 });
 
+            modelBuilder.Entity("TenantHub.Domain.Integrations.ApiKey", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Access")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("access");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<byte[]>("KeyHash")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("bytea")
+                        .HasColumnName("key_hash");
+
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_used_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("Prefix")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
+                        .HasColumnName("prefix");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_api_keys");
+
+                    b.HasIndex("CreatedByUserId")
+                        .HasDatabaseName("ix_api_keys_created_by_user_id");
+
+                    b.HasIndex("KeyHash")
+                        .IsUnique()
+                        .HasDatabaseName("ux_api_keys_key_hash");
+
+                    b.HasIndex("OrganizationId", "CreatedAt")
+                        .HasDatabaseName("ix_api_keys_organization_created");
+
+                    b.ToTable("api_keys", (string)null);
+                });
+
+            modelBuilder.Entity("TenantHub.Domain.Integrations.WebhookDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempt")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempt");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("body");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("DurationMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_ms");
+
+                    b.Property<Guid>("EndpointId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("endpoint_id");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("error");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("event_id");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("event_type");
+
+                    b.Property<DateTimeOffset?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_attempt_at");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<int?>("StatusCode")
+                        .HasColumnType("integer")
+                        .HasColumnName("status_code");
+
+                    b.Property<DateTimeOffset?>("SucceededAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("succeeded_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_webhook_deliveries");
+
+                    b.HasIndex("OrganizationId", "CreatedAt")
+                        .HasDatabaseName("ix_webhook_deliveries_organization_created");
+
+                    b.HasIndex("OrganizationId", "EndpointId", "CreatedAt")
+                        .IsDescending(false, false, true)
+                        .HasDatabaseName("ix_webhook_deliveries_endpoint_created");
+
+                    b.ToTable("webhook_deliveries", (string)null);
+                });
+
+            modelBuilder.Entity("TenantHub.Domain.Integrations.WebhookEndpoint", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DisabledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("disabled_at");
+
+                    b.PrimitiveCollection<string[]>("Events")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("events");
+
+                    b.Property<DateTimeOffset?>("FailingSince")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("failing_since");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("PreviousSecretEncrypted")
+                        .HasColumnType("text")
+                        .HasColumnName("previous_secret_encrypted");
+
+                    b.Property<DateTimeOffset?>("PreviousSecretExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("previous_secret_expires_at");
+
+                    b.Property<string>("SecretEncrypted")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("secret_encrypted");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("url");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_webhook_endpoints");
+
+                    b.HasAlternateKey("OrganizationId", "Id")
+                        .HasName("ak_webhook_endpoints_organization_id_id");
+
+                    b.ToTable("webhook_endpoints", (string)null);
+                });
+
             modelBuilder.Entity("TenantHub.Domain.Invitations.Invitation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1525,6 +1727,51 @@ namespace TenantHub.Infrastructure.Data.Migrations
                         .HasPrincipalKey("OrganizationId", "Id")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_work_requests_jobs_organization_id_job_id");
+                });
+
+            modelBuilder.Entity("TenantHub.Domain.Integrations.ApiKey", b =>
+                {
+                    b.HasOne("TenantHub.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_api_keys_users_created_by_user_id");
+
+                    b.HasOne("TenantHub.Domain.Organizations.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_api_keys_organizations_organization_id");
+                });
+
+            modelBuilder.Entity("TenantHub.Domain.Integrations.WebhookDelivery", b =>
+                {
+                    b.HasOne("TenantHub.Domain.Organizations.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_webhook_deliveries_organizations_organization_id");
+
+                    b.HasOne("TenantHub.Domain.Integrations.WebhookEndpoint", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "EndpointId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_webhook_deliveries_webhook_endpoints_organization_id_endpoi");
+                });
+
+            modelBuilder.Entity("TenantHub.Domain.Integrations.WebhookEndpoint", b =>
+                {
+                    b.HasOne("TenantHub.Domain.Organizations.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_webhook_endpoints_organizations_organization_id");
                 });
 
             modelBuilder.Entity("TenantHub.Domain.Invitations.Invitation", b =>

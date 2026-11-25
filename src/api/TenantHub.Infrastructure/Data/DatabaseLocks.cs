@@ -32,6 +32,12 @@ internal sealed class DatabaseLocks(AppDbContext db) : IDatabaseLocks
         await db.Database.ExecuteSqlAsync($"SELECT 1 FROM jobs WHERE id = {jobId} FOR NO KEY UPDATE", cancellationToken);
     }
 
+    public async Task LockWebhookEndpointAsync(Guid endpointId, CancellationToken cancellationToken)
+    {
+        EnsureTransaction();
+        await db.Database.ExecuteSqlAsync($"SELECT 1 FROM webhook_endpoints WHERE id = {endpointId} FOR NO KEY UPDATE", cancellationToken);
+    }
+
     private void EnsureTransaction()
     {
         if (db.Database.CurrentTransaction is null)

@@ -24,11 +24,15 @@ public sealed class TenantContext : ITenantContext
 
     public Guid? ContactId { get; private set; }
 
+    public Guid? ApiKeyId { get; private set; }
+
+    public string? ApiKeyName { get; private set; }
+
     public bool HasPermission(string permission) => Permissions.Contains(permission);
 
     public void Enter(Guid organizationId, Guid userId, Role role)
     {
-        if (OrganizationId is { } current && (current != organizationId || UserId != userId || ContactId is not null))
+        if (OrganizationId is { } current && (current != organizationId || UserId != userId || ContactId is not null || ApiKeyId is not null))
         {
             throw new InvalidOperationException("A scope works inside one organization for one user; it cannot switch.");
         }
@@ -51,6 +55,24 @@ public sealed class TenantContext : ITenantContext
         }
 
         OrganizationId = organizationId;
+    }
+
+    /// <summary>
+    /// A machine request with an API key (SPEC-V2 3.3): the key's organization, which the route named, and the key's
+    /// fixed permissions (SPEC-V2 2.4). Records that need a user get the key's creator; the audit names the key.
+    /// </summary>
+    public void EnterAsApiKey(Guid organizationId, Guid keyId, string keyName, IReadOnlySet<string> permissions, Guid creatorUserId)
+    {
+        if (OrganizationId is not null)
+        {
+            throw new InvalidOperationException("A scope works inside one organization for one actor; it cannot switch.");
+        }
+
+        OrganizationId = organizationId;
+        UserId = creatorUserId;
+        ApiKeyId = keyId;
+        ApiKeyName = keyName;
+        Permissions = permissions;
     }
 
     /// <summary>

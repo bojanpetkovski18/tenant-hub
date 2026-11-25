@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using TenantHub.Api.Common.Auth;
 using TenantHub.Api.Common.Tenancy;
 using TenantHub.Application.Clients;
 using TenantHub.Application.Paging;
@@ -42,6 +43,7 @@ public static class ClientEndpoints
                 var filter = Enum.TryParse<ClientStatusFilter>(status, ignoreCase: true, out var parsed) ? parsed : ClientStatusFilter.Active;
                 return TypedResults.Ok(await query.HandleAsync(new ListClientsRequest(q, filter, sort, PageRequest.From(page, pageSize)), ct));
             })
+            .AllowApiKey()
             .RequirePermission(Permissions.ClientsRead);
 
         clients.MapPost("/", async (ClientRequest request, HttpContext context, ClientCommands commands, CancellationToken ct) =>
@@ -49,14 +51,17 @@ public static class ClientEndpoints
                 var client = await commands.CreateAsync(request.ToInput(), ct);
                 return TypedResults.Created($"{context.Request.Path.Value!.TrimEnd('/')}/{client.Id}", client);
             })
+            .AllowApiKey()
             .RequirePermission(Permissions.ClientsWrite);
 
         clients.MapGet("/{id:guid}", async (Guid id, GetClientQuery query, CancellationToken ct) =>
                 TypedResults.Ok(await query.HandleAsync(id, ct)))
+            .AllowApiKey()
             .RequirePermission(Permissions.ClientsRead);
 
         clients.MapPut("/{id:guid}", async (Guid id, UpdateClientRequest request, ClientCommands commands, CancellationToken ct) =>
                 TypedResults.Ok(await commands.UpdateAsync(id, request.Version, request.ToInput(), ct)))
+            .AllowApiKey()
             .RequirePermission(Permissions.ClientsWrite);
 
         clients.MapPost("/{id:guid}/archive", async (Guid id, ClientCommands commands, CancellationToken ct) =>

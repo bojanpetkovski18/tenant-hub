@@ -131,6 +131,16 @@ public sealed class EndpointCoverageTests(OfflineApiFactory factory) : IClassFix
         Assert.True(outside.Count == 0, $"Portal routes must use MapPortalGroup() or be reviewed public ones: {string.Join(", ", outside)}");
     }
 
+    [Fact]
+    public void Api_keys_are_accepted_exactly_by_the_reviewed_tenant_endpoints()
+    {
+        // SPEC-V2 3.3: endpoints opt in to keys one by one; the list is ApiKeyMatrixTests', which tests each of them.
+        var enabled = Endpoints().Where(e => e.Endpoint.Metadata.GetMetadata<Api.Common.Auth.ApiKeyAllowedMetadata>() is not null).ToList();
+
+        Assert.Equal(ApiKeyMatrixTests.KeyEnabled.Order(), enabled.Select(e => e.Key).Order());
+        Assert.All(enabled, e => Assert.Equal(EndpointAccess.Tenant, Access(e.Endpoint)));
+    }
+
     private static EndpointAccess? Access(Endpoint endpoint) => endpoint.Metadata.GetMetadata<EndpointAccessMetadata>()?.Access;
 
     private static string Method(Endpoint endpoint) =>

@@ -709,11 +709,40 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
     - the SkiaSharp.NativeAssets.Linux.NoDependencies description.
 - **Alternatives:** `bytea` in PostgreSQL (simple, but bloats the database and its backups); storing files as uploaded (keeps location metadata and trusts the client's content type); writing files after the commit (a failed write leaves a row without its file); a storage counter (drifts under cascades).
 
-## D044: API keys and HMAC-signed webhooks with an SSRF guard (pending M21)
-- **Date:** 2026-11-16
-- **Decision (proposed):** API keys are random, shown once, stored as SHA-256 hashes with a visible prefix, and map to a fixed permission set (read-only or read-write) that never includes administration. Webhooks are delivered from the outbox, signed as `t=<unix>,v1=<HMAC-SHA256(secret, "t.body")>`, retried for about a day, and sent only to public addresses checked at connection time, without redirects.
-- **Why:** receivers already know this signing pattern from widely used platforms (a timestamp against replays, a version prefix for rotation). The SSRF guard is the part most webhook implementations miss: a customer-supplied URL must not reach the server's own network.
-- **Alternatives:** OAuth client credentials (more than a small-business integration needs); signing without a timestamp (replayable); checking the URL only when it is saved (DNS can change afterwards).
+## D044: API keys and HMAC-signed webhooks with an SSRF guard (M21)
+- **Date:** 2026-11-16, decided 2026-11-21
+- **Decision:**
+  - **Keys.** `thk_` and 32 random bytes in base64url (47 characters), shown once. Only the SHA-256 hash is stored (unique index), with the first 12 characters as a visible prefix. Optional expiry within 366 days; revocation is immediate. Two access levels with fixed permissions (`ApiKeyPermissions`): read-only (clients, jobs, agreements read) and read-write (plus `clients.write`, `jobs.create`, `jobs.work`, `jobs.manage`). Never administration, whoever created the key.
+  - **Authentication.** `ApiKeyMiddleware` runs after the cookie schemes and before authorization, antiforgery and the rate limiter:
+    - a bearer request that also carries a session or portal cookie is refused (`400 credentials-conflict`);
+    - an endpoint without `.AllowApiKey()` refuses the key (`403 api-key-not-allowed`) before any lookup;
+    - the key is looked up in a scope of its own, as the system inside the organization the route names, so the tenant filter and row-level security apply. Another organization's key is simply not there, and answers `404 organization-not-found` like an unknown key or a stranger. No bypass and no definer function were needed, although SPEC-V2 8 approved one;
+    - revoked or expired → `401 api-key-invalid`; a plan without integrations → `403 plan-feature-unavailable`;
+    - otherwise the tenant filter enters the organization as the key (`TenantContext.EnterAsApiKey`) with the key's permissions. Antiforgery is skipped (no cookie, nothing to forge). A global limiter counts 120 requests a minute per key; sessions are not limited by it.
+  - **Who a key is.** `UserId` is the key's creator, so `created_by` columns keep naming a person. The audit names the key ("API key <name>", `actor_kind = api_key`, `actor_ref` = the key). A key's change is nobody's own, so its creator is notified like anyone else. Last use is written at most once a minute.
+  - **Events.** The audit writer, which sees every change at save time, maps SPEC-V2's catalog onto domain events (`WebhookTriggers`). It writes a `webhooks.fan-out` message in the same save, with an event id and a snapshot of the job or request as it is after the change. The fan-out, as the system in the organization, queues one `webhooks.deliver` message per enabled subscribed endpoint, with the body written once. Retries and "deliver again" send the same bytes and the same `id`. Generated visits are events too: a mirror of jobs needs them.
+  - **Delivery.** Each message is one attempt. It signs with the current secret, plus the previous one during its 24-hour overlap, as `t=<unix>,v1=<hex HMAC-SHA256(secret, "t.body")>[,v1=…]`. It records the attempt (status, duration, class of error, never the response body) and the endpoint's failure window under a row lock on the endpoint, then fails the outbox message so the dispatcher retries. Outbox types may now carry their own retry schedule: webhooks use 1 m, 5 m, 30 m, 2 h, 4 h, 8 h and 10 h (eight attempts over about 24.6 hours). Three days of failures with no success disable the endpoint (`webhook.disabled`, by the system), which notifies the Owners (`NotificationType.WebhookDisabled`) and stops the retries.
+  - **The guard.** `GuardedWebhookSender` is one `HttpClient` whose `SocketsHttpHandler` has a `ConnectCallback`:
+    - it resolves the host itself and refuses the whole host if any address is not public unicast. Refused: loopback, private, carrier-grade NAT, link-local (the metadata address), documentation, benchmarking, multicast and reserved, unique-local and site-local, and IPv4 carried in IPv6 (mapped, compatible, NAT64, 6to4, Teredo), judged as that IPv4;
+    - it connects to an address it checked, so there is no second lookup to rebind;
+    - no redirects (a `3xx` is a failure), no proxy, no cookies, 10 seconds;
+    - a refusal is logged as a security event with the host and port, never the path.
+
+    In Development only, `Webhooks:AllowedReceiver` names one local receiver (`tools/webhook-receiver.mjs`) that may be `http` and private, matched on host and port. Tests replace the resolver; no test reaches the network.
+  - **Secrets.** `whsec_` and 32 random bytes in hex, shown once, stored with Data Protection under a purpose of their own (the key ring is the database's, K1). Rotation keeps the previous secret for 24 hours.
+  - **Endpoints.** At most five per organization (checked under the organization lock), `https` only, no credentials in the URL, events from the catalog. The audit names the host only, since a path may carry the customer's token. Delivery log rows go after 30 days, in the organization's daily run that already removes old notifications (D050). Redelivery and test events are audited.
+  - **Plan.** Every key, endpoint and webhook route checks the Business plan, and so do key authentication, the fan-out and delivery: endpoints kept from Business stay quiet below it. A downgrade counts usable keys and enabled endpoints as integrations in use (`plan-feature-loss`).
+  - **Edits carry no version.** Every delivery updates its endpoint's row (the failure window), so a version would only say that a delivery happened. Edits, rotation and removal take the row lock that deliveries take, one after the other; two people editing one endpoint at once: the last save wins.
+  - **The page.** Settings → Integrations reads the plan's features from the organization the shell has loaded and asks the API only when integrations are included. The Settings page now hands a changed plan to the shell, so the navigation follows a plan change without a reload. Keys and secrets appear in a dialog that Escape and the backdrop do not close, with a copy button.
+- **Findings in the browser pass (production image):**
+  - Saving an edited endpoint answered 409: the page sent the version it had loaded, and a delivery had changed it since. Regression test first (failed with 409), then the rule above.
+  - After a shown-once dialog, focus fell to the page's body (the button that opened it was disabled while busy). The dialog now opens after the action, and focus goes to a named place: the key form, "Add an endpoint" or the endpoint's "New secret".
+  - At 375 px the page scrolled sideways with the delivery log open: a visually hidden header label escaped the table's scroll box. The box is now positioned, focusable and labelled (axe asked for a keyboard way to scroll it).
+  - On Team, the page's two refused requests showed as console errors; it now knows the plan before asking.
+  - The key form showed "Name the key…" after a successful create, as soon as focus left the empty field. The new-item forms now show errors only after a save is tried.
+  - In Development, a body that is not UTF-8 JSON is a 500 with the exception (minimal APIs throw there on purpose); every other environment answers 400, now covered by a test.
+- **Why:** receivers know this signing pattern from widely used platforms (a timestamp against replays, a version prefix for rotation). The SSRF guard at connection time is the part most implementations miss: a URL checked when it is saved can resolve elsewhere later. Finding keys inside the route's organization keeps layer 6 (D038) intact, at the cost of requiring the organization id in the path, which the routes already have.
+- **Alternatives:** OAuth client credentials (more than a small-business integration needs); a key lookup across organizations through a definer function (approved, but not needed); signing without a timestamp (replayable); one outbox message per event with a loop over endpoints (one failing endpoint would hold back the others' retries); checking the URL only when it is saved (DNS can change).
 
 ## D045: v2 numbering and documents (M13)
 - **Date:** 2026-11-16
@@ -822,3 +851,13 @@ Numbered, never renumbered. Superseded decisions stay with a note. "Pending" mea
   - At 375 px the panel ran off the left edge. Neither axe nor the overflow check can see a fixed overlay, so a bounding-box check was added and the overlay now pushes into the viewport.
   - "Brightline Cleaning Co." ended a digest sentence and every email footer with a doubled full stop. A regression test was shown failing first; the texts no longer end with the name.
 - **Alternatives:** explicit calls from each handler (easy to forget one, and the audit writer already sees every change); a separate retention task across tenants (would need a bypass); push or websockets (out of scope; the 60 s count is enough).
+
+## D051: Exports stream CSV with a byte-order mark and neutralized cells (M21)
+- **Date:** 2026-11-21
+- **Decision:**
+  - **Format.** UTF-8 with a byte-order mark, commas, CRLF between records, quotes only when a field holds a comma, a quote or a line break. Times are in the organization's time zone as `yyyy-MM-dd HH:mm[:ss]`, and the audit header names the zone. Amounts are `0.00` with a full stop.
+  - **Neutralizing.** A cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading apostrophe (the OWASP CSV-injection advice). It is applied to every cell; the product writes no negative numbers, so no value of its own is changed by it.
+  - **Streaming.** The export is checked first (range, permission, plan), so a refusal is still a problem response. Then rows go from `AsAsyncEnumerable` through a 16 KB `StreamWriter` to the response. Names of people come from the organization's members, read once; client names come from a correlated subquery, as in the list. Measured: 50,000 audit entries (9.8 MB of CSV) streamed with at most 0.4 MB of live heap above the baseline (PROGRESS, Measured results).
+  - **In the browser.** Plain download links (`<a download>`), so the browser writes the stream to disk and nothing is held in the page. The audit export takes the filter's days, or the last 30 when none are chosen; the link is replaced by a hint beyond 366 days.
+- **Why:** without the mark, Excel opens UTF-8 as the local code page and breaks names with accents. Without the apostrophe, a client named `=HYPERLINK(…)` becomes a live formula in whoever opens the file.
+- **Alternatives:** `.xlsx` (a dependency and no streaming); tab-separated values (Excel opens them as one column on some locales); neutralizing only text columns (one more rule to get wrong).

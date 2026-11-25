@@ -25,6 +25,7 @@ export const permissionsFor: Readonly<Record<Role, readonly Permission[]>> = {
     'agreements.read',
     'agreements.manage',
     'portal.manage',
+    'integrations.manage',
   ],
   admin: [
     'org.read',
@@ -41,6 +42,7 @@ export const permissionsFor: Readonly<Record<Role, readonly Permission[]>> = {
     'agreements.read',
     'agreements.manage',
     'portal.manage',
+    'integrations.manage',
   ],
   member: [
     'org.read',

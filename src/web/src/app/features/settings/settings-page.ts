@@ -12,8 +12,9 @@ import {
   viewChild,
 } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ApiProblem, LimitName, PlanLimitDetail, toApiProblem } from '../../core/http/api-problem';
+import { CurrentOrganizationStore } from '../../core/session/current-organization.store';
 import { SessionStore } from '../../core/session/session.store';
 import { focusFirstInvalid } from '../../shared/forms/focus-first-invalid';
 import { applyProblem, controlError } from '../../shared/forms/server-errors';
@@ -65,10 +66,18 @@ export function blockingText(detail: PlanLimitDetail, target: string): string {
  */
 @Component({
   selector: 'app-settings-page',
-  imports: [ReactiveFormsModule, EmptyState, ErrorState, UsageMeters],
+  imports: [ReactiveFormsModule, RouterLink, EmptyState, ErrorState, UsageMeters],
   template: `
     <div class="max-w-3xl space-y-6">
       <h1 class="text-2xl font-semibold tracking-tight">Settings</h1>
+      @if (canIntegrate()) {
+        <a [routerLink]="['integrations']" class="th-card block hover:border-accent">
+          <span class="font-medium">Integrations</span>
+          <span class="block text-sm text-muted"
+            >API keys and webhooks: connect other systems to this organization.</span
+          >
+        </a>
+      }
 
       @if (!canManage() && !canBill()) {
         <app-empty-state
@@ -288,9 +297,13 @@ export class SettingsPage {
   protected readonly timeZones = timeZoneOptions();
 
   private readonly membership = computed(() => this.session.membershipBySlug(this.slug()));
+  private readonly currentOrganization = inject(CurrentOrganizationStore);
   protected readonly canManage = computed(() => this.session.can(this.slug(), 'org.manage'));
   protected readonly canBill = computed(() => this.session.can(this.slug(), 'billing.manage'));
   protected readonly canDelete = computed(() => this.session.can(this.slug(), 'org.delete'));
+  protected readonly canIntegrate = computed(() =>
+    this.session.can(this.slug(), 'integrations.manage'),
+  );
 
   protected readonly overview = signal<OrganizationOverview | null>(null);
   protected readonly loadError = signal<ApiProblem | null>(null);
@@ -469,6 +482,7 @@ export class SettingsPage {
 
   private show(overview: OrganizationOverview): void {
     this.overview.set(overview);
+    this.currentOrganization.replace(overview);
     if (!this.form.dirty || this.saved()) {
       this.form.reset({
         name: overview.name,

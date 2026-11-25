@@ -63,6 +63,18 @@ public enum CaseResource
     /// same roles) when A is requested, owned by B's Owner when B is, and a random id otherwise.
     /// </summary>
     FreshOrganization,
+
+    /// <summary>An API key created just for this request (revoking uses it up).</summary>
+    FreshApiKey,
+
+    /// <summary>The organization's standing webhook endpoint.</summary>
+    Webhook,
+
+    /// <summary>A webhook endpoint created just for this request (edits, rotation and removal change it).</summary>
+    FreshWebhook,
+
+    /// <summary>The recorded delivery of the organization's standing endpoint.</summary>
+    WebhookDelivery,
 }
 
 /// <summary>The organization and resource a case is sent to.</summary>
@@ -86,6 +98,9 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
     public Func<CaseInput, Task>? Arrange { get; init; }
 
     public Func<CaseInput, Task<object>>? Body { get; init; }
+
+    /// <summary>A query string for the call, starting with <c>?</c> (an export's required range).</summary>
+    public Func<CaseInput, string>? Query { get; init; }
 
     /// <summary>A file upload instead of a JSON body (<c>multipart/form-data</c>, M19).</summary>
     public Func<CaseInput, byte[]>? Upload { get; init; }
@@ -111,6 +126,9 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         CaseResource.FreshRequest => "request-not-found",
         CaseResource.FreshChecklistItem => "checklist-item-not-found",
         CaseResource.Photo or CaseResource.FreshPhoto => "photo-not-found",
+        CaseResource.FreshApiKey => "api-key-not-found",
+        CaseResource.Webhook or CaseResource.FreshWebhook => "webhook-not-found",
+        CaseResource.WebhookDelivery => "delivery-not-found",
         _ => throw new InvalidOperationException($"{Key} takes no id."),
     };
 
@@ -127,6 +145,9 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         CaseResource.FreshRequest => tenants.RequestB,
         CaseResource.FreshChecklistItem => tenants.ChecklistItemB,
         CaseResource.Photo or CaseResource.FreshPhoto => tenants.PhotoB,
+        CaseResource.FreshApiKey => tenants.ApiKeyB,
+        CaseResource.Webhook or CaseResource.FreshWebhook => tenants.WebhookB,
+        CaseResource.WebhookDelivery => tenants.DeliveryB,
         _ => throw new InvalidOperationException($"{Key} takes no id."),
     };
 
@@ -433,6 +454,60 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
         new("GET", "/audit/", Permissions.AuditRead),
         new("GET", "/dashboard", Permissions.OrgRead),
 
+        // Exports (SPEC-V2 7, M21): CSV, streamed; the audit export needs its range.
+        new("GET", "/jobs/export", Permissions.JobsRead),
+        new("GET", "/audit/export", Permissions.AuditRead)
+        {
+            Query = _ => $"?from={DateTime.UtcNow.AddDays(-30):yyyy-MM-dd}&to={DateTime.UtcNow.AddDays(1):yyyy-MM-dd}",
+        },
+
+        // Integrations (SPEC-V2 7, M21): Owners and Admins, on the Business plan.
+        new("GET", "/api-keys/", Permissions.IntegrationsManage),
+        new("POST", "/api-keys/", Permissions.IntegrationsManage)
+        {
+            Audited = true,
+            Body = _ => Task.FromResult<object>(new { name = "Matrix key", access = "readOnly" }),
+        },
+        new("DELETE", "/api-keys/{id:guid}", Permissions.IntegrationsManage)
+        {
+            Resource = CaseResource.FreshApiKey,
+            Allowed = HttpStatusCode.NoContent,
+            Audited = true,
+        },
+        new("GET", "/webhooks/", Permissions.IntegrationsManage),
+        new("POST", "/webhooks/", Permissions.IntegrationsManage)
+        {
+            Audited = true,
+            Arrange = input => input.Tenants.TrimWebhooksAsync(input.OrganizationId),
+            Body = _ => Task.FromResult<object>(new { url = "https://hooks.example/matrix", events = new[] { "job.created" } }),
+        },
+        new("PUT", "/webhooks/{id:guid}", Permissions.IntegrationsManage)
+        {
+            Resource = CaseResource.FreshWebhook,
+            Audited = true,
+            Body = _ => Task.FromResult<object>(new { url = $"https://hooks.example/{Guid.NewGuid():N}", events = new[] { "job.created", "job.assigned" } }),
+        },
+        new("DELETE", "/webhooks/{id:guid}", Permissions.IntegrationsManage)
+        {
+            Resource = CaseResource.FreshWebhook,
+            Allowed = HttpStatusCode.NoContent,
+            Audited = true,
+        },
+        new("POST", "/webhooks/{id:guid}/rotate-secret", Permissions.IntegrationsManage) { Resource = CaseResource.FreshWebhook, Audited = true },
+        new("GET", "/webhooks/{id:guid}/deliveries", Permissions.IntegrationsManage) { Resource = CaseResource.Webhook },
+        new("POST", "/webhooks/{id:guid}/deliveries/{deliveryId:guid}/redeliver", Permissions.IntegrationsManage)
+        {
+            Resource = CaseResource.WebhookDelivery,
+            Allowed = HttpStatusCode.Accepted,
+            Audited = true,
+        },
+        new("POST", "/webhooks/{id:guid}/test", Permissions.IntegrationsManage)
+        {
+            Resource = CaseResource.Webhook,
+            Allowed = HttpStatusCode.Accepted,
+            Audited = true,
+        },
+
         // Test-only endpoints (ApiFactory): the 403 path, and the guard stopping a deliberate bug (500).
         new("GET", ApiFactory.OwnerOnlyPattern, Permissions.BillingManage),
         new("POST", ApiFactory.IsolationViolationPattern, Permissions.OrgRead) { Allowed = HttpStatusCode.InternalServerError },
@@ -466,6 +541,10 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
             CaseResource.FreshChecklistItem => await tenants.CreateChecklistItemAsync(organizationId, assignTo: caller),
             CaseResource.Photo => tenants.PhotoIn(organizationId),
             CaseResource.FreshPhoto => await tenants.CreatePhotoAsync(organizationId, assignTo: caller),
+            CaseResource.FreshApiKey => (await tenants.CreateApiKeyAsync(organizationId)).Id,
+            CaseResource.Webhook => tenants.WebhookIn(organizationId),
+            CaseResource.FreshWebhook => await tenants.CreateWebhookAsync(organizationId),
+            CaseResource.WebhookDelivery => tenants.DeliveryIn(organizationId),
             _ => null,
         };
         var input = new CaseInput(tenants, organizationId, resourceId);
@@ -484,16 +563,21 @@ public sealed partial record TenantEndpointCase(string Method, string Pattern, s
 
     public async Task<HttpResponseMessage> SendAsync(BrowserClient client, CaseInput input)
     {
-        // Two ids (a job's checklist item or photo): the first is the job, the second the resource.
+        // Two ids (a job's checklist item or photo, an endpoint's delivery): the first is the parent, the second the resource.
         var ids = IdSegment().Count(Pattern);
         var segment = 0;
         var path = $"/api/orgs/{input.OrganizationId}" + IdSegment().Replace(Pattern, _ =>
             ids == 2 && segment++ == 0 && input.ResourceId is { } resource
-                ? input.Tenants.JobForRoute(input.OrganizationId, resource).ToString()
+                ? input.Tenants.ParentForRoute(input.OrganizationId, resource).ToString()
                 : input.ResourceId?.ToString() ?? "");
         if (Pattern == ApiFactory.IsolationViolationPattern)
         {
             path += $"?targetOrganizationId={input.Tenants.OrgB}";
+        }
+
+        if (Query is not null)
+        {
+            path += Query(input);
         }
 
         var body = Body is null ? new { } : await Body(input);

@@ -67,5 +67,12 @@ public static class ApplicationSetup
         .AddScoped<Notifications.NotificationInbox>()
         .AddScoped<Notifications.NotificationPreferences>()
         .AddScoped<Notifications.OverdueDigest>()
+        .AddScoped<Integrations.ApiKeyCommands>()
+        .AddScoped<Integrations.ApiKeyLookup>()
+        .AddScoped<Integrations.WebhookCommands>()
+        .AddScoped<Integrations.WebhookFanOut>()
+        .AddScoped<Integrations.WebhookDeliverer>()
+        .AddScoped<Exports.ExportAuditQuery>()
+        .AddScoped<Exports.ExportJobsQuery>()
         .AddScoped<DemoProtection>();
 }

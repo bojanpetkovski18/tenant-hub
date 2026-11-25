@@ -69,6 +69,9 @@ public sealed partial class OutboxDispatcher(
 
     public static int MaxAttempts => RetryDelays.Count + 1;
 
+    /// <summary>The schedule for one type: its own, or the default.</summary>
+    public static IReadOnlyList<TimeSpan> DelaysFor(OutboxMessageType? type) => type?.RetryDelays ?? RetryDelays;
+
     /// <summary>Claims one batch and delivers it. Returns how many messages it claimed (0: nothing was due).</summary>
     public async Task<int> DispatchBatchAsync(CancellationToken cancellationToken)
     {
@@ -119,6 +122,7 @@ public sealed partial class OutboxDispatcher(
         string? error = null;
         var permanent = false;
         var carriesSecret = false;
+        var delays = RetryDelays;
         try
         {
             if (!_routes.TryGetValue(message.Type, out var route))
@@ -127,6 +131,7 @@ public sealed partial class OutboxDispatcher(
             }
 
             carriesSecret = route.Type.CarriesSecret;
+            delays = DelaysFor(route.Type);
             var payload = carriesSecret
                 ? Outbox.Protector(protection, route.Type).Unprotect(JsonSerializer.Deserialize<string>(message.Payload)!)
                 : message.Payload;
@@ -157,11 +162,11 @@ public sealed partial class OutboxDispatcher(
             LogHandlerFailed(logger, message.Id, message.Type, exception.GetType().Name);
         }
 
-        await CompleteAsync(db, message, carriesSecret, error, permanent);
+        await CompleteAsync(db, message, carriesSecret, delays, error, permanent);
     }
 
     // Written even when shutdown has begun (CancellationToken.None): a message that was delivered must not be sent again.
-    private async Task CompleteAsync(AppDbContext db, OutboxMessage message, bool carriesSecret, string? error, bool permanent)
+    private async Task CompleteAsync(AppDbContext db, OutboxMessage message, bool carriesSecret, IReadOnlyList<TimeSpan> delays, string? error, bool permanent)
     {
         var now = time.GetUtcNow();
         var claim = db.OutboxMessages.Where(m =>
@@ -175,7 +180,7 @@ public sealed partial class OutboxDispatcher(
                 ? await claim.ExecuteDeleteAsync(CancellationToken.None)
                 : await claim.ExecuteUpdateAsync(s => s.SetProperty(m => m.ProcessedAt, now).SetProperty(m => m.LastError, (string?)null), CancellationToken.None);
         }
-        else if (permanent || message.Attempts >= MaxAttempts)
+        else if (permanent || message.Attempts > delays.Count)
         {
             // A dead secret is no use to anyone (reset links expire in 30 minutes): only the record of the failure stays.
             written = carriesSecret
@@ -192,7 +197,7 @@ public sealed partial class OutboxDispatcher(
         }
         else
         {
-            var retryAt = now + RetryDelays[message.Attempts - 1];
+            var retryAt = now + delays[message.Attempts - 1];
             written = await claim.ExecuteUpdateAsync(
                 s => s.SetProperty(m => m.AvailableAt, retryAt).SetProperty(m => m.LastError, error),
                 CancellationToken.None);

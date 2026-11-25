@@ -24,7 +24,8 @@ export type Permission =
   | 'audit.read'
   | 'agreements.read'
   | 'agreements.manage'
-  | 'portal.manage';
+  | 'portal.manage'
+  | 'integrations.manage';
 
 export interface Membership {
   readonly organizationId: string;

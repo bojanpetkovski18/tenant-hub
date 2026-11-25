@@ -26,6 +26,14 @@ public interface ITenantContext
     /// <summary>The signed-in client contact of a portal session; the audit names them.</summary>
     Guid? ContactId { get; }
 
+    /// <summary>
+    /// The API key of a machine request (SPEC-V2 3.3). <see cref="UserId"/> is then the key's creator, whom records that
+    /// need a user name; the audit names the key (<see cref="ApiKeyName"/>).
+    /// </summary>
+    Guid? ApiKeyId { get; }
+
+    string? ApiKeyName { get; }
+
     bool HasPermission(string permission);
 }
 
