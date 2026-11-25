@@ -202,11 +202,14 @@ Assumptions and decisions logged: <list>
 Known issues: <list or "none">
 Suggested next step: <one line>
 ```
-After every push, give a pull request description in the chat, not in a file, as raw Markdown inside a fenced code block so the owner can paste it into GitHub, plus the compare link `https://github.com/bojanpetkovski18/tenant-hub/compare/dev...<branch>?expand=1` with `#` encoded as `%23`. The description covers the whole branch, starts with a line naming its readers, and has these sections:
-- What changed (grouped)
-- Verified locally (a table of real results)
-- Not verified
-- Review notes
-- Out of scope
+After every push, give one compare link that opens the milestone's single pull request with its title and description already filled in: `https://github.com/bojanpetkovski18/tenant-hub/compare/dev...<branch>?expand=1&title=<title>&body=<description>`, with `#` in the branch encoded as `%23` and the title and description URL-encoded by a script (`encodeURIComponent`), not by hand. Do not also paste the description into the chat. One milestone is one pull request covering every commit on its branch.
+- **Title:** `Mnn: <what it delivers>`.
+- **Description:** covers the whole branch and starts with a line naming its readers. Sections:
+  - What changed (grouped)
+  - Verified locally (a table of real results)
+  - Not verified
+  - Review notes
+  - Out of scope
+- **Length:** keep the whole link under about 7,000 characters (GitHub accepted 6,956 on 2026-11-25); shorten the description rather than drop a section.
 
 Before the report, update `PROGRESS.md` and `DECISIONS.md`, plus this file's Commands section for any newly verified commands.
