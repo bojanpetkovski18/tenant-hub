@@ -47,7 +47,8 @@ import { PortalApi, PortalVisit } from './portal.api';
       @if (error(); as problem) {
         <app-error-state [message]="problem.title" (retry)="load()" />
       } @else if (!visits()) {
-        <div class="h-40 animate-pulse rounded-lg bg-surface-2" aria-busy="true"></div>
+        <!-- As tall as the screen: the footer starts below the fold, so a full list does not push it (K6, CLS). -->
+        <div class="h-dvh animate-pulse rounded-lg bg-surface-2" aria-busy="true"></div>
       } @else if (visits()!.items.length === 0) {
         <app-empty-state
           [title]="past() ? 'No past visits' : 'No upcoming visits'"

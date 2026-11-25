@@ -204,8 +204,10 @@ describe('board page', () => {
     await settle(harness.fixture);
 
     expect(announcement(page)).toBe('JOB-0042 moved to Noah Kim, Thursday 19 November.');
-    // Focus is not left on <body> once the card is drawn in its new place (jsdom lays nothing out: the heading).
-    expect(document.activeElement).toBe(page.querySelector('h1'));
+    // Focus is not left on <body> once the card is drawn in its new place: it is on the card's own "Move to…".
+    expect(document.activeElement).toBe(
+      page.querySelector('[aria-label="Noah Kim, Thursday 19 November"] button[data-move="j42"]'),
+    );
     expect(text(page.querySelector('[aria-label="Noah Kim, Thursday 19 November"]'))).toContain(
       'JOB-0042',
     );
@@ -226,6 +228,36 @@ describe('board page', () => {
     expect(document.querySelector<HTMLSelectElement>('#move-person')!.value).toBe(maya);
     expect(document.querySelector<HTMLInputElement>('#move-day')!.value).toBe('2026-11-17');
     expect(document.activeElement?.id).toBe('move-person');
+  });
+
+  // K6 follow-up: with one layout at a time, a screen crossing the breakpoint while the dialog is open redraws the
+  // card, and a cancel gave focus back to a button that no longer exists.
+  it('gives focus back to the card in the layout shown when the dialog is cancelled', async () => {
+    // The shell listens to the same query; every listener hears the change, as in a browser.
+    const listeners: ((event: { matches: boolean }) => void)[] = [];
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: (_: string, listener: (event: { matches: boolean }) => void) =>
+        listeners.push(listener),
+      removeEventListener: () => undefined,
+    }));
+    const page = await openLoaded();
+    buttons(page)
+      .find((b) => text(b) === 'Move to… JOB-0042')!
+      .click();
+    await settle(harness.fixture);
+
+    listeners.forEach((listener) => listener({ matches: false }));
+    await settle(harness.fixture);
+    [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+      .find((b) => text(b) === 'Cancel')!
+      .click();
+    await settle(harness.fixture);
+
+    const phoneCard = page.querySelector('[data-layout="days"] button[data-move="j42"]');
+    expect(phoneCard).not.toBeNull();
+    expect(document.activeElement).toBe(phoneCard);
   });
 
   it('puts a card back in "Not scheduled" when the day is left empty', async () => {
@@ -314,10 +346,23 @@ describe('board page', () => {
     expect(page.querySelectorAll('.cdk-drag:not(.cdk-drag-disabled)').length).toBe(0);
   });
 
+  /** A screen narrower than the layout breakpoint (jsdom has no matchMedia; without one the board is wide). */
+  function phoneScreen(): void {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
   it('lists the week day by day on a phone, with "Move to…" and no dragging', async () => {
+    phoneScreen();
     const page = await openLoaded();
 
-    const phone = page.querySelector('app-board-page div.space-y-4.lg\\:hidden')!;
+    const phone = page.querySelector('app-board-page [data-layout="days"]')!;
     const tuesday = [...phone.querySelectorAll('section')].find(
       (s) => text(s.querySelector('h2')) === dayText('2026-11-17'),
     )!;
@@ -329,6 +374,22 @@ describe('board page', () => {
       (s) => text(s.querySelector('h2')) === dayText('2026-11-16'),
     )!;
     expect(text(monday)).toContain('Nothing planned.');
+  });
+
+  // K6 (M22 Lighthouse): both layouts were in the page, one hidden by CSS, and every card on a phone was draggable.
+  it('renders only the layout for the screen, and sets up dragging only on a wide one', async () => {
+    let page = await openLoaded();
+    expect(page.querySelector('table')).not.toBeNull();
+    expect(page.querySelector('[data-layout="days"]')).toBeNull();
+    expect(page.querySelectorAll('.cdk-drag').length).toBeGreaterThan(0);
+
+    TestBed.resetTestingModule();
+    phoneScreen();
+    page = await openLoaded();
+    expect(page.querySelector('table')).toBeNull();
+    expect(page.querySelector('[data-layout="days"]')).not.toBeNull();
+    expect(page.querySelectorAll('.cdk-drag, .cdk-drop-list').length).toBe(0);
+    expect(text(page)).toContain('Move to…');
   });
 
   it('goes to the next week through the URL', async () => {
