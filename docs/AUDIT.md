@@ -82,7 +82,7 @@ on narrow screens (M04, M06). Screenshots at 375, 768 and 1280 px were reviewed 
 # UI audit, v2 screens (M22)
 
 Every screen and overlay added in v2, staff and portal, checked on 2026-11-25 with the M10 method above, extended as the
-M22 brief asks (SPEC-V2 criterion 21). Numbers are also in `PROGRESS.md` → Measured results.
+M22 brief asks (SPEC criterion 21). Numbers are also in `PROGRESS.md` → Measured results.
 
 ## Method (v2)
 

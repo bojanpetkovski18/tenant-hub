@@ -108,9 +108,9 @@ As a prospective client evaluating the developer, I want to try the product with
 
 # v2 stories
 
-Rules are in `docs/SPEC-V2.md` section 5. **P1** is required for v2.0.0; **P2** can move later with the owner's approval (`PROGRESS.md` → v2 cut list). Ids continue each area's numbering.
+Rules are in `SPEC.md` 5.7–5.15 (the v2 specification was merged into it at M23; each heading names its sections). **P1** is required for v2.0.0; **P2** can move later with the owner's approval (`PROGRESS.md` → v2 cut list). Ids continue each area's numbering.
 
-## Accounts (v2)
+## Accounts (v2; SPEC 4.2, 5.1)
 
 **US-05 Reset a forgotten password** (M15, P1)
 - From the sign-in page I can ask for a reset link; the answer is the same whether or not the email has an account.
@@ -121,7 +121,7 @@ Rules are in `docs/SPEC-V2.md` section 5. **P1** is required for v2.0.0; **P2** 
 - After sign-up I get a verification link; until I use it, a banner reminds me and I cannot send invitations.
 - I can ask for the link again (rate-limited).
 
-## Recurring work
+## Recurring work (SPEC 4.3, 5.7)
 
 **US-70 Set up a service agreement** (M16, P1)
 As an Admin or Owner, I want to describe repeating work once so that the visits appear by themselves.
@@ -134,7 +134,7 @@ As an Admin or Owner, I want to describe repeating work once so that the visits 
 - I can skip one visit, pause and resume the agreement, or end it; ending cancels the future visits that have not started.
 - When the plan's open-jobs limit stops generation, the agreement says so.
 
-## Planning
+## Planning (SPEC 4.4, 5.8)
 
 **US-75 Plan the week on a board** (M17, P1)
 As an Admin or Owner, I want to see who does what each day and move work around.
@@ -144,7 +144,7 @@ As an Admin or Owner, I want to see who does what each day and move work around.
 - If someone else changed the visit first, the card returns and the board reloads with a message.
 - Members and Viewers see the board without move actions. On a phone it is a list per day.
 
-## Client portal
+## Client portal (SPEC 4.5, 5.9–5.11)
 
 **US-80 Give a client access** (M18, P1)
 As an Admin or Owner on the Team or Business plan, I want to invite a client's contacts to a portal.
@@ -171,7 +171,7 @@ As a client contact, I want to approve or decline a price before work starts.
 - I describe the work and an optional preferred date; I can follow the request's status.
 - Staff see new requests in an inbox with a count, and convert one into a prefilled job or decline it with a reason that I can read.
 
-## Completion proof
+## Completion proof (SPEC 4.6, 5.12)
 
 **US-90 Prove the work was done** (M19, P1)
 As the person doing the visit, I want to tick off the checklist and add photos.
@@ -184,7 +184,7 @@ As a client contact, I want to see the proof and confirm or report a problem.
 - A completed visit shows its checklist and photos; I confirm it or describe a problem.
 - Staff see my feedback on the job and are notified of problems.
 
-## Notifications
+## Notifications (SPEC 4.7, 5.13)
 
 **US-100 Hear about what matters to me** (M20, P1)
 - A bell in the app shows how many unread notifications I have; I can open them, follow their links and mark them as read.
@@ -194,7 +194,7 @@ As a client contact, I want to see the proof and confirm or report a problem.
 **US-101 Daily overdue digest** (M20, P2)
 - At 07:00 in my organization's time zone I get one email listing my overdue jobs (managers get the count); no email when there are none.
 
-## Integrations
+## Integrations (SPEC 4.8, 5.14)
 
 **US-110 Connect another tool with an API key** (M21, P1)
 As an Owner or Admin on the Business plan, I want to give another system access to clients and jobs.
@@ -209,7 +209,7 @@ As an Owner or Admin on the Business plan, I want to give another system access 
 **US-112 Export data** (M21, P2)
 - Admins and Owners export the audit log for a date range as CSV; anyone who can read jobs exports the current jobs list view as CSV.
 
-## Plans (v2)
+## Plans (v2; SPEC 4.9, 5.5)
 
 **US-52 Features by plan** (M18, P1)
 - Settings → Plan shows which features each plan includes, as well as its limits.

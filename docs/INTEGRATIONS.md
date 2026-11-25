@@ -1,6 +1,6 @@
 # Integrations: API keys, webhooks and exports
 
-For developers connecting another system to a TenantHub organization. API keys and webhooks are part of the Business plan; Owners and Admins manage them in **Settings → Integrations**. The rules behind this page are in `SPEC-V2.md` sections 3.3 and 5.8 and decision D044.
+For developers connecting another system to a TenantHub organization. API keys and webhooks are part of the Business plan; Owners and Admins manage them in **Settings → Integrations**. The rules behind this page are in `SPEC.md` sections 3.7 and 5.14 and decision D044.
 
 ## API keys
 
