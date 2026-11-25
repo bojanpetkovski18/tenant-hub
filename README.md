@@ -38,8 +38,9 @@ docker compose up --build --wait
 ```
 
 Open http://localhost:8080. The stack is the production image with PostgreSQL and a local mail catcher, and it starts
-with demo data: **Brightline Cleaning Co.** (Team plan: 40 clients, 150 jobs over four months, three recurring
-agreements, photos and a client portal) and **Harbor & Pine Landscaping** (Free plan, at its limits).
+with demo data: **Brightline Cleaning Co.** (Team plan: 40 clients, 150 jobs over four months plus the visits of
+three recurring agreements, photos, and three clients with a portal contact) and **Harbor & Pine Landscaping** (Free
+plan, at its limits).
 
 Sign in with the `DEMO_PASSWORD` from `.env` (`Change-Me-Demo-2026!` unless you change it) as:
 
@@ -51,10 +52,11 @@ Sign in with the `DEMO_PASSWORD` from `.env` (`Change-Me-Demo-2026!` unless you 
 | `victor@brightline.example` | Viewer | reads clients, jobs and the board, changes nothing |
 | `sam@tenanthub.example` | Member at Brightline, Admin at Harbor & Pine | one account in two organizations (the switcher) |
 
-**As a client:** open http://localhost:8080/portal/brightline-cleaning-co and ask for a link for
-`marco@oakfield-school.example` (a quote is waiting for him), `kofi@elmstead-school.example` or
-`rosa@elmstead-dental.example`. The link arrives in the local inbox at http://localhost:8026, as do invitations and
-the other emails. `docker compose down` stops everything; `--volumes` also deletes the data and the photos.
+**As a client:** the demo data is laid out around today, so which clients have a portal contact depends on the day it
+was made. Signed in as Olivia, open **Requests** and choose **All**: the requests there come from those contacts, and each
+client's page lists its contacts under **Portal contacts**. Then open http://localhost:8080/portal/brightline-cleaning-co, ask for a
+sign-in link with a contact's email, and follow it from the local inbox at http://localhost:8026 (invitations and the
+other emails land there too). One of the contacts has a quote waiting for approval. `docker compose down` stops everything; `--volumes` also deletes the data and the photos.
 
 A recording of a walkthrough is in [`docs/media/walkthrough.webm`](docs/media/walkthrough.webm): Olivia moves a visit
 on the board by keyboard and looks at a completed visit's checklist and photo; then Marco signs in to the portal from
