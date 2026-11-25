@@ -1,0 +1,33 @@
+# The end-to-end override (M22, D052): the same production image in the E2E environment, plus the webhook test
+# receiver the second journey checks. E2E behaves like Production except that the one named receiver below is allowed
+# as a webhook target; every other private address is still refused.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.e2e.yml up --build --wait
+# The receiver lists what it received on http://localhost:5099/events (STACK_RECEIVER_PORT to move it).
+services:
+  app:
+    environment:
+      ASPNETCORE_ENVIRONMENT: E2E
+      Webhooks__AllowedReceiver: http://receiver:5099/
+      # Every journey comes from one address, and runs back to back would meet the per-address limits (10 sign-ups
+      # a minute, 5 portal links in 10 minutes). The limits themselves are covered by the integration tests.
+      RateLimiting__AuthPermitLimit: "1000"
+      RateLimiting__InvitationPermitLimit: "1000"
+      RateLimiting__PortalSignInPermitLimit: "1000"
+    depends_on:
+      receiver:
+        condition: service_healthy
+
+  receiver:
+    image: node:24.20.0-alpine3.24
+    restart: unless-stopped
+    user: node
+    command: ["node", "/receiver/webhook-receiver.mjs", "--host", "0.0.0.0", "--port", "5099"]
+    volumes:
+      - ./tools/webhook-receiver.mjs:/receiver/webhook-receiver.mjs:ro
+    ports:
+      - "127.0.0.1:${STACK_RECEIVER_PORT:-5099}:5099"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5099/events"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
