@@ -79,7 +79,7 @@ All verified 2026-10-21 (M01) on Windows 11 (Git Bash), .NET SDK 10.0.402, Node 
 - `npm start`: dev server on `http://localhost:4200`, proxying `/api` and `/health` to the API on 5090.
 - `npm run lint`: ESLint, including Angular template accessibility rules.
 - `npm run format:check` / `npm run format`: Prettier check / fix.
-- `npm run test:ci`: Vitest component tests, single run (252 tests after M22). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
+- `npm run test:ci`: Vitest component tests, single run (254 tests after M23). `npm test` watches. `npx ng test --watch=false --include src/app/core/layout/app-shell.spec.ts` runs one spec.
 - `npm run build`: production build to `src/web/dist/web`.
 - `node ../../tools/npm-audit.mjs` (from `src/web` or `tests/e2e`): the npm advisory gate CI runs, `npm audit` at moderate and above except the advisories listed with a reason and an unexpired date in `tools/audit-exceptions.json` (D020); exit 1 on a failure, `--today YYYY-MM-DD` to test an expiry. Verified 2026-11-18. `npm audit --audit-level=moderate` shows the raw report.
 
