@@ -63,6 +63,12 @@ public sealed partial class DemoReset(
         {
             await files.DeleteOrganizationAsync(organization, cancellationToken);
         }
+
+        // The demo accounts outlive their organizations, so what a visitor set for them goes back to the seed's state
+        // too: their names come back with the seed, their email choices here (M22).
+        await db.NotificationPreferences
+            .Where(p => db.Users.Any(u => u.Id == p.UserId && DemoEmails.Contains(u.Email!)))
+            .ExecuteDeleteAsync(cancellationToken);
         await seeder.SeedAsync(configuration[DemoSeeder.PasswordSetting], cancellationToken);
         var accounts = await DeleteStaleVisitorAccountsAsync(cutoff, cancellationToken);
         LogReset(logger, seeded, visitors, accounts);

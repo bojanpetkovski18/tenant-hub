@@ -52,6 +52,8 @@ import { Client, ClientsApi } from './clients.api';
         </app-empty-state>
       </div>
     } @else if (loadError(); as error) {
+      <!-- One h1 on every state of the page, the failed one included (M22 audit). -->
+      <h1 class="mt-3 text-2xl font-semibold tracking-tight">Client</h1>
       <div class="mt-4"><app-error-state [message]="error.title" (retry)="load()" /></div>
     } @else if (client(); as client) {
       @if (notice() === 'created' || notice() === 'saved') {

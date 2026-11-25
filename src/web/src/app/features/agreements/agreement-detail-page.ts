@@ -38,6 +38,8 @@ import { Agreement, AgreementsApi, holdMessages } from './agreements.api';
         <h1 class="text-2xl font-semibold tracking-tight">Agreement not found</h1>
         <p class="text-muted">It may have been deleted with its client, or the link is wrong.</p>
       } @else if (loadError(); as error) {
+        <!-- One h1 on every state of the page, the failed one included (M22 audit). -->
+        <h1 class="text-2xl font-semibold tracking-tight">Agreement</h1>
         <app-error-state [message]="error.title" (retry)="load()" />
       } @else if (agreement(); as a) {
         <div class="flex flex-wrap items-start justify-between gap-3">

@@ -7,8 +7,10 @@ using TenantHub.Api.Features.Demo;
 using TenantHub.Application.Abstractions;
 using TenantHub.Application.Demo;
 using TenantHub.Application.Tenancy;
+using TenantHub.Domain.Jobs;
 using TenantHub.Domain.Memberships;
 using TenantHub.Infrastructure.Seed;
+using TenantHub.IntegrationTests.Data;
 using TenantHub.IntegrationTests.Infrastructure;
 
 namespace TenantHub.IntegrationTests.Demo;
@@ -166,6 +168,60 @@ public sealed class DemoModeTests(PostgresFixture postgres)
             Assert.Equal(150, await db.Jobs.AcrossTenants().CountAsync(j => j.OrganizationId == reseeded.Id && j.AgreementId == null, Ct));
             Assert.Equal(8, await db.Users.CountAsync(u => u.Email!.EndsWith(".example") && !u.Email.EndsWith("@test.example"), Ct));
         }
+    }
+
+    [Fact]
+    public async Task After_a_reset_the_demo_equals_a_fresh_seed_whatever_visitors_changed()
+    {
+        // What the next visitor must find: a demo seeded at the moment of the reset.
+        var resetAt = Start.AddHours(25);
+        var (fresh, _, freshConnection) = await DemoAsync(now: resetAt);
+        await fresh.DisposeAsync();
+        var expected = await DemoFingerprint.OfAsync(freshConnection);
+
+        var (factory, clock, connectionString) = await DemoAsync();
+        var (brightline, _) = await BrightlineAsync(connectionString);
+        var org = $"/api/orgs/{brightline}";
+        using var owner = new BrowserClient(factory);
+        (await DemoSignInAsync(owner, "owner")).EnsureSuccessStatusCode();
+
+        // A visitor's afternoon across the v2 screens, as the Owner and as a client contact.
+        (await owner.PatchJsonAsync(org, new { name = "Brightline Cleaning Co.", timeZone = "Europe/London", dailyCapacityMinutes = 300 })).EnsureSuccessStatusCode();
+        var someClient = (await owner.Http.GetFromJsonAsync<JsonElement>($"{org}/clients?pageSize=1", Ct)).GetProperty("items")[0].GetProperty("id").GetGuid();
+        (await owner.PostJsonAsync($"{org}/clients/{someClient}/contacts", new { name = "A Visitor", email = "visitor@elsewhere.example" })).EnsureSuccessStatusCode();
+        var agreement = (await owner.Http.GetFromJsonAsync<JsonElement>($"{org}/agreements", Ct)).GetProperty("items")[0].GetProperty("id").GetGuid();
+        (await owner.PostJsonAsync($"{org}/agreements/{agreement}/pause", new { })).EnsureSuccessStatusCode();
+        (Guid Job, Guid Item) open;
+        await using (var db = PostgresFixture.CreateDbContext(connectionString))
+        {
+            open = await db.ChecklistItems.AcrossTenants()
+                .Where(i => i.OrganizationId == brightline && i.DoneAt == null)
+                .Join(db.Jobs.AcrossTenants().Where(j => j.Status == JobStatus.Scheduled || j.Status == JobStatus.InProgress), i => i.JobId, j => j.Id, (i, j) => new ValueTuple<Guid, Guid>(j.Id, i.Id))
+                .FirstAsync(Ct);
+        }
+
+        (await owner.SendJsonAsync(HttpMethod.Put, $"{org}/jobs/{open.Job}/checklist/{open.Item}", new { done = true })).EnsureSuccessStatusCode();
+        (await owner.PostJsonAsync($"{org}/notifications/read", new { all = true })).EnsureSuccessStatusCode();
+        (await owner.SendJsonAsync(HttpMethod.Put, "/api/me/notification-preferences", new { preferences = new[] { new { type = "assigned", email = false } } })).EnsureSuccessStatusCode();
+
+        var info = await owner.Http.GetFromJsonAsync<DemoInfoResponse>("/api/demo/accounts", BrowserClient.Json, Ct);
+        using var contact = new BrowserClient(factory);
+        (await contact.PortalSendAsync(HttpMethod.Post, "/api/portal/demo/sign-in", new { email = info!.PortalContacts[0].Email }, DemoSeeder.BrightlineSlug)).EnsureSuccessStatusCode();
+        (await contact.PortalSendAsync(HttpMethod.Post, "/api/portal/requests", new { title = "A visitor's request", description = "Left by a demo visitor." }, DemoSeeder.BrightlineSlug)).EnsureSuccessStatusCode();
+        await factory.DisposeAsync();
+
+        var changed = await DemoFingerprint.OfAsync(connectionString);
+        Assert.Contains("preference|olivia@brightline.example|Assigned|False", changed);
+        Assert.Contains(changed, line => line.StartsWith("contact|", StringComparison.Ordinal) && line.Contains("|A Visitor|", StringComparison.Ordinal));
+        Assert.Contains(changed, line => line.StartsWith("request|", StringComparison.Ordinal) && line.Contains("|A visitor's request|", StringComparison.Ordinal));
+
+        clock.Now = resetAt;
+        Assert.Equal(resetAt.AddHours(6), await ResetIfDueAsync(connectionString, clock));
+        var after = await DemoFingerprint.OfAsync(connectionString);
+
+        var left = after.Except(expected).ToList();
+        var missing = expected.Except(after).ToList();
+        Assert.True(left.Count + missing.Count == 0, $"Left by visitors:\n{string.Join('\n', left)}\nMissing:\n{string.Join('\n', missing)}");
     }
 
     [Fact]

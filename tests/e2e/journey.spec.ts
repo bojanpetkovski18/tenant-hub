@@ -1,45 +1,10 @@
-import AxeBuilder from '@axe-core/playwright';
-import { type APIRequestContext, type Page, expect, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { emailedLink, expectAccessible, newRun, password, signUp } from './support';
 
 // SPEC 10, criterion 10: the main journey through the real production image, with the email read from Mailpit.
 // Every run uses new people and organizations, so runs never depend on each other or on the seed.
 
-const mailpit = process.env['E2E_MAILPIT_URL'] ?? 'http://localhost:8026';
-const password = 'E2e-Journey-Pass-1!';
-const run = `${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`;
-
-/** No serious or critical axe findings on the page as it is now. */
-async function expectAccessible(page: Page, where: string): Promise<void> {
-  const { violations } = await new AxeBuilder({ page }).analyze();
-  const serious = violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
-  expect(serious.map((v) => `${v.id}: ${v.nodes[0]?.target.join(' ')}`), `axe on ${where}`).toEqual([]);
-}
-
-async function signUp(page: Page, name: string, email: string, organization: string): Promise<string> {
-  await page.goto('/sign-up');
-  await expectAccessible(page, 'sign up');
-  await page.getByLabel('Your name').fill(name);
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password', { exact: true }).fill(password);
-  await page.getByLabel('Organization name').fill(organization);
-  await page.getByRole('button', { name: /create/i }).click();
-  await page.waitForURL(/\/o\/[^/]+\/dashboard$/);
-  await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible();
-  return new URL(page.url()).pathname.split('/')[2]!;
-}
-
-/** The link to the SPA page `page` (`/page#token`) in the email Mailpit caught for this address with this subject. */
-async function emailedLink(request: APIRequestContext, email: string, subject: string, page: string): Promise<string> {
-  const search = `${mailpit}/api/v1/search?query=${encodeURIComponent(`to:"${email}" subject:"${subject}"`)}`;
-  await expect
-    .poll(async () => (await (await request.get(search)).json()).messages_count, { timeout: 30_000 })
-    .toBeGreaterThan(0);
-  const { messages } = await (await request.get(search)).json();
-  const message = await (await request.get(`${mailpit}/api/v1/message/${messages[0].ID}`)).json();
-  const link = (message.Text as string).match(new RegExp(`https?://\\S+/${page}#[\\w-]+`))?.[0];
-  expect(link, `${page} link in the email`).toBeTruthy();
-  return link!;
-}
+const run = newRun();
 
 test('a team runs a job from sign-up to the audit log', async ({ browser }) => {
   const ownerEmail = `owner-${run}@e2e.example`;

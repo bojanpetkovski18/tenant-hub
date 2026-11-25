@@ -96,6 +96,12 @@ describe('portal pages', () => {
       expect(text(main(page).querySelector('[role="status"]'))).toContain(
         'If dana@acme.example belongs to a contact of Brightline Cleaning Co., a sign-in link is on its way. It works once, within 15 minutes.',
       );
+      // M22 audit: the form, and with it the focused button, disappeared and focus fell to the page.
+      expect(document.activeElement).toBe(main(page).querySelector('h1'));
+
+      [...page.querySelectorAll('button')].find((b) => text(b) === 'Use another address')!.click();
+      await settle(harness.fixture);
+      expect(document.activeElement?.id).toBe('portal-email');
     });
 
     it('refuses an empty address without asking the API', async () => {
@@ -196,6 +202,27 @@ describe('portal pages', () => {
       expect(page.querySelector('#portal-email')).not.toBeNull();
     });
 
+    // M22 audit: a link followed over a form already tried kept its "Enter your email address." under the new notice.
+    it('starts a fresh form when a link opened over the page has expired', async () => {
+      const page = await open('/portal/brightline/sign-in', signedOut);
+      page.querySelector('form')!.dispatchEvent(new Event('submit'));
+      await settle(harness.fixture);
+      expect(page.querySelector('#portal-email-error')).not.toBeNull();
+
+      await harness.navigateByUrl('/portal/brightline/sign-in#an-old-token');
+      await settle(harness.fixture);
+      http
+        .expectOne('/api/portal/sign-in/confirm')
+        .flush(
+          { title: 'This sign-in link has expired.', code: 'portal-link-invalid' },
+          { status: 400, statusText: 'Bad Request' },
+        );
+      await answerSession(signedOut);
+
+      expect(text(page.querySelector('[role="alert"]'))).toContain('has expired');
+      expect(page.querySelector('#portal-email-error')).toBeNull();
+    });
+
     it('explains a portal that does not exist or is off', async () => {
       const unknown = await open('/portal/nowhere/sign-in', { organization: null, contact: null });
       expect(text(main(unknown).querySelector('h1'))).toBe('This portal is not available');
@@ -264,6 +291,18 @@ describe('portal pages', () => {
       await answerSession(signedOut);
 
       expect(TestBed.inject(Router).url).toBe('/portal/brightline/sign-in?notice=ended');
+    });
+
+    // M22 audit: the error state had no heading, so the page had none (one h1 per screen).
+    it('keeps a heading when a visit cannot be loaded, and offers to try again', async () => {
+      const page = await open('/portal/brightline/visits/v1', signedIn);
+      http
+        .expectOne('/api/portal/visits/v1')
+        .flush({ title: 'Server error' }, { status: 500, statusText: 'Server Error' });
+      await settle(harness.fixture);
+
+      expect([...main(page).querySelectorAll('h1')].map((h) => text(h))).toEqual(['Visit']);
+      expect(text(main(page).querySelector('[role="alert"] button'))).toBe('Try again');
     });
 
     describe('a completed visit (M19)', () => {

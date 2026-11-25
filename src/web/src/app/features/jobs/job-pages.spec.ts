@@ -312,6 +312,18 @@ describe('job pages', () => {
       return element;
     }
 
+    // M22 audit: the error state had no heading, so the page had none (one h1 per screen).
+    it('keeps a heading when the job cannot be loaded, and offers to try again', async () => {
+      const element = await open('/o/brightline/jobs/j1');
+      http
+        .expectOne(`${jobsUrl}/j1`)
+        .flush({ title: 'Server error' }, { status: 500, statusText: 'Server Error' });
+      await settle(harness.fixture);
+
+      expect([...main(element).querySelectorAll('h1')].map((h) => text(h))).toEqual(['Job']);
+      expect(text(main(element).querySelector('[role="alert"] button'))).toBe('Try again');
+    });
+
     it('confirms the save that led here, and only then', async () => {
       const created = await openJob(job(), olivia, '?notice=created');
       expect(text(created.querySelector('[role="status"]'))).toContain('Job created.');

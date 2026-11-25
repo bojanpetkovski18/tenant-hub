@@ -82,6 +82,8 @@ const fieldLabels: Readonly<Record<string, string>> = {
         </app-empty-state>
       </div>
     } @else if (loadError(); as error) {
+      <!-- One h1 on every state of the page, the failed one included (M22 audit). -->
+      <h1 class="mt-3 text-2xl font-semibold tracking-tight">Job</h1>
       <div class="mt-4"><app-error-state [message]="error.title" (retry)="load()" /></div>
     } @else if (job(); as job) {
       @if (notice() === 'created' || notice() === 'saved') {

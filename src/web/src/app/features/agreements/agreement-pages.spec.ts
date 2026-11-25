@@ -174,6 +174,39 @@ describe('agreement pages', () => {
       box!.querySelector<HTMLInputElement>('input')!.click();
     };
 
+    // M22 audit: the v1 job form's picker rules (M10) were missing here.
+    it('announces a failure to load clients and people, and tries again', async () => {
+      const page = await open('/o/brightline/agreements/new');
+      http
+        .expectOne((r) => r.url.endsWith('/members'))
+        .flush({ title: 'Server error' }, { status: 500, statusText: 'Server Error' });
+      http.expectOne((r) => r.url.endsWith('/clients')).flush({ items: [] });
+      await settle(harness.fixture);
+
+      const alert = page.querySelector('[role="alert"]');
+      expect(alert?.textContent).toContain('could not be loaded');
+      alert!.querySelector('button')!.click();
+      await settle(harness.fixture);
+      http.expectOne((r) => r.url.endsWith('/members')).flush([]);
+      http
+        .expectOne((r) => r.url.endsWith('/clients'))
+        .flush({ items: [{ id: 'c1', name: 'Acme Offices', status: 'active' }] });
+      await settle(harness.fixture);
+      expect(page.querySelector('[role="alert"]')).toBeNull();
+    });
+
+    it('says when there are no active clients yet, with a link to add one', async () => {
+      const page = await open('/o/brightline/agreements/new');
+      http.expectOne((r) => r.url.endsWith('/members')).flush([]);
+      http
+        .expectOne((r) => r.url.endsWith('/clients'))
+        .flush({ items: [{ id: 'c9', name: 'Old Client', status: 'archived' }] });
+      await settle(harness.fixture);
+
+      expect(page.textContent).toContain('No active clients yet.');
+      expect(page.querySelector('a[href="/o/brightline/clients/new"]')).not.toBeNull();
+    });
+
     it("starts on the organization's today, not the browser's", async () => {
       // 20:00 UTC on 4 January is already 5 January in Kiritimati (UTC+14), while still the 4th in Europe.
       vi.useFakeTimers({ toFake: ['Date'] });
@@ -310,6 +343,20 @@ describe('agreement pages', () => {
   });
 
   describe('detail', () => {
+    // M22 audit: the error state had no heading, so the page had none (one h1 per screen).
+    it('keeps its heading when the agreement cannot be loaded, and offers to try again', async () => {
+      const page = await open('/o/brightline/agreements/a1');
+      http
+        .expectOne(`${agreementsUrl}/a1`)
+        .flush({ title: 'Server error' }, { status: 500, statusText: 'Server Error' });
+      await settle(harness.fixture);
+
+      expect([...page.querySelectorAll('h1')].map((h) => h.textContent?.trim())).toEqual([
+        'Agreement',
+      ]);
+      expect(page.querySelector('[role="alert"] button')?.textContent).toContain('Try again');
+    });
+
     it('shows the schedule, the next visits and the actions a manager may take', async () => {
       const page = await open('/o/brightline/agreements/a1');
       http.expectOne(`${agreementsUrl}/a1`).flush(agreement());

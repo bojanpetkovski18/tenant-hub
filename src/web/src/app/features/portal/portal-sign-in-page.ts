@@ -1,6 +1,8 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  Injector,
+  afterNextRender,
   computed,
   effect,
   inject,
@@ -47,12 +49,18 @@ type Stage = 'loading' | 'form' | 'sent' | 'confirming' | 'expired' | 'unavailab
         }
         @case ('sent') {
           <div class="th-card" role="status">
-            <h1 class="text-xl font-semibold">Check your email</h1>
+            <h1
+              id="portal-sent-heading"
+              tabindex="-1"
+              class="text-xl font-semibold focus:outline-none"
+            >
+              Check your email
+            </h1>
             <p class="mt-2 text-sm text-muted">
               If {{ sentTo() }} belongs to a contact of {{ organizationName() }}, a sign-in link is
               on its way. It works once, within 15 minutes.
             </p>
-            <button type="button" class="th-button-secondary mt-4" (click)="stage.set('form')">
+            <button type="button" class="th-button-secondary mt-4" (click)="anotherAddress()">
               Use another address
             </button>
           </div>
@@ -132,6 +140,7 @@ export class PortalSignInPage {
   readonly notice = input<string>();
 
   private readonly api = inject(PortalApi);
+  private readonly injector = inject(Injector);
   private readonly store = inject(PortalSessionStore);
   private readonly staff = inject(SessionStore);
   private readonly demo = inject(DemoStore);
@@ -188,6 +197,8 @@ export class PortalSignInPage {
       await this.api.requestLink(this.slug(), email);
       this.sentTo.set(email);
       this.stage.set('sent');
+      // The form, and the button that had focus, are gone: focus goes to what replaced them (M22 audit).
+      this.focusAfterRender('portal-sent-heading');
     } catch (error) {
       const problem = toApiProblem(error);
       this.error.set(
@@ -198,6 +209,15 @@ export class PortalSignInPage {
     } finally {
       this.busy.set(false);
     }
+  }
+
+  protected anotherAddress(): void {
+    this.stage.set('form');
+    this.focusAfterRender('portal-email');
+  }
+
+  private focusAfterRender(id: string): void {
+    afterNextRender(() => document.getElementById(id)?.focus(), { injector: this.injector });
   }
 
   protected async tryAs(email: string): Promise<void> {
@@ -216,6 +236,9 @@ export class PortalSignInPage {
   /** A link with a token signs in at once; otherwise the form (or straight on, when already signed in). */
   private async start(slug: string, token: string): Promise<void> {
     if (token) {
+      // A link is a fresh attempt: whatever was tried in the form before does not belong under its outcome (M22).
+      this.form.reset();
+      this.error.set(null);
       this.stage.set('confirming');
       // The token leaves the address bar (and the history) before anything else happens.
       history.replaceState(history.state, '', location.pathname + location.search);

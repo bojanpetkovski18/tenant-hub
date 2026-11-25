@@ -14,8 +14,8 @@ public sealed class WebhookOptions
     public const string Section = "Webhooks";
 
     /// <summary>
-    /// Development only (SPEC-V2 5.8): one local receiver, such as <c>http://localhost:5099/</c>, that endpoints may name
-    /// and the guard lets through. Ignored outside Development.
+    /// Development and the E2E journey only (SPEC-V2 5.8, D052): one local receiver, such as
+    /// <c>http://localhost:5099/</c>, that endpoints may name and the guard lets through. Ignored everywhere else.
     /// </summary>
     public Uri? AllowedReceiver { get; init; }
 

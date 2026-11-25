@@ -96,6 +96,9 @@ jobs:
     name: End-to-end (production image)
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      # The production image in the E2E environment, with the webhook test receiver (M22, D052).
+      COMPOSE_FILE: docker-compose.yml:docker-compose.e2e.yml
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -117,7 +120,7 @@ jobs:
           npm ci --no-audit --no-fund
           npx playwright install --with-deps chromium
 
-      - name: Run the journey
+      - name: Run both journeys
         working-directory: tests/e2e
         run: npx playwright test
 

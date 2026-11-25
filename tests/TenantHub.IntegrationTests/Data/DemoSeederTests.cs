@@ -166,7 +166,7 @@ public sealed class DemoSeederTests(PostgresFixture postgres)
         var first = await SeedAtAsync(Today);
         var second = await SeedAtAsync(Today);
 
-        Assert.Equal(await FingerprintAsync(first), await FingerprintAsync(second));
+        Assert.Equal(await DemoFingerprint.OfAsync(first), await DemoFingerprint.OfAsync(second));
     }
 
     [Fact]
@@ -214,22 +214,6 @@ public sealed class DemoSeederTests(PostgresFixture postgres)
 
     private static Task<int> Clients(AppDbContext db, Guid org, ClientStatus? status) =>
         db.Clients.AcrossTenants().CountAsync(c => c.OrganizationId == org && (status == null || c.Status == status), Ct);
-
-    /// <summary>Everything a visitor would see, without ids: equal fingerprints mean equal demos.</summary>
-    private static async Task<string> FingerprintAsync(string connectionString)
-    {
-        await using var db = PostgresFixture.CreateDbContext(connectionString);
-        var orgs = await db.Organizations.AsNoTracking().ToDictionaryAsync(o => o.Id, o => o.Slug, Ct);
-        var users = await db.Users.AsNoTracking().ToDictionaryAsync(u => u.Id, u => u.Email, Ct);
-        var clients = await db.Clients.AcrossTenants().AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name, Ct);
-        var jobs = (await db.Jobs.AcrossTenants().AsNoTracking().ToListAsync(Ct))
-            .Select(j => $"{orgs[j.OrganizationId]}|{j.Number}|{j.Title}|{clients[j.ClientId]}|{(j.AssigneeUserId is { } a ? users[a] : "-")}|{j.Status}|{j.Priority}|{j.ScheduledOn}|{j.DueOn}|{j.QuotedAmount}|{j.CreatedAt:O}|{j.CompletedAt:O}")
-            .Order(StringComparer.Ordinal);
-        var audit = (await db.AuditEntries.AcrossTenants().AsNoTracking().ToListAsync(Ct))
-            .Select(a => $"{orgs[a.OrganizationId]}|{a.OccurredAt:O}|{a.ActorName}|{a.Action}|{a.Summary}")
-            .Order(StringComparer.Ordinal);
-        return string.Join("\n", jobs.Concat(audit));
-    }
 
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {

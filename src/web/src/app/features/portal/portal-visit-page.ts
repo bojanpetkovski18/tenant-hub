@@ -40,6 +40,8 @@ import { PortalApi, PortalVisitDetail } from './portal.api';
           </p>
         </div>
       } @else if (error(); as problem) {
+        <!-- One h1 on every state of the page, the failed one included (M22 audit). -->
+        <h1 class="mb-4 text-xl font-semibold">Visit</h1>
         <app-error-state [message]="problem.title" (retry)="load()" />
       } @else if (visit(); as v) {
         <article class="th-card">

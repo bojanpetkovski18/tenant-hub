@@ -66,6 +66,24 @@ describe('Account recovery pages', () => {
       expect(page.querySelector('form')).toBeNull();
     });
 
+    // M22 audit: the form, and with it the focused button, disappeared and focus fell to the page.
+    it('moves focus to the answer, and back to the field for another address', async () => {
+      const page = await open('/forgot-password');
+      type(page, 'email', 'someone@test.example');
+      await submit(page);
+      http
+        .expectOne('/api/auth/password-reset/request')
+        .flush(null, { status: 202, statusText: 'Accepted' });
+      await settle(harness.fixture);
+      expect(document.activeElement).toBe(page.querySelector('[role="status"]'));
+
+      [...page.querySelectorAll('button')]
+        .find((b) => b.textContent?.includes('try another address'))!
+        .click();
+      await settle(harness.fixture);
+      expect(document.activeElement?.id).toBe('email');
+    });
+
     it('shows the rate limit as a form error', async () => {
       const page = await open('/forgot-password');
       type(page, 'email', 'someone@test.example');
