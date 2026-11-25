@@ -104,7 +104,7 @@ public static bool VerifyTenantHub(string header, string rawBody, string secret,
 
 ### Local development
 
-`node tools/webhook-receiver.mjs --secret whsec_…` listens on `http://127.0.0.1:5099/`, checks each event's signature as described above and prints one line per event. Run the API in Development with `Webhooks__AllowedReceiver=http://127.0.0.1:5099/` so that this one local address is allowed; the setting is ignored in every other environment.
+`node tools/webhook-receiver.mjs --secret whsec_…` listens on `http://127.0.0.1:5099/`, checks each event's signature as described above and prints one line per event. Run the API in Development with `Webhooks__AllowedReceiver=http://127.0.0.1:5099/` so that this one local address is allowed; the setting is ignored in every other environment except `E2E`, which the end-to-end journey uses (D052). `GET /events` on the receiver lists what it received, raw bodies and signature headers included.
 
 ## Exports
 

@@ -8,7 +8,7 @@ Every pull request into `dev` (and `dev` into `main`) runs `.github/workflows/ci
 |---|---|---|
 | API (format, build and test) | a `packages.lock.json` is out of date (locked restore); `dotnet format` would change a file; any compiler or analyzer warning (warnings are errors); any unit, architecture, integration or (from M03) tenant-isolation test fails | push, PR |
 | Web (lint, format, test and build) | `package-lock.json` disagrees with `package.json` (`npm ci`); ESLint, including the template accessibility rules; Prettier; any Vitest component test; the production build or its size budget | push, PR |
-| End-to-end (production image) | the image does not build; the Compose stack started from `.env.example` is not healthy within five minutes; the Playwright journey or the cross-tenant check fails (traces, the HTML report and the container logs are uploaded as `e2e-traces`) | push, PR |
+| End-to-end (production image) | the image does not build; the Compose stack started from `.env.example` with `docker-compose.e2e.yml` (the E2E environment and the webhook test receiver, D052) is not healthy within five minutes; either Playwright journey or the cross-tenant check fails (traces, the HTML report and the container logs are uploaded as `e2e-traces`) | push, PR |
 | Dependency audit | `npm audit` (web app or end-to-end tests) finds a moderate or higher advisory; NuGet reports a vulnerable package, transitive ones included | push, PR |
 | Secret scan | gitleaks finds a secret anywhere in the history | push, PR |
 | Repository lint | actionlint finds a workflow problem; a file breaks `.editorconfig` (line endings, final newline, indentation, trailing whitespace) | push, PR |

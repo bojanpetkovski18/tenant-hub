@@ -220,7 +220,7 @@ Custom roles; real billing with Stripe; a platform-admin console; SSO; a Kanban 
 - **Signing:** `TenantHub-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(secret, "<t>.<body>")>`. The secret is shown once, stored encrypted (it must be readable to sign), and can be rotated with both secrets valid for 24 hours.
 - **Payload:** `{ id, type, occurredAt, organizationId, data }`; `id` is stable across retries, so receivers can deduplicate.
 - **Delivery:** a 10-second timeout and no redirects. Any 2xx is success. Retries back off over about a day (8 attempts). After 3 days of failures the endpoint is disabled and Owners are notified. The delivery log keeps status code, duration and error class for 30 days, but no response bodies. Managers can redeliver.
-- **Server-side request forgery:** the host is resolved and refused if any address is private, loopback, link-local, unique-local, multicast or otherwise non-public; the connection goes to the address that was checked (no second lookup). A development-only setting allows a named local receiver.
+- **Server-side request forgery:** the host is resolved and refused if any address is private, loopback, link-local, unique-local, multicast or otherwise non-public; the connection goes to the address that was checked (no second lookup). A setting honoured only in Development and in the E2E environment of the second journey (D052) allows a named local receiver.
 - **Exports:** cells starting with `=`, `+`, `-`, `@`, a tab or a carriage return are neutralized. Exports stream from the database and never load the whole result.
 
 ### 5.9 Audit additions
