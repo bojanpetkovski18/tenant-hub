@@ -3,6 +3,7 @@ import {
   Component,
   ElementRef,
   Injector,
+  afterNextRender,
   inject,
   signal,
   viewChild,
@@ -36,7 +37,12 @@ import { applyProblem, controlError } from '../../shared/forms/server-errors';
           need no password.
         </p>
       } @else if (sentTo(); as email) {
-        <div class="th-alert-success mt-6" role="status">
+        <div
+          id="reset-sent"
+          tabindex="-1"
+          class="th-alert-success mt-6 focus:outline-none"
+          role="status"
+        >
           If an account exists for <strong class="break-all">{{ email }}</strong
           >, we have sent it a link to choose a new password. The link expires in 30 minutes.
         </div>
@@ -117,6 +123,7 @@ export class ForgotPasswordPage {
   protected startOver(): void {
     this.sentTo.set(null);
     this.form.reset();
+    afterNextRender(() => document.getElementById('email')?.focus(), { injector: this.injector });
   }
 
   protected async submit(): Promise<void> {
@@ -132,6 +139,10 @@ export class ForgotPasswordPage {
       const email = this.form.getRawValue().email.trim();
       await this.session.requestPasswordReset(email);
       this.sentTo.set(email);
+      // The form, and the button that had focus, are gone: focus goes to the answer (M22 audit).
+      afterNextRender(() => document.getElementById('reset-sent')?.focus(), {
+        injector: this.injector,
+      });
     } catch (error) {
       this.formError.set(applyProblem(this.form, toApiProblem(error)));
       this.focusInvalid();

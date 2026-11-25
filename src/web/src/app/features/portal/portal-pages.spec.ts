@@ -96,6 +96,12 @@ describe('portal pages', () => {
       expect(text(main(page).querySelector('[role="status"]'))).toContain(
         'If dana@acme.example belongs to a contact of Brightline Cleaning Co., a sign-in link is on its way. It works once, within 15 minutes.',
       );
+      // M22 audit: the form, and with it the focused button, disappeared and focus fell to the page.
+      expect(document.activeElement).toBe(main(page).querySelector('h1'));
+
+      [...page.querySelectorAll('button')].find((b) => text(b) === 'Use another address')!.click();
+      await settle(harness.fixture);
+      expect(document.activeElement?.id).toBe('portal-email');
     });
 
     it('refuses an empty address without asking the API', async () => {
