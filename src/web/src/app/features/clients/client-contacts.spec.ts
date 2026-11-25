@@ -2,6 +2,7 @@ import { HttpTestingController } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { provideCspSafeCdkStyles } from '../../core/layout/csp-safe-style-loader';
+import { CurrentOrganizationStore } from '../../core/session/current-organization.store';
 import { SessionUser } from '../../core/session/session.models';
 import {
   loadSession,
@@ -24,12 +25,27 @@ describe('client contacts', () => {
   let fixture: ComponentFixture<ClientContacts>;
   let http: HttpTestingController;
 
-  async function render(user: SessionUser = olivia): Promise<HTMLElement> {
+  async function render(
+    user: SessionUser = olivia,
+    features: readonly string[] = ['portal'],
+  ): Promise<HTMLElement> {
     TestBed.configureTestingModule({
       providers: [provideTestHttp(), provideRouter([]), provideCspSafeCdkStyles()],
     });
     http = TestBed.inject(HttpTestingController);
     await loadSession(user);
+    // The shell has loaded the organization; its plan's features say whether there is a portal to ask about.
+    const loading = TestBed.inject(CurrentOrganizationStore).load(org);
+    http.expectOne(`/api/orgs/${org}`).flush({
+      id: org,
+      name: 'Brightline Cleaning Co.',
+      slug: 'brightline',
+      plan: features.includes('portal') ? 'team' : 'free',
+      timeZone: 'Europe/Amsterdam',
+      createdAt: '2026-10-01T09:00:00Z',
+      features,
+    });
+    await loading;
     fixture = TestBed.createComponent(ClientContacts);
     fixture.componentRef.setInput('slug', 'brightline');
     fixture.componentRef.setInput('organizationId', org);
@@ -124,6 +140,16 @@ describe('client contacts', () => {
     );
     await settle(fixture);
 
+    expect(text(element)).toContain('The client portal is part of the Team plan.');
+    expect(element.querySelector('a[href="/o/brightline/settings#plan"]')).not.toBeNull();
+    expect(element.querySelector('form')).toBeNull();
+  });
+
+  // M22 audit: on Free the section asked anyway, and the browser logged the 403 on every client page.
+  it('on a plan without the portal, says so without asking the API', async () => {
+    const element = await render(olivia, []);
+
+    http.expectNone(contactsUrl);
     expect(text(element)).toContain('The client portal is part of the Team plan.');
     expect(element.querySelector('a[href="/o/brightline/settings#plan"]')).not.toBeNull();
     expect(element.querySelector('form')).toBeNull();

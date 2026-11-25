@@ -7,10 +7,12 @@ import {
   inject,
   input,
   signal,
+  untracked,
 } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiProblem, toApiProblem } from '../../core/http/api-problem';
+import { CurrentOrganizationStore } from '../../core/session/current-organization.store';
 import { SessionStore } from '../../core/session/session.store';
 import { applyProblem, controlError } from '../../shared/forms/server-errors';
 import { Confirm } from '../../shared/ui/confirm-dialog';
@@ -143,6 +145,7 @@ export class ClientContacts {
 
   private readonly api = inject(ClientsApi);
   private readonly session = inject(SessionStore);
+  private readonly currentOrganization = inject(CurrentOrganizationStore);
   private readonly confirm = inject(Confirm);
 
   protected readonly canManage = computed(() => this.session.can(this.slug(), 'portal.manage'));
@@ -161,10 +164,27 @@ export class ClientContacts {
   });
 
   constructor() {
+    // The plan's features come with the organization the shell loads: on a plan without the portal the section says
+    // so without asking the API, which would only answer 403 (and the browser would log it on every client page).
     effect(() => {
-      this.organizationId();
+      const organization = this.currentOrganization.organization();
       this.clientId();
-      void this.load();
+      if (!organization || organization.id !== this.organizationId()) {
+        return;
+      }
+      if (organization.features && !organization.features.includes('portal')) {
+        untracked(() =>
+          this.unavailable.set({
+            status: 403,
+            title:
+              'The client portal is part of the Team plan. An Owner can change the plan in Settings.',
+            code: 'plan-feature-unavailable',
+            fieldErrors: {},
+          }),
+        );
+        return;
+      }
+      void untracked(() => this.load());
     });
   }
 
