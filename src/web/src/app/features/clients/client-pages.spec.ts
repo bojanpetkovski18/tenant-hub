@@ -84,6 +84,22 @@ describe('client pages', () => {
       expect(buttonsIn(element)).toEqual([]);
     });
 
+    // M22 audit: the error state had no heading, so the page had none (one h1 per screen).
+    it('keeps a heading when the client cannot be loaded, and offers to try again', async () => {
+      const element = await open('/o/brightline/clients/c1');
+      http
+        .expectOne(clientUrl)
+        .flush({ title: 'Server error' }, { status: 500, statusText: 'Server Error' });
+      await settle(harness.fixture);
+
+      expect([...element.querySelectorAll('main h1')].map((h) => h.textContent?.trim())).toEqual([
+        'Client',
+      ]);
+      expect(element.querySelector('main [role="alert"] button')?.textContent).toContain(
+        'Try again',
+      );
+    });
+
     it('explains why a delete was refused', async () => {
       const element = await open('/o/brightline/clients/c1');
       http.expectOne(clientUrl).flush(acme);

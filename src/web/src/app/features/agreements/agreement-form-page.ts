@@ -138,12 +138,26 @@ function todayIn(timeZone?: string): string {
                 @if (error('clientId'); as message) {
                   <p id="clientId-error" class="th-field-error">{{ message }}</p>
                 }
+                <!-- As on the job form (M10): a failure is announced, and an empty list says why. -->
                 @if (options() === 'error') {
-                  <p class="th-field-error">
-                    Clients and members could not be loaded.
-                    <button type="button" class="font-medium underline" (click)="loadOptions()">
+                  <div
+                    class="th-alert-error mt-2 flex flex-wrap items-center justify-between gap-3"
+                    role="alert"
+                  >
+                    <span>The clients and people could not be loaded.</span>
+                    <button type="button" class="th-button-secondary" (click)="loadOptions()">
                       Try again
                     </button>
+                  </div>
+                } @else if (options() === 'ready' && activeClients().length === 0) {
+                  <p class="th-hint">
+                    No active clients yet.
+                    <a
+                      [routerLink]="['/o', slug(), 'clients', 'new']"
+                      class="font-medium text-accent underline-offset-2 hover:underline"
+                      >Add a client</a
+                    >
+                    first, then set up the agreement.
                   </p>
                 }
               </div>

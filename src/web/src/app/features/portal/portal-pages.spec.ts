@@ -266,6 +266,18 @@ describe('portal pages', () => {
       expect(TestBed.inject(Router).url).toBe('/portal/brightline/sign-in?notice=ended');
     });
 
+    // M22 audit: the error state had no heading, so the page had none (one h1 per screen).
+    it('keeps a heading when a visit cannot be loaded, and offers to try again', async () => {
+      const page = await open('/portal/brightline/visits/v1', signedIn);
+      http
+        .expectOne('/api/portal/visits/v1')
+        .flush({ title: 'Server error' }, { status: 500, statusText: 'Server Error' });
+      await settle(harness.fixture);
+
+      expect([...main(page).querySelectorAll('h1')].map((h) => text(h))).toEqual(['Visit']);
+      expect(text(main(page).querySelector('[role="alert"] button'))).toBe('Try again');
+    });
+
     describe('a completed visit (M19)', () => {
       const completed = (overrides: Partial<PortalVisitDetail> = {}): PortalVisitDetail => ({
         ...visit({ status: 'completed' }),
