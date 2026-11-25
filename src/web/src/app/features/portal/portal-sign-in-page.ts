@@ -216,6 +216,9 @@ export class PortalSignInPage {
   /** A link with a token signs in at once; otherwise the form (or straight on, when already signed in). */
   private async start(slug: string, token: string): Promise<void> {
     if (token) {
+      // A link is a fresh attempt: whatever was tried in the form before does not belong under its outcome (M22).
+      this.form.reset();
+      this.error.set(null);
       this.stage.set('confirming');
       // The token leaves the address bar (and the history) before anything else happens.
       history.replaceState(history.state, '', location.pathname + location.search);

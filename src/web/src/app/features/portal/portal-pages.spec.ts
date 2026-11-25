@@ -196,6 +196,27 @@ describe('portal pages', () => {
       expect(page.querySelector('#portal-email')).not.toBeNull();
     });
 
+    // M22 audit: a link followed over a form already tried kept its "Enter your email address." under the new notice.
+    it('starts a fresh form when a link opened over the page has expired', async () => {
+      const page = await open('/portal/brightline/sign-in', signedOut);
+      page.querySelector('form')!.dispatchEvent(new Event('submit'));
+      await settle(harness.fixture);
+      expect(page.querySelector('#portal-email-error')).not.toBeNull();
+
+      await harness.navigateByUrl('/portal/brightline/sign-in#an-old-token');
+      await settle(harness.fixture);
+      http
+        .expectOne('/api/portal/sign-in/confirm')
+        .flush(
+          { title: 'This sign-in link has expired.', code: 'portal-link-invalid' },
+          { status: 400, statusText: 'Bad Request' },
+        );
+      await answerSession(signedOut);
+
+      expect(text(page.querySelector('[role="alert"]'))).toContain('has expired');
+      expect(page.querySelector('#portal-email-error')).toBeNull();
+    });
+
     it('explains a portal that does not exist or is off', async () => {
       const unknown = await open('/portal/nowhere/sign-in', { organization: null, contact: null });
       expect(text(main(unknown).querySelector('h1'))).toBe('This portal is not available');
