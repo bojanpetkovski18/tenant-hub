@@ -53,9 +53,10 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
 builder.Services.AddOpenApi(options => options.AddApiKeyScheme());
 builder.Services.AddInfrastructure(builder.Configuration);
-// Webhook addresses (SPEC-V2 5.8): https only; a named local receiver is allowed in Development and nowhere else.
+// Webhook addresses (SPEC-V2 5.8): https only; a named local receiver is allowed in Development and the E2E journey
+// and nowhere else (D052).
 var webhooks = builder.Configuration.GetSection(WebhookOptions.Section).Get<WebhookOptions>() ?? new WebhookOptions();
-builder.Services.AddSingleton(new WebhookAddresses(builder.Environment.IsDevelopment() ? webhooks.AllowedReceiver : null));
+builder.Services.AddSingleton(new WebhookAddresses(WebhookReceiverPolicy.AllowedReceiver(builder.Environment, webhooks.AllowedReceiver)));
 builder.Services.AddApplication();
 builder.AddAppAuth();
 builder.Services.AddAppForwardedHeaders(builder.Configuration);
