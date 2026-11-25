@@ -1,8 +1,1 @@
-[
-  {
-    "advisory": "GHSA-fc5q-39xc-vjpf",
-    "package": "picomatch",
-    "until": "2026-12-18",
-    "reason": "ReDoS in picomatch <= 4.0.7, the latest release; no fixed version exists yet. It is reached only through build tooling (Vite, Vitest, the Angular CLI, @parcel/watcher) matching the repository's own glob patterns, never in the shipped SPA or the image. Owner's choice on 2026-11-18 (D020). Remove when a fixed picomatch is published and pinned by override."
-  }
-]
+[]
